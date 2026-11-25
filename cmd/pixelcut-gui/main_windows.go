@@ -108,6 +108,9 @@ const (
 	idSpeedDown
 	idSpeedUp
 	idFrameSnap
+	idSaveAs
+	idRecent
+	idCloseProject
 )
 
 type windowClass struct {
@@ -207,6 +210,9 @@ type editor struct {
 	frameCache map[string]frameCacheEntry
 	frameSnap bool
 	playbackSpeed float64
+	projectRevision,savedFingerprint string
+	recentDir string
+	recent []string
 }
 
 func u(s string) *uint16 {
@@ -277,14 +283,6 @@ func pick(save bool, filter, ext, title string) (string, error) {
 
 func (e *editor) tell(s string) { change(e.status, s) }
 
-func (e *editor) confirmDiscard() bool {
-	if !e.dirty {
-		return true
-	}
-	r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u("Discard unsaved project changes?"))), uintptr(unsafe.Pointer(u("PixelCut"))), 0x34)
-	return r == 6
-}
-
 func (e *editor) track() *project.Track { return &e.p.Tracks[0] }
 
 func (e *editor) selected() (project.Clip, bool) {
@@ -313,6 +311,7 @@ func (e *editor) refresh() {
 	if e.asset >= len(e.p.Assets) { e.asset = -1 }
 	if e.clip >= len(e.track().Clips) { e.clip = -1 }
 	e.normalizeGroup()
+	e.updateDirty()
 	send.Call(a, lbSet, uintptr(e.asset), 0)
 	send.Call(c, lbSet, uintptr(e.clip), 0)
 	e.fields()
@@ -458,41 +457,17 @@ func (e *editor) command(id, notification int) error {
 	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
-	case idNew,idOpen:
-		if !e.confirmDiscard() { return nil }
-		q := project.New()
-		projectPath := ""
-		if id == idOpen {
-			path, err := pick(false,"PixelCut project (*.pixelcut.json)\x00*.pixelcut.json\x00","json","Open project")
-			if err != nil || path == "" { return err }
-			q, err = project.Load(path)
-			if err != nil { return err }
-			projectPath=path
-			if len(q.Tracks)!=2 || q.Tracks[0].ID!="V1" || q.Tracks[0].Kind!="video" || q.Tracks[1].ID!="A1" || q.Tracks[1].Kind!="audio" || len(q.Tracks[1].Clips)!=0 {
-				return fmt.Errorf("this prototype only opens V1 projects with an empty A1 track")
-			}
-		}
-		q,merged,err:=q.MergeDuplicateAssets()
-		if err!=nil {return err}
-		e.stopPreview()
-		e.group=nil;e.anchor=""
-		e.clipboard=project.ClipClipboard{}
-		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,len(merged)>0
-		e.origin,e.playhead,e.zoom=0,0,0
-		e.projectPath=projectPath
-		e.refresh()
-		if len(merged)>0 {e.tell(fmt.Sprintf("Project ready. Merged %d duplicate asset(s); all clips retained.",len(merged)))} else {e.tell("Project ready.")}
-	case idSave:
-		path, err := pick(true,"PixelCut project (*.pixelcut.json)\x00*.pixelcut.json\x00","json","Save project as")
-		if err != nil || path == "" { return err }
-		if !strings.HasSuffix(strings.ToLower(path),".pixelcut.json") {
-			path = strings.TrimSuffix(path,filepath.Ext(path))+".pixelcut.json"
-		}
-		if err = e.p.SaveAs(path); err != nil { return err }
-		e.dirty = false
-		e.projectPath=path
-		e.checkpoint()
-		e.tell("Project saved: "+path)
+	case idNew,idCloseProject:
+		return e.switchProject("",id==idCloseProject)
+	case idOpen:
+		path,err:=pick(false,projectFilter,"json","Open project")
+		if err!=nil || path=="" {return err}
+		return e.switchProject(path,false)
+	case idSave,idSaveAs:
+		_,err:=e.saveProject(id==idSaveAs)
+		return err
+	case idRecent:
+		return e.showRecent()
 	case idImport:
 		paths,err:=pickImportFiles()
 		if err!=nil || len(paths)==0 {return err}
@@ -668,7 +643,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idFrameSnap && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idCloseProject && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -740,10 +715,13 @@ func main() {
 	if mainWindow==0 { fmt.Fprintln(os.Stderr,"unable to create PixelCut window");os.Exit(1) }
 	button("New",12,10,70,idNew)
 	button("Open",88,10,70,idOpen)
-	button("Save As",164,10,80,idSave)
-	button("Undo",250,10,65,idUndo)
-	button("Redo",321,10,65,idRedo)
-	button("Shortcuts",392,10,110,idKeys)
+	button("Save",164,10,70,idSave)
+	button("Save As",240,10,80,idSaveAs)
+	button("Recent",326,10,78,idRecent)
+	button("Close",410,10,70,idCloseProject)
+	button("Undo",486,10,65,idUndo)
+	button("Redo",557,10,65,idRedo)
+	button("Shortcuts",628,10,110,idKeys)
 	button("Export clip",970,10,126,idExport)
 	applyDarkTitle(mainWindow)
 	label("Media bin / Drop files",12,50,245)

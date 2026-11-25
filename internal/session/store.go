@@ -27,6 +27,8 @@ type State struct {
 	Zoom float64 `json:"zoom"`
 	Dirty bool `json:"dirty"`
 	ProjectPath string `json:"project_path,omitempty"`
+	ProjectRevision string `json:"project_revision,omitempty"`
+	SavedFingerprint string `json:"saved_fingerprint,omitempty"`
 }
 
 func (s State) Validate() error {
@@ -48,6 +50,8 @@ func (s State) Validate() error {
 	}
 	if s.Playhead<0 || s.Origin<0 || math.IsNaN(s.Zoom) || math.IsInf(s.Zoom,0) || (s.Zoom!=0 && (s.Zoom<.05 || s.Zoom>1000)) {return errors.New("invalid session timeline view")}
 	if s.ProjectPath!="" && !filepath.IsAbs(s.ProjectPath) {return errors.New("invalid saved project path")}
+	if s.ProjectRevision!="" && (s.ProjectPath=="" || !project.ValidRevision(s.ProjectRevision)) {return errors.New("invalid project revision")}
+	if s.SavedFingerprint!="" && !project.ValidRevision(s.SavedFingerprint) {return errors.New("invalid saved fingerprint")}
 	return nil
 }
 

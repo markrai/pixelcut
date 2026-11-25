@@ -87,3 +87,16 @@ func TestGroupSelectionRecovery(t *testing.T) {
 	state.SelectedClips=[]string{"c","missing"}
 	if err=s.Save(state);err==nil {t.Fatal("invalid group saved")}
 }
+
+func TestSaveBaselineRecovery(t *testing.T) {
+	s,_,err:=Open(t.TempDir())
+	if err!=nil {t.Fatal(err)}
+	state:=fixture(t)
+	state.ProjectRevision=state.Project.Fingerprint()
+	state.SavedFingerprint=state.Project.Fingerprint()
+	if err=s.Save(state);err!=nil {t.Fatal(err)}
+	_,got,err:=Open(s.dir)
+	if err!=nil || got==nil || !reflect.DeepEqual(*got,state) {t.Fatalf("save baseline recovery: %+v %v",got,err)}
+	state.ProjectRevision="invalid"
+	if err=s.Save(state);err==nil {t.Fatal("invalid revision accepted")}
+}

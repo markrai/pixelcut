@@ -115,6 +115,10 @@ Ctrl-click clips to toggle selection, Shift-click to select a chronological rang
 
 Snapping aligns clip moves and trim edges to the playhead, timeline origin and neighboring clip boundaries. Use the Snap button or N to toggle it; hold Shift while dragging to bypass it. Select an asset in the media bin and press Delete (or Remove asset) to remove its project reference. If clips use the asset, confirmation is required to remove those clips too. Removal is undoable and never deletes source files.
 
+## Project lifecycle
+
+Ctrl+S saves the current project (or prompts for a filename when untitled); Ctrl+Shift+S creates a new project file without overwriting an existing one. Recent reopens previously saved or opened projects, and Ctrl+W closes the current project. The title shows the project name and an unsaved asterisk. Save checks for external file changes before replacement. New, Open and Close prompt to save, discard or cancel unsaved edits.
+
 ## Automatic session recovery
 
 PixelCut checkpoints imported asset references, committed edits, timeline selection, playhead, zoom and scroll position in the current user's local application data directory. It restores the latest valid session on launch, including after a forced close; playback resumes paused when the selected clip contains the restored marker. Recovery is independent of manually saved project files. New and Open intentionally replace the current session after any unsaved-change confirmation. Unapplied edit drafts and undo history are not persisted.

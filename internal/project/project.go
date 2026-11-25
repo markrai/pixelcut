@@ -1,12 +1,9 @@
 package project
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -238,57 +235,12 @@ func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
 	return a, e, nil
 }
 
-func Load(path string) (Project, error) {
-	var p Project
-	f, err := os.Open(path)
-	if err != nil {
-		return p, err
-	}
-	defer f.Close()
-	const limit = 16 << 20
-	info, err := f.Stat()
-	if err != nil {
-		return p, err
-	}
-	if !info.Mode().IsRegular() || info.Size() > limit {
-		return p, errors.New("invalid or oversized project file")
-	}
-	d := json.NewDecoder(io.LimitReader(f, limit+1))
-	d.DisallowUnknownFields()
-	if err = d.Decode(&p); err != nil {
-		return p, err
-	}
-	var extra any
-	if err = d.Decode(&extra); err != io.EOF {
-		return p, errors.New("unexpected trailing project content")
-	}
-	return p, p.Validate()
+func Load(path string) (Project,error) {
+	p,_,err:=LoadRevision(path)
+	return p,err
 }
 
 func (p Project) SaveAs(path string) error {
-	if err := p.Validate(); err != nil {
-		return err
-	}
-	if !strings.HasSuffix(strings.ToLower(path), ".pixelcut.json") {
-		return errors.New("project filename must end in .pixelcut.json")
-	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".pixelcut-project-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	d := json.NewEncoder(f)
-	d.SetIndent("", "  ")
-	err = d.Encode(p)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil {
-		return err
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	return os.Link(f.Name(), path)
+	_,err:=p.SaveNew(path)
+	return err
 }

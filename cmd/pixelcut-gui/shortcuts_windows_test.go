@@ -47,6 +47,8 @@ func TestShortcutMapping(t *testing.T) {
 		{'Z',true,true,false,false,false,idRedo},
 		{'Z',true,false,false,true,false,keyNone},
 		{'S',true,false,false,false,false,idSave},
+		{'S',true,true,false,false,false,idSaveAs},
+		{'W',true,false,false,false,false,idCloseProject},
 		{'S',false,false,false,false,false,idSplit},
 		{'K',true,false,false,false,false,idSplit},
 		{0x2e,false,false,false,false,true,idRemoveAsset},

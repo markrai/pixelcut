@@ -19,7 +19,7 @@ const (
 	keyFocusTimeline
 )
 
-const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save As (new file)\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nCtrl+A           Select all timeline clips\nCtrl+C           Copy selected clips\nCtrl+X           Cut selected clips\nCtrl+V           Paste at playhead\nCtrl+D           Duplicate selected clips\nCtrl+click       Toggle clip selection\nShift+click      Select clip range\nDrag empty lane  Marquee selection\nDelete           Remove selected clips / media asset\nShift+Delete     Ripple delete selected clips\nG                Remove gap at playhead\nR                Toggle ripple trimming\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\n, / .            Previous / next decoded frame\nCtrl+Left/Right  Previous / next edit boundary\nI / O            Set source In / Out at playhead\n[ / ]            Slower / faster preview\nB                Toggle source-frame trim snapping\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nMenu / Shift+F10 Context menu\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
+const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save project\nCtrl+Shift+S     Save As (new file)\nCtrl+W           Close project\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nCtrl+A           Select all timeline clips\nCtrl+C           Copy selected clips\nCtrl+X           Cut selected clips\nCtrl+V           Paste at playhead\nCtrl+D           Duplicate selected clips\nCtrl+click       Toggle clip selection\nShift+click      Select clip range\nDrag empty lane  Marquee selection\nDelete           Remove selected clips / media asset\nShift+Delete     Ripple delete selected clips\nG                Remove gap at playhead\nR                Toggle ripple trimming\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\n, / .            Previous / next decoded frame\nCtrl+Left/Right  Previous / next edit boundary\nI / O            Set source In / Out at playhead\n[ / ]            Slower / faster preview\nB                Toggle source-frame trim snapping\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nMenu / Shift+F10 Context menu\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
 
 func (e *editor) showShortcuts() {
 	user.NewProc("MessageBoxW").Call(mainWindow,uintptr(unsafe.Pointer(u(shortcutsText))),uintptr(unsafe.Pointer(u("PixelCut keyboard shortcuts"))),0x40)
@@ -42,7 +42,7 @@ func shortcutFor(key uintptr,ctrl,shift,alt,editing,assetFocus bool) int {
 		case 'Z':
 			if shift {return idRedo};return idUndo
 		case 'S':
-			return idSave
+			if shift {return idSaveAs};return idSave
 		}
 		if shift {return keyNone}
 		switch key {
@@ -55,6 +55,7 @@ func shortcutFor(key uintptr,ctrl,shift,alt,editing,assetFocus bool) int {
 		case 0x27:if !assetFocus {return idNextEdit}
 		case 'N':return idNew
 		case 'O':return idOpen
+		case 'W':return idCloseProject
 		case 'I':return idImport
 		case 'E':return idExport
 		case 'Y':return idRedo

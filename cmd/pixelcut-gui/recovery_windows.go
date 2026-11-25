@@ -23,6 +23,7 @@ func (e *editor) view() recoveryView {
 }
 
 func (e *editor) openRecovery() error {
+	e.savedFingerprint=e.p.Fingerprint()
 	dir,err:=os.UserCacheDir()
 	if err!=nil {e.recoveryError=err.Error();return nil}
 	dir=filepath.Join(dir,"PixelCut")
@@ -36,6 +37,8 @@ func (e *editor) openRecovery() error {
 		return nil
 	}
 	e.recoveryLock=h
+	e.recentDir=dir
+	if paths,err:=session.LoadRecent(dir);err==nil {e.recent=paths} else {fmt.Fprintln(os.Stderr,"Recent projects:",err)}
 	store,state,err:=session.Open(dir)
 	if err!=nil {e.recoveryError=err.Error();return nil}
 	e.recovery=store
@@ -44,6 +47,8 @@ func (e *editor) openRecovery() error {
 		e.asset,e.clip=state.Asset,state.Clip
 		e.playhead,e.origin,e.zoom=state.Playhead,state.Origin,state.Zoom
 		e.dirty,e.projectPath=state.Dirty,state.ProjectPath
+		e.projectRevision,e.savedFingerprint=state.ProjectRevision,state.SavedFingerprint
+		e.restoreSaveBaseline()
 		if len(state.SelectedClips)>1 {
 			e.group=map[string]bool{}
 			for _,id:=range state.SelectedClips {e.group[id]=true}
@@ -70,7 +75,7 @@ func (e *editor) closeRecovery() {
 func (e *editor) checkpoint() bool {
 	if e.recovery==nil {return false}
 	e.lastCheckpoint=time.Now()
-	s:=session.State{Project:e.p,Asset:e.asset,Clip:e.clip,Playhead:e.playhead,Origin:e.origin,Zoom:e.zoom,Dirty:e.dirty,ProjectPath:e.projectPath}
+	s:=session.State{Project:e.p,Asset:e.asset,Clip:e.clip,Playhead:e.playhead,Origin:e.origin,Zoom:e.zoom,Dirty:e.dirty,ProjectPath:e.projectPath,ProjectRevision:e.projectRevision,SavedFingerprint:e.savedFingerprint}
 	if len(e.group)>1 {s.SelectedClips=e.selectionIDs()}
 	if err:=e.recovery.Save(s);err!=nil {
 		if e.recoveryError!=err.Error() {
@@ -91,8 +96,7 @@ func (e *editor) checkpointView() {
 }
 
 func (e *editor) updateRecoveryTitle() {
-	title:="PixelCut - Editor preview"
-	if e.recoveryError!="" {title+=" [recovery unavailable]"}
+	title:=projectTitle(e.projectPath,e.dirty,e.recoveryError!="")
 	if mainWindow!=0 {change(mainWindow,title)}
 }
 
