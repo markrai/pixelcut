@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/markrai/pixelcut/internal/media"
 	editorstate "github.com/markrai/pixelcut/internal/editor"
+	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
