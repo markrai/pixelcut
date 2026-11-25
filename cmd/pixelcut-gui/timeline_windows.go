@@ -29,6 +29,7 @@ type timelineDrag struct {
 	scale float64
 	original,candidate project.Clip
 	moved,valid bool
+	wasPlaying bool
 }
 
 func registerTimeline() {
@@ -152,38 +153,38 @@ func (e *editor) selectClip(i int) {
 
 func (e *editor) beginTimeline(x,y,w int32) {
 	if e.busy || x<trackHeader {return}
-	e.stopPreview()
-	e.playhead=e.timeAt(x,w)
-	if e.playhead>e.endTime() {e.playhead=e.endTime()}
+	t:=e.timeAt(x,w)
+	if t>e.endTime() {t=e.endTime()}
+	playing:=e.playing()
 	if y>=0 && y<32 {
-		for i,c:=range e.track().Clips {
-			if e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {e.selectClip(i);break}
-		}
-		change(e.controls[idAt],fmtTime(e.playhead))
-		e.invalidateTimeline()
+		e.scrubbing,e.scrubPlaying=true,playing
+		user.NewProc("SetCapture").Call(e.timeline)
+		e.seekTimeline(t,false)
 		return
 	}
 	for i,c:=range e.track().Clips {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if mode:=videoHitMode(x,y,l,r);mode!="" {
+			e.playhead=t
 			e.selectClip(i)
-			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true}
+			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x,y,w)
 			return
 		}
 		if x>=l && x<r && y>=104 && y<140 {
-			e.selectClip(i);return
+			e.seekTimeline(t,playing)
+			return
 		}
 	}
-	change(e.controls[idAt],fmtTime(e.playhead))
-	e.invalidateTimeline()
+	e.seekTimeline(t,playing)
 }
 
 func (e *editor) moveTimeline(x int32) {
 	d:=e.drag
 	if d==nil {return}
 	if !d.moved && math.Abs(float64(x-d.x))<4 {return}
+	if !d.moved {e.stopPreview()}
 	d.moved=true
 	raw:=float64(x-d.x)/d.scale*float64(project.TicksPerSecond)
 	raw=math.Max(-1e15,math.Min(1e15,raw))
@@ -202,6 +203,8 @@ func (e *editor) finishTimeline() {
 			e.playhead=d.candidate.Start
 			if err:=e.commit(q);err!=nil {e.tell(err.Error())} else {e.tell("Timeline edit applied.")}
 		} else {e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")}
+	} else if d!=nil {
+		e.seekTimeline(e.playhead,d.wasPlaying)
 	}
 	e.invalidateTimeline()
 }
@@ -243,15 +246,23 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		user.NewProc("SetFocus").Call(hwnd)
 		ui.beginTimeline(x,y,clientRect(hwnd).Right);return 0
 	case 0x0200:
-		ui.moveTimeline(x)
+		if ui.scrubbing {ui.seekTimeline(ui.timeAt(x,clientRect(hwnd).Right),false)} else {ui.moveTimeline(x)}
 		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
 		return 0
 	case 0x0202:
-		ui.moveTimeline(x);ui.finishTimeline()
+		if ui.scrubbing {
+			t:=ui.timeAt(x,clientRect(hwnd).Right)
+			playing:=ui.scrubPlaying
+			ui.scrubbing=false
+			user.NewProc("ReleaseCapture").Call()
+			ui.seekTimeline(t,playing)
+		} else {
+			ui.moveTimeline(x);ui.finishTimeline()
+		}
 		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
 		return 0
 	case 0x0215:
-		ui.drag=nil;ui.invalidateTimeline();return 0
+		ui.drag=nil;ui.scrubbing=false;ui.invalidateTimeline();return 0
 	case 0x020a:
 		if ui.busy || ui.drag!=nil {return 0}
 		d:=int16(wp>>16)
@@ -297,6 +308,7 @@ func cursorForMode(mode string,invalid bool) uintptr {
 
 func (e *editor) timelineCursor(x,y,w int32) uintptr {
 	if e.busy {return cursorArrow}
+	if e.scrubbing {return cursorCross}
 	if e.drag!=nil {return cursorForMode(e.drag.mode,e.drag.moved && !e.drag.valid)}
 	if x<trackHeader || x>=w {return cursorArrow}
 	for _,c:=range e.track().Clips {

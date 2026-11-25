@@ -143,6 +143,7 @@ type editor struct {
 	origin, playhead int64
 	drag *timelineDrag
 	clock *previewClock
+	scrubbing, scrubPlaying bool
 }
 
 func u(s string) *uint16 {
@@ -323,7 +324,9 @@ func (e *editor) stopPreview() {
 	if h:=e.controls[idPlay];h!=0 {change(h,"Play  (Space)");user.NewProc("InvalidateRect").Call(h,0,1)}
 }
 
-func (e *editor) play() error {
+func (e *editor) play() error { return e.startPreview(false) }
+
+func (e *editor) startPreview(paused bool) error {
 	c, ok := e.selected()
 	if !ok { return fmt.Errorf("select a timeline clip") }
 	a, ed, err := e.p.MediaEdit(c)
@@ -339,19 +342,19 @@ func (e *editor) play() error {
 	bindings,err:=os.CreateTemp("","pixelcut-input-*.conf")
 	if err!=nil {cancel();return err}
 	name:=bindings.Name()
-	_,err=bindings.WriteString("SPACE quit\nESC quit\n")
+	_,err=bindings.WriteString("SPACE cycle pause\nESC set pause yes\n")
 	closeErr:=bindings.Close()
 	if err==nil {err=closeErr}
 	if err!=nil {os.Remove(name);cancel();return err}
 	pipe:=previewPipeName(name)
-	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe)
+	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe,paused)
 	if err != nil {os.Remove(name); cancel(); return err }
 	if err = cmd.Start(); err != nil {os.Remove(name); cancel(); return err }
 	e.previewCancel = cancel
 	done := make(chan struct{})
 	e.previewDone = done
 	generation := e.generation
-	clock:=newPreviewClock(c,e.playhead)
+	clock:=newPreviewClock(c,e.playhead,paused)
 	e.clock=clock
 	processDone:=make(chan struct{})
 	clockDone:=make(chan struct{})
@@ -370,11 +373,10 @@ func (e *editor) play() error {
 			}
 		}
 	}()
-	change(e.controls[idPlay],"Stop  (Space)")
-	user.NewProc("InvalidateRect").Call(e.controls[idPlay],0,1)
+	e.updatePlayButton(paused)
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.refreshPlaybackMarker()
-	e.tell("Playing source interval. Space or Esc stops; crop applied at export.")
+	if paused {e.tell("Preview paused.")} else {e.tell("Playing source interval. Space or Esc pauses; crop applied at export.")}
 	return nil
 }
 
@@ -499,8 +501,7 @@ func (e *editor) command(id, notification int) error {
 	case idPlay:
 		return e.togglePreview()
 	case idStop:
-		e.stopPreview()
-		e.tell("Preview stopped.")
+		return e.pausePreview()
 	case idExport:
 		c,ok:=e.selected()
 		if !ok { return fmt.Errorf("select a clip") }
