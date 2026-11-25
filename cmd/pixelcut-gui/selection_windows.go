@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/timeline"
 )
 
 type marqueeDrag struct {
@@ -68,7 +68,7 @@ func (e *editor) moveMarquee(x, y, w int32) {
 	if d == nil {
 		return
 	}
-	if !d.moved && math.Abs(float64(x-d.x)) < 4 && math.Abs(float64(y-d.y)) < 4 {
+	if !d.moved && !timeline.DragStarted(x-d.x, y-d.y) {
 		return
 	}
 	if !d.moved {
@@ -86,15 +86,10 @@ func (e *editor) moveMarquee(x, y, w int32) {
 	for _, id := range ids {
 		seen[id] = true
 	}
+	view := e.timelineView(w)
 	for _, c := range e.track().Clips {
-		l, r := e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w)
-		if l > right || r <= left {
-			continue
-		}
-		a, _ := e.model.Project().Asset(c.AssetID)
-		video := top < laneBottom && bottom >= laneTop
-		audio := !e.audioTrack() && a.HasAudio && top < 140 && bottom >= 104
-		if (video || audio) && !seen[c.ID] {
+		geometry, visible := e.clipGeometry(view, c)
+		if visible && geometry.Intersects(left, top, right, bottom) && !seen[c.ID] {
 			ids = append(ids, c.ID)
 			seen[c.ID] = true
 		}
@@ -130,7 +125,7 @@ func (e *editor) paintMarquee(dc uintptr, w, h int32) {
 		return
 	}
 	l, r := max(trackHeader, min(d.x, d.currentX)), min(w, max(d.x, d.currentX))
-	t, b := max(int32(33), min(d.y, d.currentY)), min(h, max(d.y, d.currentY))
+	t, b := max(timeline.TrackTop, min(d.y, d.currentY)), min(h, max(d.y, d.currentY))
 	if r <= l || b <= t {
 		return
 	}

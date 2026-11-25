@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	"github.com/markrai/pixelcut/internal/timeline"
 )
 
 const wmContextMenu = 0x007b
@@ -127,7 +129,8 @@ func (e *editor) popup(items []menuItem, screen point) int {
 }
 
 func timelineMenuHit(x, y, left, right int32, hasAudio bool) bool {
-	return x >= trackHeader && x >= left && x < right && ((y >= laneTop && y < laneBottom) || (hasAudio && y >= 104 && y < 140))
+	g := timeline.ClipGeometry{Span: timeline.Span{Left: max(trackHeader, left), Right: right}, RawLeft: left, RawRight: right, LinkedAudio: hasAudio}
+	return g.Hit(x, y)
 }
 
 func (e *editor) pastePossible(at int64) bool {
@@ -177,9 +180,10 @@ func (e *editor) timelineContext(lp uintptr) {
 			hit = e.model.ClipIndex()
 		}
 	} else {
+		view := e.timelineView(w)
 		for i, c := range e.track().Clips {
-			a, _ := e.model.Project().Asset(c.AssetID)
-			if timelineMenuHit(local.X, local.Y, e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w), a.HasAudio && !e.audioTrack()) {
+			geometry, visible := e.clipGeometry(view, c)
+			if visible && geometry.Hit(local.X, local.Y) {
 				hit = i
 				break
 			}

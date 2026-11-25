@@ -223,7 +223,7 @@ func (e *editor) paintThumbnails(dc uintptr, left, right, w int32, c project.Cli
 	}
 	defer gdi.NewProc("RestoreDC").Call(dc, saved)
 	gdi.NewProc("IntersectClipRect").Call(dc, uintptr(left), uintptr(laneTop+19), uintptr(right), uintptr(laneBottom-1))
-	clipLeft := float64(trackHeader) + project.Seconds(c.Start-e.origin)*scale
+	clipLeft := e.timelineView(w).PixelAt(c.Start)
 	for _, tile := range thumbnail.Tiles(int(left), int(right), clipLeft, scale, c.In, c.Out, width) {
 		key := thumbnailKey{path: a.Path, asset: a.ID, source: source, tick: tile.Source, width: width}
 		r := rect{int32(tile.FullLeft), laneTop + 19, int32(tile.FullRight), laneBottom - 1}

@@ -10,11 +10,12 @@ import (
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/timeline"
 )
 
-const trackHeader int32 = 92
-const laneTop int32 = 39
-const laneBottom int32 = 91
+const trackHeader = timeline.Header
+const laneTop = timeline.LaneTop
+const laneBottom = timeline.LaneBottom
 
 type paintStruct struct {
 	DC              uintptr
@@ -60,33 +61,19 @@ func (e *editor) invalidateTimeline() {
 
 func (e *editor) endTime() int64 { return e.model.Project().EndTime() }
 
-func (e *editor) scale(w int32) float64 {
-	if e.zoom > 0 {
-		return e.zoom
-	}
-	return math.Max(1e-9, math.Max(1, float64(w-trackHeader-18))/math.Max(5, project.Seconds(e.endTime())*1.05))
+func (e *editor) timelineView(w int32) timeline.View {
+	return timeline.View{Width: w, Origin: e.origin, End: e.endTime(), Zoom: e.zoom}
 }
 
-func (e *editor) timeAt(x, w int32) int64 {
-	t := float64(e.origin) + float64(x-trackHeader)/e.scale(w)*float64(project.TicksPerSecond)
-	if t < 0 {
-		return 0
-	}
-	if t >= float64(math.MaxInt64) {
-		return math.MaxInt64
-	}
-	return int64(math.Round(t))
-}
+func (e *editor) scale(w int32) float64 { return e.timelineView(w).Scale() }
 
-func (e *editor) xAt(t int64, w int32) int32 {
-	x := float64(trackHeader) + project.Seconds(t-e.origin)*e.scale(w)
-	if x < -100000 {
-		return -100000
-	}
-	if x > 100000 {
-		return 100000
-	}
-	return int32(math.Round(x))
+func (e *editor) timeAt(x, w int32) int64 { return e.timelineView(w).TimeAt(x) }
+
+func (e *editor) xAt(t int64, w int32) int32 { return e.timelineView(w).XAt(t) }
+
+func (e *editor) clipGeometry(v timeline.View, c project.Clip) (timeline.ClipGeometry, bool) {
+	a, ok := e.model.Project().Asset(c.AssetID)
+	return v.Clip(c, ok && a.HasAudio && !e.audioTrack())
 }
 
 func (e *editor) zoomTimeline(id int) {
@@ -98,11 +85,7 @@ func (e *editor) zoomTimeline(id int) {
 		if id == idZoomOut {
 			factor = 1 / factor
 		}
-		e.zoom = math.Max(.05, math.Min(1000, e.scale(w)*factor))
-		e.origin = e.playhead - int64(float64(w-trackHeader)/e.zoom*float64(project.TicksPerSecond)/2)
-		if e.origin < 0 {
-			e.origin = 0
-		}
+		e.zoom, e.origin = e.timelineView(w).ZoomAt(e.playhead, factor)
 	}
 	e.invalidateTimeline()
 }
@@ -114,6 +97,7 @@ func stamp(t int64) string {
 
 func (e *editor) paintTimeline(dc uintptr, r rect) {
 	w, h := r.Right, r.Bottom
+	view := e.timelineView(w)
 	fill(dc, r, palette.black)
 	fill(dc, rect{0, 0, w, 32}, palette.panel)
 	fill(dc, rect{0, 33, trackHeader, h}, palette.panel)
@@ -164,19 +148,11 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				valid = d.valid
 			}
 		}
-		left, right := e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w)
-		if right <= trackHeader || left >= w {
+		geometry, visible := e.clipGeometry(view, c)
+		if !visible {
 			continue
 		}
-		if left < trackHeader {
-			left = trackHeader
-		}
-		if right > w {
-			right = w
-		}
-		if right <= left {
-			right = left + 1
-		}
+		left, right := geometry.Left, geometry.Right
 		col := palette.clip
 		if e.audioTrack() {
 			col = palette.audio
@@ -210,20 +186,20 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 		if right-left > 20 {
 			textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs", filepath.Base(a.Path), project.Seconds(c.Out-c.In)), palette.text, 4)
 		}
-		if !e.audioTrack() && a.HasAudio {
+		if geometry.LinkedAudio {
 			audioColor := palette.audio
 			if offline {
 				audioColor = rgb(74, 44, 49)
 			}
-			fill(dc, rect{left, 104, right, 140}, audioColor)
+			fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioBottom}, audioColor)
 			if valid && !offline {
-				e.paintWaveform(dc, left, right, w, 104, 140, c, a, &audioDemand)
+				e.paintWaveform(dc, left, right, w, timeline.AudioTop, timeline.AudioBottom, c, a, &audioDemand)
 			}
 			if offline && right-left > 48 {
-				textAt(dc, rect{left + 6, 104, right - 5, 140}, "Offline audio", rgb(255, 166, 166), 4)
+				textAt(dc, rect{left + 6, timeline.AudioTop, right - 5, timeline.AudioBottom}, "Offline audio", rgb(255, 166, 166), 4)
 			}
 			if e.clipSelected(i, c) && e.model.Count() > 1 {
-				fill(dc, rect{left, 104, right, 106}, palette.accent)
+				fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioTop + 2}, palette.accent)
 			}
 		}
 	}
@@ -293,15 +269,19 @@ func (e *editor) beginTimeline(x, y, w int32) {
 		t = e.endTime()
 	}
 	playing := e.playing()
-	if y >= 0 && y < 32 {
+	if y >= 0 && y < timeline.RulerBottom {
 		e.scrubbing, e.scrubPlaying = true, playing
 		user.NewProc("SetCapture").Call(e.timeline)
 		e.seekTimeline(t, false)
 		return
 	}
+	view := e.timelineView(w)
 	for i, c := range e.track().Clips {
-		l, r := e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w)
-		if mode := videoHitMode(x, y, l, r); mode != "" {
+		geometry, visible := e.clipGeometry(view, c)
+		if !visible {
+			continue
+		}
+		if mode := geometry.MainHit(x, y); mode != "" {
 			e.updatePlaybackClock()
 			if keyPressed(0x11) || keyPressed(0x10) {
 				e.modifySelection(i, keyPressed(0x11), keyPressed(0x10))
@@ -336,8 +316,8 @@ func (e *editor) beginTimeline(x, y, w int32) {
 			e.setTimelineCursor(x, y, w)
 			return
 		}
-		if !e.audioTrack() && x >= l && x < r && y >= 104 && y < 140 {
-			if a, ok := e.model.Project().Asset(c.AssetID); ok && a.HasAudio && (keyPressed(0x11) || keyPressed(0x10)) {
+		if geometry.AudioHit(x, y) {
+			if keyPressed(0x11) || keyPressed(0x10) {
 				e.modifySelection(i, keyPressed(0x11), keyPressed(0x10))
 				return
 			}
@@ -345,7 +325,7 @@ func (e *editor) beginTimeline(x, y, w int32) {
 			return
 		}
 	}
-	if y >= 33 && y < 145 {
+	if y >= timeline.TrackTop && y < timeline.ContentBottom {
 		e.beginMarquee(x, y, t, playing)
 		return
 	}
@@ -357,76 +337,21 @@ func (e *editor) moveTimeline(x int32) {
 	if d == nil {
 		return
 	}
-	if !d.moved && math.Abs(float64(x-d.x)) < 4 {
+	if !d.moved && !timeline.DragStarted(x-d.x, 0) {
 		return
 	}
 	if !d.moved {
 		e.stopPreview()
 	}
 	d.moved = true
-	raw := float64(x-d.x) / d.scale * float64(project.TicksPerSecond)
-	raw = math.Max(-1e15, math.Min(1e15, raw))
-	delta := int64(math.Round(raw/10000)) * 10000
-	tolerance := int64(0)
-	if !e.snapDisabled && !keyPressed(0x10) {
-		tolerance = int64(math.Min(2000000, math.Round(8/d.scale*float64(project.TicksPerSecond))))
-	}
-	if d.frames != nil && !keyPressed(0x10) {
-		base := d.original.In
-		if d.mode == "right" {
-			base = d.original.Out
-		}
-		offset := int64(math.Round(raw))
-		wanted := base + max(-base, min(d.sourceDuration-base, offset))
-		frameDelta, _, ok := frameTrimDelta(d.frames, d.original, d.sourceDuration, d.mode, wanted, d.ripple)
-		d.valid = false
-		d.snapped = false
-		d.candidate = d.original
-		d.groupProject = e.model.Project()
-		d.rippleDelta = 0
-		if ok {
-			if d.ripple {
-				r, err := e.model.Project().RippleTrim(e.trackID(), d.original.ID, d.mode, frameDelta, -1, 0)
-				d.groupProject = r.Project
-				d.rippleDelta = r.Delta
-				d.valid = err == nil && r.Delta == frameDelta
-			} else {
-				c, err := e.model.Project().DragClip(e.trackID(), d.original.ID, d.mode, frameDelta)
-				d.candidate = c
-				d.valid = err == nil && ((d.mode == "left" && c.In == d.original.In+frameDelta) || (d.mode == "right" && c.Out == d.original.Out+frameDelta))
-			}
-			if d.valid {
-				d.snapped = true
-				if d.mode == "right" {
-					d.snapTarget = d.original.Start + (d.original.Out - d.original.In) + frameDelta
-				} else {
-					d.snapTarget = d.original.Start
-					if frameDelta >= -d.original.Start && frameDelta <= math.MaxInt64-d.original.Start {
-						d.snapTarget += frameDelta
-					}
-				}
-			}
-		}
-	} else if d.ripple {
-		r, err := e.model.Project().RippleTrim(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
-		d.groupProject = r.Project
-		d.rippleDelta = r.Delta
-		d.valid = err == nil
-		d.snapped = r.Snapped
-		d.snapTarget = r.Target
-	} else if len(d.groupIDs) > 1 {
-		r, err := e.model.Project().MoveClips(e.trackID(), d.groupIDs, delta, e.playhead, tolerance)
-		d.groupProject = r.Project
-		d.valid = err == nil
-		d.snapped = r.Snapped
-		d.snapTarget = r.Target
-	} else {
-		r, err := e.model.Project().SnapDrag(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
-		d.candidate = r.Clip
-		d.valid = err == nil
-		d.snapped = r.Snapped
-		d.snapTarget = r.Target
-	}
+	r := timeline.EvaluateDrag(e.model.Project(), timeline.DragRequest{
+		Ref: project.ClipRef{TrackID: e.trackID(), ClipID: d.original.ID},
+		Mode: d.mode, GroupIDs: d.groupIDs, Pixels: x - d.x, Scale: d.scale,
+		Marker: e.playhead, Magnetic: !e.snapDisabled, Bypass: keyPressed(0x10),
+		Ripple: d.ripple, Frames: d.frames, SourceDuration: d.sourceDuration,
+	})
+	d.candidate, d.groupProject = r.Clip, r.Project
+	d.valid, d.snapped, d.snapTarget, d.rippleDelta = r.Valid, r.Snapped, r.Target, r.RippleDelta
 	e.invalidateTimeline()
 }
 
@@ -577,15 +502,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			}
 		} else {
 			w := clientRect(hwnd).Right
-			step := int64(math.Min(float64(math.MaxInt64/2), math.Max(0, float64(w-trackHeader)/ui.scale(w)*float64(project.TicksPerSecond)/5)))
-			if d > 0 {
-				ui.origin -= step
-				if ui.origin < 0 {
-					ui.origin = 0
-				}
-			} else if ui.origin <= math.MaxInt64-step {
-				ui.origin += step
-			}
+			ui.origin = ui.timelineView(w).Scroll(d < 0)
 			ui.invalidateTimeline()
 		}
 		return 0
@@ -604,18 +521,8 @@ const (
 )
 
 func videoHitMode(x, y, left, right int32) string {
-	if x < trackHeader || x < left || x >= right || y < laneTop || y >= laneBottom {
-		return ""
-	}
-	if right-left >= 18 {
-		if x-left < 7 {
-			return "left"
-		}
-		if right-x <= 7 {
-			return "right"
-		}
-	}
-	return "move"
+	g := timeline.ClipGeometry{Span: timeline.Span{Left: max(trackHeader, left), Right: right}, RawLeft: left, RawRight: right}
+	return g.MainHit(x, y)
 }
 
 func cursorForMode(mode string, invalid bool) uintptr {
@@ -645,21 +552,23 @@ func (e *editor) timelineCursor(x, y, w int32) uintptr {
 	if x < trackHeader || x >= w {
 		return cursorArrow
 	}
+	view := e.timelineView(w)
 	for _, c := range e.track().Clips {
-		l, r := e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w)
-		if mode := videoHitMode(x, y, l, r); mode != "" {
+		geometry, visible := e.clipGeometry(view, c)
+		if !visible {
+			continue
+		}
+		if mode := geometry.MainHit(x, y); mode != "" {
 			if e.model.Count() > 1 && e.model.Contains(c.ID) {
 				mode = "move"
 			}
 			return cursorForMode(mode, false)
 		}
-		if !e.audioTrack() && x >= l && x < r && y >= 104 && y < 140 {
-			if a, ok := e.model.Project().Asset(c.AssetID); ok && a.HasAudio {
-				return cursorHand
-			}
+		if geometry.AudioHit(x, y) {
+			return cursorHand
 		}
 	}
-	if y >= 0 && y < 32 {
+	if y >= 0 && y < timeline.RulerBottom {
 		return cursorCross
 	}
 	return cursorArrow
@@ -673,8 +582,5 @@ func (e *editor) setTimelineCursor(x, y, w int32) {
 }
 
 func timelineEditView(marker, end int64, zoom, dragScale float64) (int64, float64) {
-	if zoom == 0 && dragScale >= .05 && dragScale <= 1000 {
-		zoom = dragScale
-	}
-	return min(marker, end), zoom
+	return timeline.EditView(marker, end, zoom, dragScale)
 }

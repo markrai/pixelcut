@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
-	"math"
 	"path/filepath"
 	"unsafe"
 
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/timeline"
 )
 
 type placementRequest struct {
@@ -23,15 +23,12 @@ type assetDrag struct {
 
 func (e *editor) placementAt(x, y int32) (*placementRequest, bool) {
 	r := clientRect(e.timeline)
-	if x < trackHeader || x >= r.Right || y < 33 || y >= 97 {
+	view := e.timelineView(r.Right)
+	if !view.DropTarget(x, y) {
 		return nil, false
 	}
-	scale := e.scale(r.Right)
-	tolerance := int64(0)
-	if !e.snapDisabled && !keyPressed(0x10) {
-		tolerance = int64(math.Min(2000000, math.Round(8/scale*float64(project.TicksPerSecond))))
-	}
-	return &placementRequest{e.timeAt(x, r.Right), e.playhead, tolerance}, true
+	tolerance := timeline.SnapTolerance(view.Scale(), !e.snapDisabled && !keyPressed(0x10))
+	return &placementRequest{view.TimeAt(x), e.playhead, tolerance}, true
 }
 
 func (e *editor) beginAssetDrag(hwnd uintptr, lp uintptr) bool {
@@ -71,7 +68,7 @@ func (e *editor) updateAssetDrag() {
 	if ok == 0 {
 		return
 	}
-	if !d.moved && math.Abs(float64(p.X-d.origin.X)) < 4 && math.Abs(float64(p.Y-d.origin.Y)) < 4 {
+	if !d.moved && !timeline.DragStarted(p.X-d.origin.X, p.Y-d.origin.Y) {
 		return
 	}
 	if !d.moved {
@@ -150,11 +147,11 @@ func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 	if d == nil || !d.moved || !d.over {
 		return
 	}
-	left := max(trackHeader, e.xAt(d.placement.Start, w))
-	right := min(w, e.xAt(d.placement.End, w))
-	if right <= left {
+	span, visible := e.timelineView(w).Span(d.placement.Start, d.placement.End)
+	if !visible {
 		return
 	}
+	left, right := span.Left, span.Right
 	a, ok := e.model.Project().Asset(d.id)
 	if !ok {
 		return

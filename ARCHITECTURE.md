@@ -207,3 +207,35 @@ and reject incompatible candidates. Native modality, busy and gesture handling
 remain at the presentation boundary. Toolbar appearance is not yet dynamically
 bound to all eligibility conditions. Geometry, playback and service lifecycle
 remain later extraction slices.
+
+## 2C.R.5 timeline extraction
+
+`internal/timeline` owns the portable viewport, coordinate conversion, current
+active-track lane constants, clipped clip spans, trim-edge hit testing,
+linked-audio hit testing, marquee intersection, drop-zone eligibility, zoom,
+scroll, ruler spacing, edit-boundary navigation and drag evaluation. The
+native adapter supplies the viewport and track/asset metadata; painting,
+cursor feedback, context menus and selection use the same clip geometry.
+Thumbnail and waveform source mapping consume the same fractional pixel
+origin. Native mouse capture, focus, GDI drawing, playback requests, worker
+requests and committed edit publication remain in the Win32 adapter.
+
+Drag evaluation takes a stable ClipRef, pixel displacement, initial scale,
+marker, selection IDs, snapping policy and optional decoded frame index. It
+returns a candidate clip or candidate project with validity and snap metadata;
+it does not mutate the input or publish an edit. The existing project-domain
+methods remain authoritative for overlap, movement, ripple and source limits.
+The shared magnetic tolerance is eight pixels capped at two seconds. Frame
+snapping retains priority over magnetic snapping; Shift bypasses snapping.
+The ten-millisecond ordinary drag grid and four-pixel gesture threshold remain.
+Invalid candidates are for preview only, never committed. The existing fixed
+active-track layout is deliberately preserved; stacked lane geometry and
+vertical transfer are deferred to 2C.2. No JSON schema or media backend changes.
+
+The geometry now makes visible one-pixel clips hittable, ignores offscreen
+clips during marquee selection, and only recognizes linked-audio hits for
+sources with audio. This corrects a prior mismatch between rendering and input.
+No new timeline interaction feature is introduced. Portable tests exercise
+viewport bounds, clipping, hit testing, drop zones, snapping, group movement,
+ripple trimming and frame-snap precedence. Native physical interaction and
+performance qualification remain outstanding.

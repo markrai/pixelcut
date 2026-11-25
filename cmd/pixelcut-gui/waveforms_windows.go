@@ -174,7 +174,7 @@ func (e *editor) paintWaveform(dc uintptr, left, right, w, top, bottom int32, c 
 		return
 	}
 	scale := e.scale(w)
-	clipLeft := float64(trackHeader) + project.Seconds(c.Start-e.origin)*scale
+	clipLeft := e.timelineView(w).PixelAt(c.Start)
 	center := (top + bottom) / 2
 	amplitude := max(int32(1), (bottom-top)/2-2)
 	color := rgb(133, 201, 156)
