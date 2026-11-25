@@ -83,34 +83,64 @@ func TestHLGMediaPipeline(t *testing.T) {
 	if err = v.ValidateHLG(); err != nil {
 		t.Fatalf("%v: %+v", err, v)
 	}
-	thumb,err:=e.Thumbnail(ctx,src,0.5,48,32)
-	if err!=nil || len(thumb)!=48*32*4 {t.Fatalf("thumbnail: %d bytes: %v",len(thumb),err)}
-	if _,err:=e.Thumbnail(ctx,src,0.5,47,32);err==nil {t.Fatal("accepted odd thumbnail width")}
-	cacheDir:=filepath.Join(dir,"cache")
-	cache,err:=mediacache.Open(cacheDir)
-	if err!=nil {t.Fatal(err)}
-	pixels,err:=e.CachedThumbnail(ctx,cache,src,500000,48,32)
-	if err!=nil || !bytes.Equal(pixels,thumb) {t.Fatal("cached thumbnail differs")}
-	peaks,err:=e.CachedWaveform(ctx,cache,src,2000000)
-	if err!=nil || peaks.Peak(0,2000000)==0 {t.Fatalf("cached waveform: %v",err)}
-	frames,err:=e.CachedFrames(ctx,cache,src)
-	if err!=nil || frames.Count()!=48 {t.Fatalf("cached frames: %v",err)}
-	metadata,err:=e.CachedImportReport(ctx,cache,src)
-	if err!=nil || metadata.Format!=nil || len(metadata.Streams)!=len(report.Streams) {t.Fatalf("cached metadata: %v",err)}
-	if cache.Stats().Entries!=4 {t.Fatalf("cache population: %+v",cache.Stats())}
-	cache,err=mediacache.Open(cacheDir)
-	if err!=nil {t.Fatal(err)}
-	pixels,err=e.CachedThumbnail(ctx,cache,src,500000,48,32)
-	if err!=nil || !bytes.Equal(pixels,thumb) {t.Fatal("reopened thumbnail differs")}
-	again,err:=e.CachedWaveform(ctx,cache,src,2000000)
-	if err!=nil || again.Peak(0,2000000)!=peaks.Peak(0,2000000) {t.Fatal("reopened waveform differs")}
-	index,err:=e.CachedFrames(ctx,cache,src)
-	if err!=nil || index.Count()!=frames.Count() {t.Fatal("reopened frame index differs")}
-	metadata,err=e.CachedImportReport(ctx,cache,src)
-	if err!=nil {t.Fatal(err)}
-	mv,err:=metadata.Video()
-	if err!=nil || mv.ValidateHLG()!=nil {t.Fatal("reopened metadata invalid")}
-	if cache.Stats().Entries!=4 {t.Fatal("cache keys changed across reopening")}
+	thumb, err := e.Thumbnail(ctx, src, 0.5, 48, 32)
+	if err != nil || len(thumb) != 48*32*4 {
+		t.Fatalf("thumbnail: %d bytes: %v", len(thumb), err)
+	}
+	if _, err := e.Thumbnail(ctx, src, 0.5, 47, 32); err == nil {
+		t.Fatal("accepted odd thumbnail width")
+	}
+	cacheDir := filepath.Join(dir, "cache")
+	cache, err := mediacache.Open(cacheDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pixels, err := e.CachedThumbnail(ctx, cache, src, 500000, 48, 32)
+	if err != nil || !bytes.Equal(pixels, thumb) {
+		t.Fatal("cached thumbnail differs")
+	}
+	peaks, err := e.CachedWaveform(ctx, cache, src, 2000000)
+	if err != nil || peaks.Peak(0, 2000000) == 0 {
+		t.Fatalf("cached waveform: %v", err)
+	}
+	frames, err := e.CachedFrames(ctx, cache, src)
+	if err != nil || frames.Count() != 48 {
+		t.Fatalf("cached frames: %v", err)
+	}
+	metadata, err := e.CachedImportReport(ctx, cache, src)
+	if err != nil || metadata.Format != nil || len(metadata.Streams) != len(report.Streams) {
+		t.Fatalf("cached metadata: %v", err)
+	}
+	if cache.Stats().Entries != 4 {
+		t.Fatalf("cache population: %+v", cache.Stats())
+	}
+	cache, err = mediacache.Open(cacheDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pixels, err = e.CachedThumbnail(ctx, cache, src, 500000, 48, 32)
+	if err != nil || !bytes.Equal(pixels, thumb) {
+		t.Fatal("reopened thumbnail differs")
+	}
+	again, err := e.CachedWaveform(ctx, cache, src, 2000000)
+	if err != nil || again.Peak(0, 2000000) != peaks.Peak(0, 2000000) {
+		t.Fatal("reopened waveform differs")
+	}
+	index, err := e.CachedFrames(ctx, cache, src)
+	if err != nil || index.Count() != frames.Count() {
+		t.Fatal("reopened frame index differs")
+	}
+	metadata, err = e.CachedImportReport(ctx, cache, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mv, err := metadata.Video()
+	if err != nil || mv.ValidateHLG() != nil {
+		t.Fatal("reopened metadata invalid")
+	}
+	if cache.Stats().Entries != 4 {
+		t.Fatal("cache keys changed across reopening")
+	}
 
 	copied := filepath.Join(dir, "copy.mp4")
 	if err = e.Remux(ctx, src, copied); err != nil {
@@ -215,7 +245,7 @@ func TestPixelPortraitPipeline(t *testing.T) {
 		name string
 		edit Edit
 		w, h int
-	}{{"trim", Edit{Trim: true, Start: 0.5, Duration: 1}, 240, 320}, {"crop", Edit{Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"combined", Edit{Trim: true, Start: 0.5, Duration: 1, Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"canvas", Edit{Transform:&Transform{CanvasWidth:320,CanvasHeight:240,Scale:75,X:20,Y:-10},Crop:&Crop{20,20,200,280}},320,240}, {"zoom", Edit{Transform:&Transform{CanvasWidth:240,CanvasHeight:320,Scale:150,X:10,Y:20}},240,320}, {"rotate", Edit{Transform:&Transform{CanvasWidth:320,CanvasHeight:240,Scale:100,Rotation:90}},320,240}, {"rotate-flip-crop", Edit{Transform:&Transform{CanvasWidth:280,CanvasHeight:200,Scale:100,Rotation:270,FlipHorizontal:true},Crop:&Crop{20,20,200,280}},280,200}} {
+	}{{"trim", Edit{Trim: true, Start: 0.5, Duration: 1}, 240, 320}, {"crop", Edit{Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"combined", Edit{Trim: true, Start: 0.5, Duration: 1, Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"canvas", Edit{Transform: &Transform{CanvasWidth: 320, CanvasHeight: 240, Scale: 75, X: 20, Y: -10}, Crop: &Crop{20, 20, 200, 280}}, 320, 240}, {"zoom", Edit{Transform: &Transform{CanvasWidth: 240, CanvasHeight: 320, Scale: 150, X: 10, Y: 20}}, 240, 320}, {"rotate", Edit{Transform: &Transform{CanvasWidth: 320, CanvasHeight: 240, Scale: 100, Rotation: 90}}, 320, 240}, {"rotate-flip-crop", Edit{Transform: &Transform{CanvasWidth: 280, CanvasHeight: 200, Scale: 100, Rotation: 270, FlipHorizontal: true}, Crop: &Crop{20, 20, 200, 280}}, 280, 200}} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := filepath.Join(dir, tc.name+".mp4")
 			if err := e.Render(ctx, src, out, tc.edit); err != nil {
