@@ -20,6 +20,7 @@ type cropRequest struct {
 	crop project.Crop
 	edit bool
 	filters map[string]string
+	limitedOnly bool
 }
 
 type cropSample struct {
@@ -53,7 +54,7 @@ func cropOrFull(a project.Asset,c *project.Crop) project.Crop {
 }
 
 func (r cropRequest) payload() string {
-	b,_:=json.Marshal(map[string]any{"serial":r.serial,"width":r.width,"height":r.height,"crop":r.crop,"edit":r.edit,"filters":r.filters})
+	b,_:=json.Marshal(map[string]any{"serial":r.serial,"width":r.width,"height":r.height,"crop":r.crop,"edit":r.edit,"filters":r.filters,"limited_only":r.limitedOnly})
 	return string(b)
 }
 
@@ -63,7 +64,7 @@ func (c *previewClock) setCrop(a project.Asset, crop *project.Crop, editing bool
 
 func (c *previewClock) setComposition(a project.Asset, crop *project.Crop, tr *media.Transform, editing bool) uint64 {
 	var filters map[string]string
-	if tr!=nil && !editing {
+	if (tr!=nil || crop!=nil) && !editing {
 		var mc *media.Crop
 		if crop!=nil {mc=&media.Crop{X:crop.X,Y:crop.Y,Width:crop.Width,Height:crop.Height}}
 		graph,_,_,err:=media.VideoFilters(a.Width,a.Height,mc,tr)
@@ -77,7 +78,7 @@ func (c *previewClock) setComposition(a project.Asset, crop *project.Crop, tr *m
 	}
 	serial:=uint64(1)
 	if old:=c.cropRequest.Load();old!=nil {serial=old.serial+1}
-	c.cropRequest.Store(&cropRequest{serial:serial,width:a.Width,height:a.Height,crop:cropOrFull(a,crop),edit:editing,filters:filters})
+	c.cropRequest.Store(&cropRequest{serial:serial,width:a.Width,height:a.Height,crop:cropOrFull(a,crop),edit:editing,filters:filters,limitedOnly:tr!=nil && !editing})
 	return serial
 }
 

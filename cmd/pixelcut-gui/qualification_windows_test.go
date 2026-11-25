@@ -59,7 +59,9 @@ func TestNativePreviewEquivalence(t *testing.T) {
 					if err:=e.Render(ctx,src,out,ed);err!=nil {t.Fatal(err)}
 					clock:=newPreviewClock(project.Clip{In:0,Out:2000000},0,true)
 					if clock.setComposition(a,c,tc.tr,false)==0 {t.Fatal("could not build composition")}
-					preview:=nativeScreenshot(t,player,script,driver,src,filepath.Join(dir,prefix+"-preview.png"),clock.cropRequest.Load().payload())
+					payload:=clock.cropRequest.Load().payload()
+					t.Logf("preview composition: %s",payload)
+					preview:=nativeScreenshot(t,player,script,driver,src,filepath.Join(dir,prefix+"-preview.png"),payload)
 					export:=nativeScreenshot(t,player,script,driver,out,filepath.Join(dir,prefix+"-export.png"),"")
 					comparePreviewImages(t,preview,export)
 				})
@@ -74,7 +76,9 @@ func nativeScreenshot(t *testing.T,player,script,driver,source,path,payload stri
 	defer cancel()
 	cmd:=exec.CommandContext(ctx,player,"--no-config","--vo=gpu-next","--hwdec=no","--target-prim=bt.709","--target-trc=bt.1886","--tone-mapping=auto","--no-audio","--pause","--keep-open=yes","--osc=no","--geometry=640x480","--screenshot-sw=no","--script="+script,"--script="+driver,"--",source)
 	cmd.Env=append(os.Environ(),"PIXELCUT_TEST_SCREENSHOT="+path,"PIXELCUT_TEST_COMPOSITION="+payload)
-	if b,err:=cmd.CombinedOutput();err!=nil {t.Fatalf("mpv qualification: %v\n%s",err,b)}
+	b,err:=cmd.CombinedOutput()
+	if err!=nil {t.Fatalf("mpv qualification: %v\n%s",err,b)}
+	t.Logf("mpv %s: %s",filepath.Base(path),b)
 	f,err:=os.Open(path)
 	if err!=nil {t.Fatal(err)}
 	defer f.Close()
@@ -145,6 +149,7 @@ mp.add_periodic_timer(0.1,function()
     end
     stable=stable+1
     if stable<10 then return end
+    mp.msg.info("video-out-params: "..require("mp.utils").format_json(mp.get_property_native("video-out-params")))
     local ok,err=mp.commandv("screenshot-to-file",output,"video")
     if not ok then fail(tostring(err));return end
     mp.commandv("quit","0")

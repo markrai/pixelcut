@@ -65,37 +65,22 @@ local function redraw()
     overlay:update()
 end
 
-local function original_crop(b)
-    local rotation=(mp.get_property_number("video-params/rotate",0)%360+360)%360
-    local w,h=req.width,req.height
-    if rotation==0 then return b end
-    if rotation==90 then return {x=b.y,y=w-b.x-b.width,width=b.height,height=b.width} end
-    if rotation==180 then return {x=w-b.x-b.width,y=h-b.y-b.height,width=b.width,height=b.height} end
-    if rotation==270 then return {x=h-b.y-b.height,y=b.x,width=b.height,height=b.width} end
-    return nil
-end
-
 local function show_result()
+    local ok,err=mp.set_property("video-crop","")
+    if not ok then publish(false,tostring(err));return end
     if type(req.filters)=="table" then
-        if mp.get_property("video-params/colorlevels")~="limited" then publish(false,"Canvas transforms require limited-range HLG");return end
+        if req.limited_only and mp.get_property("video-params/colorlevels")~="limited" then
+            publish(false,"Canvas transforms require limited-range HLG");return
+        end
         local rotation=(mp.get_property_number("video-params/rotate",0)%360+360)%360
         local graph=req.filters[tostring(rotation)]
         if not graph then publish(false,"Unsupported preview rotation");return end
-        local ok,err=mp.set_property("video-crop","")
-        if not ok then publish(false,tostring(err));return end
         ok,err=mp.commandv("vf","set",graph)
-        publish(ok==true,ok and "" or tostring(err))
-        return
+    elseif box.x~=0 or box.y~=0 or box.width~=req.width or box.height~=req.height then
+        publish(false,"Crop filter plan missing");return
+    else
+        ok,err=mp.commandv("vf","clr","")
     end
-    local ok,err=mp.commandv("vf","clr","")
-    if not ok then publish(false,tostring(err));return end
-    local c=original_crop(box)
-    if not c then publish(false,"Unsupported preview rotation");return end
-    local value=""
-    if box.x~=0 or box.y~=0 or box.width~=req.width or box.height~=req.height then
-        value=string.format("%dx%d+%d+%d",c.width,c.height,c.x,c.y)
-    end
-    local ok,err=mp.set_property("video-crop",value)
     publish(ok==true,ok and "" or tostring(err))
 end
 

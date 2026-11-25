@@ -22,19 +22,20 @@ local function request(rotation,edit)
     payload={serial=1,width=1080,height=1920,crop={x=40,y=80,width=1000,height=1760},edit=edit}
     handlers["pixelcut-crop"]("fixture")
 end
+for _,rotation in ipairs({0,90,180,270}) do
+    request(rotation,false)
+    assert(not props["user-data/pixelcut/crop"].ready)
+    local graph="lavfi=[crop=1000:1760:40:80],format=rotate=0"
+    payload.filters={[tostring(rotation)]=graph}
+    props["video-params/colorlevels"]="full"
+    handlers["pixelcut-crop"]("fixture")
+    assert(props["vf"]==graph and props["video-crop"]=="")
+    assert(props["user-data/pixelcut/crop"].ready)
+end
 request(0,false)
-assert(props["video-crop"]=="1000x1760+40+80")
-request(90,false)
-assert(props["video-crop"]=="1760x1000+80+40")
-payload.crop={x=20,y=60,width=800,height=1500}
+payload.crop={x=0,y=0,width=1080,height=1920}
 handlers["pixelcut-crop"]("fixture")
-assert(props["video-crop"]=="1500x800+60+260")
-request(180,false)
-assert(props["video-crop"]=="1000x1760+40+80")
-request(270,false)
-payload.crop={x=20,y=60,width=800,height=1500}
-handlers["pixelcut-crop"]("fixture")
-assert(props["video-crop"]=="1500x800+360+20")
+assert(props["vf"]=="" and props["video-crop"]=="")
 props["osd-dimensions"]={w=1080,h=1920,ml=0,mr=0,mt=0,mb=0}
 request(0,true)
 assert(props["video-crop"]=="")
@@ -58,7 +59,7 @@ assert(props["vf"]==payload.filters["90"] and props["video-crop"]=="")
 request(90,true)
 assert(props["vf"]=="" and props["video-crop"]=="")
 props["video-params/colorlevels"]="full"
-payload.edit=false;payload.filters={["90"]="test"}
+payload.edit=false;payload.limited_only=true;payload.filters={["90"]="test"}
 handlers["pixelcut-crop"]("fixture")
 assert(not props["user-data/pixelcut/crop"].ready)
 print("Transform preview script tests passed")
