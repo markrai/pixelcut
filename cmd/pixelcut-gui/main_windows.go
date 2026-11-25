@@ -130,7 +130,7 @@ type openFileName struct {
 }
 
 type result struct {
-	asset *project.Asset
+	batch *project.ImportBatch
 	err error
 	message string
 }
@@ -336,13 +336,7 @@ func (e *editor) finished() {
 	e.busy = false
 	for _, h := range e.controls { user.NewProc("EnableWindow").Call(h, 1) }
 	if r.err != nil { e.tell(r.err.Error()); return }
-	if r.asset != nil {
-		q,index,added,err:=e.p.AddAsset(*r.asset)
-		if err!=nil {e.tell(err.Error());return}
-		if !added {e.selectExistingAsset(index);return}
-		e.asset=index
-		if err := e.commit(q); err != nil { e.tell(err.Error()); return }
-	}
+	if r.batch!=nil {e.finishImport(r.batch);return}
 	e.tell(r.message)
 }
 
@@ -460,17 +454,9 @@ func (e *editor) command(id, notification int) error {
 		e.checkpoint()
 		e.tell("Project saved: "+path)
 	case idImport:
-		path, err := pick(false,"Video files (*.mp4;*.mov)\x00*.mp4;*.mov\x00All files\x00*.*\x00","mp4","Import video")
-		if err != nil || path == "" { return err }
-		if index,ok:=e.p.FindAssetPath(path);ok {e.selectExistingAsset(index);return nil}
-		e.tell("Inspecting source...")
-		e.startJob(func(ctx context.Context) result {
-			r, err := e.engine.Inspect(ctx,path)
-			if err != nil { return result{err:err} }
-			a, err := project.FromReport(nextID("asset"),path,r)
-			if err != nil { return result{err:err} }
-			return result{asset:&a,message:"Imported source. Select it and add a clip."}
-		})
+		paths,err:=pickImportFiles()
+		if err!=nil || len(paths)==0 {return err}
+		return e.importPaths(paths)
 	case idAssets:
 		if notification == 1 {
 			n,_,_ := send.Call(e.controls[idAssets],lbGet,0,0)
@@ -619,6 +605,9 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0113:
 		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();ui.checkpointView();return 0}
+	case wmDropFiles:
+		ui.handleDrop(wp)
+		return 0
 	case wmDone:
 		ui.finished()
 		return 0
@@ -685,7 +674,7 @@ func main() {
 	button("Shortcuts",392,10,110,idKeys)
 	button("Export clip",970,10,126,idExport)
 	applyDarkTitle(mainWindow)
-	label("Media bin",12,50,230)
+	label("Media bin / Drop files",12,50,245)
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,75,245,270,idAssets)
 	button("Import video",12,350,118,idImport)
 	button("Add to V1",136,350,121,idAdd)
@@ -720,9 +709,10 @@ func main() {
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,448,1084,180,idClips)
 	user.NewProc("ShowWindow").Call(ui.controls[idClips],0)
 	ui.timeline=control("PixelCutTimeline","",wsTab|0x04000000,12,452,1084,176,0)
-	ui.status=label("Import a supported HLG video to get started.",12,640,1084)
+	ui.status=label("Drop supported HLG videos here, or choose Import video.",12,640,1084)
 	ui.thumbnails=newThumbnailCache(ui.engine)
 	ui.waveforms=newWaveformCache(ui.engine)
+	ui.enableFileDrops()
 	ui.refresh()
 	ui.resize()
 	if timer,_,_:=user.NewProc("SetTimer").Call(mainWindow,playbackTimer,33,0);timer==0 {fmt.Fprintln(os.Stderr,"unable to start playback UI timer")}

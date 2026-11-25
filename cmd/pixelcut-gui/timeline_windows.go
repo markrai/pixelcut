@@ -236,6 +236,8 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 	if ui==nil {r,_,_:=defWindow.Call(hwnd,uintptr(msg),wp,lp);return r}
 	x,y:=int32(int16(lp&0xffff)),int32(int16((lp>>16)&0xffff))
 	switch msg {
+	case wmDropFiles:
+		ui.handleDrop(wp);return 0
 	case 0x000f:
 		var ps paintStruct
 		dc,_,_:=user.NewProc("BeginPaint").Call(hwnd,uintptr(unsafe.Pointer(&ps)))
