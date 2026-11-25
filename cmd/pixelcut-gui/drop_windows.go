@@ -185,9 +185,9 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 		for i := range ids {
 			ids[i] = fmt.Sprintf("%s-%d", prefix, i)
 		}
-		p, err := b.Project.PlaceAssets(e.trackID(), b.AssetIDs, ids, req.start, req.marker, req.tolerance)
+		p, err := b.Project.PlaceAssets(req.trackID, b.AssetIDs, ids, req.start, req.marker, req.tolerance)
 		if err == nil {
-			if err = e.commitPlacement(p, b.Project.Assets[b.Selected].ID); err != nil {
+			if err = e.commitPlacementOnTrack(req.trackID, p, b.Project.Assets[b.Selected].ID); err != nil {
 				e.tell(err.Error())
 				return
 			}
