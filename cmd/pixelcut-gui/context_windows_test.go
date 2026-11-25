@@ -45,7 +45,7 @@ func TestTimelineContextEligibility(t *testing.T) {
 
 func TestMediaContextEligibility(t *testing.T) {
 	for _,selected:=range []bool{false,true} {
-		items:=assetMenuItems(selected)
+		items:=assetMenuItems(selected,false,false)
 		for _,id:=range []int{idAdd,idRemoveAsset,menuRevealAsset} {
 			v,ok:=findMenuItem(items,id)
 			if !ok || v.enabled!=selected {t.Fatalf("asset selection %t action %d",selected,id)}
@@ -67,4 +67,22 @@ func TestContextHit(t *testing.T) {
 	} {
 		if got:=timelineMenuHit(tc.x,tc.y,100,160,tc.audio);got!=tc.want {t.Fatalf("%+v: %t",tc,got)}
 	}
+}
+
+func TestOfflineContextEligibility(t *testing.T) {
+	items:=timelineMenuItems(timelineMenuState{count:1,offline:true,split:true})
+	for _,id:=range []int{idCropVisual,idTransform,idExport,idSetIn,idSetOut,menuRevealClip} {
+		v,ok:=findMenuItem(items,id)
+		if !ok || v.enabled {t.Fatalf("offline action %d enabled",id)}
+	}
+	for _,id:=range []int{idSplit,idDelete,idCopy,menuRelinkClip,menuReplaceClip,menuSelectAsset} {
+		v,ok:=findMenuItem(items,id)
+		if !ok || !v.enabled {t.Fatalf("offline action %d disabled",id)}
+	}
+	items=assetMenuItems(true,true,true)
+	for _,id:=range []int{idRelinkAsset,idReplaceAsset,idRelinkFolder,idRemoveAsset,idAdd} {
+		v,ok:=findMenuItem(items,id)
+		if !ok || !v.enabled {t.Fatalf("offline media action %d disabled",id)}
+	}
+	if v,_:=findMenuItem(items,menuRevealAsset);v.enabled {t.Fatal("offline reveal enabled")}
 }

@@ -17,6 +17,8 @@ const (
 	menuRevealClip
 	menuRevealAsset
 	menuSelectAsset
+	menuRelinkClip
+	menuReplaceClip
 )
 
 type menuItem struct {
@@ -31,6 +33,7 @@ func separator() menuItem {return menuItem{}}
 type timelineMenuState struct {
 	count int
 	frameSnap bool
+	offline bool
 	split,paste,pasteHere,gap,hasClips,undo,redo,snap,ripple bool
 }
 
@@ -41,10 +44,11 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 		items=append(items,item(idSplit,"Split at playhead\tS",single&&s.split),separator(),
 			item(idCopy,"Copy\tCtrl+C",true),item(idCut,"Cut\tCtrl+X",true),
 			item(idPaste,"Paste at playhead\tCtrl+V",s.paste),item(idDuplicate,"Duplicate\tCtrl+D",true),separator(),
-			item(idSetIn,"Set source In at playhead\tI",single&&s.split),item(idSetOut,"Set source Out at playhead\tO",single&&s.split),separator(),
-			item(idCropVisual,"Visual crop",single),item(idTransform,"Transform",single),item(idExport,"Export clip\tCtrl+E",single),separator(),
+			item(idSetIn,"Set source In at playhead\tI",single&&s.split&&!s.offline),item(idSetOut,"Set source Out at playhead\tO",single&&s.split&&!s.offline),separator(),
+			item(idCropVisual,"Visual crop",single&&!s.offline),item(idTransform,"Transform",single&&!s.offline),item(idExport,"Export clip\tCtrl+E",single&&!s.offline),separator(),
 			item(idDelete,"Delete\tDel",true),item(idRippleDelete,"Ripple delete\tShift+Del",true),separator(),
-			item(menuSelectAsset,"Select source in media bin",single),item(menuRevealClip,"Show source in Explorer",single))
+			item(menuSelectAsset,"Select source in media bin",single),item(menuRevealClip,"Show source in Explorer",single&&!s.offline),
+			item(menuRelinkClip,"Relink source...",single&&s.offline),item(menuReplaceClip,"Replace source...",single))
 	} else {
 		items=append(items,item(menuPasteHere,"Paste here",s.pasteHere),item(idPaste,"Paste at playhead\tCtrl+V",s.paste),
 			item(menuGapHere,"Remove gap here",s.gap),separator(),
@@ -55,9 +59,11 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 		menuItem{id:idRippleTrim,label:"Ripple trimming\tR",enabled:true,checked:s.ripple},menuItem{id:idFrameSnap,label:"Source-frame trim snapping\tB",enabled:true,checked:s.frameSnap},item(idFit,"Fit timeline\tF",true))
 }
 
-func assetMenuItems(selected bool) []menuItem {
+func assetMenuItems(selected,offline,hasMissing bool) []menuItem {
 	return []menuItem{item(idImport,"Import videos...\tCtrl+I",true),separator(),
-		item(idAdd,"Add to end of V1",selected),item(menuRevealAsset,"Show source in Explorer",selected),separator(),
+		item(idAdd,"Add to end of V1",selected),item(menuRevealAsset,"Show source in Explorer",selected&&!offline),separator(),
+		item(idRelinkAsset,"Relink offline asset...",selected&&offline),item(idReplaceAsset,"Replace source...",selected),
+		item(idRelinkFolder,"Search folder for offline assets...",hasMissing),separator(),
 		item(idRemoveAsset,"Remove asset\tDel",selected)}
 }
 
@@ -116,6 +122,8 @@ func (e *editor) pastePossible(at int64) bool {
 
 func (e *editor) timelineContext(lp uintptr) {
 	if !e.canOpenMenu() {return}
+	e.checkSourceVersions(true)
+	if e.mediaListDirty {e.refreshMediaList()}
 	w:=clientRect(e.timeline).Right
 	keyboard:=lp==^uintptr(0) || uint32(lp)==0xffffffff
 	pos:=point{max(trackHeader,min(w-1,e.xAt(e.playhead,w))),laneTop+8}
@@ -145,7 +153,10 @@ func (e *editor) timelineContext(lp uintptr) {
 	if hit>=0 {
 		if !e.clipSelected(hit,e.track().Clips[hit]) {e.selectClip(hit)}
 		s.count=len(e.selectionIDs())
-		if c,ok:=e.selected();ok {s.split=e.playhead>c.Start && e.playhead<c.Start+(c.Out-c.In)}
+		if c,ok:=e.selected();ok {
+			s.split=e.playhead>c.Start && e.playhead<c.Start+(c.Out-c.In)
+			if a,ok:=e.p.Asset(c.AssetID);ok {s.offline=e.offline(a.Path)}
+		}
 		e.checkpoint()
 	} else {
 		s.pasteHere=e.pastePossible(at)
@@ -160,6 +171,8 @@ func (e *editor) timelineContext(lp uintptr) {
 		err=e.pasteAt(false,&at)
 	case menuGapHere:
 		err=e.removeGapAt(at)
+	case menuRelinkClip,menuReplaceClip:
+		if c,ok:=e.selected();ok && len(e.selectionIDs())==1 {err=e.relinkOne(c.AssetID,id==menuReplaceClip)}
 	case menuSelectAsset,menuRevealClip:
 		if c,ok:=e.selected();ok && len(e.selectionIDs())==1 {
 			if id==menuRevealClip {
@@ -186,6 +199,8 @@ func (e *editor) timelineContext(lp uintptr) {
 
 func (e *editor) mediaContext(hwnd,lp uintptr) {
 	if !e.canOpenMenu() {return}
+	e.checkSourceVersions(true)
+	if e.mediaListDirty {e.refreshMediaList()}
 	keyboard:=uint32(lp)==0xffffffff
 	pos:=point{8,8}
 	if keyboard && e.asset>=0 && e.asset<len(e.p.Assets) {
@@ -213,7 +228,8 @@ func (e *editor) mediaContext(hwnd,lp uintptr) {
 		send.Call(hwnd,lbSet,uintptr(index),0)
 		e.checkpoint()
 	}
-	id:=e.popup(assetMenuItems(index>=0),screen)
+	offline:=index>=0 && e.offline(e.p.Assets[index].Path)
+	id:=e.popup(assetMenuItems(index>=0,offline,e.missingCount()>0),screen)
 	if id==0 {return}
 	var err error
 	if id==menuRevealAsset {err=revealSource(e.p.Assets[index].Path)} else {err=e.command(id,0)}

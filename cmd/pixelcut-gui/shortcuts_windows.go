@@ -114,6 +114,9 @@ func (e *editor) previewActive() bool {
 
 func (e *editor) togglePreview() error {
 	if e.playing() {return e.pausePreview()}
+	if c,ok:=e.selected();ok {
+		if a,ok:=e.p.Asset(c.AssetID);!ok || !project.SourceAvailable(a.Path) {e.stopPreview();e.tell("Source offline; use Relink.");return nil}
+	}
 	if e.clock!=nil && e.previewActive() {
 		c:=e.clock.clip
 		if e.playhead>=c.Start+(c.Out-c.In) {

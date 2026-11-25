@@ -112,7 +112,7 @@ func (e *editor) finishRecovery() {
 		if info,err:=os.Stat(a.Path);err!=nil || !info.Mode().IsRegular() {missing++}
 	}
 	if missing>0 {
-		e.tell(fmt.Sprintf("Restored session; %d source file(s) unavailable. References retained.",missing))
+		e.tell(fmt.Sprintf("Restored session; %d source file(s) offline. References retained; use Relink.",missing))
 		return
 	}
 	if c,ok:=e.selected();ok && e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {

@@ -132,10 +132,15 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if right<=left {right=left+1}
 		col:=palette.clip
 		if e.clipSelected(i,c) {col=palette.selected}
+		a,_:=e.p.Asset(c.AssetID)
+		offline:=e.offline(a.Path)
+		if offline {col=rgb(94,52,60)}
 		if !valid {col=rgb(136,55,61)}
 		fill(dc,rect{left,laneTop,right,laneBottom},col)
-		a,_:=e.p.Asset(c.AssetID)
-		if valid {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
+		if valid && !offline {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
+		if offline && right-left>48 {
+			textAt(dc,rect{left+6,laneTop+19,right-5,laneBottom},"MEDIA OFFLINE",rgb(255,166,166),4)
+		}
 		if e.clipSelected(i,c) && right-left>12 {
 			fill(dc,rect{left,laneTop,left+3,laneBottom},palette.accent)
 			fill(dc,rect{right-3,laneTop,right,laneBottom},palette.accent)
@@ -144,8 +149,11 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 			textAt(dc,rect{left+8,laneTop,right-7,laneTop+19},fmt.Sprintf("%s  %.2fs",filepath.Base(a.Path),project.Seconds(c.Out-c.In)),palette.text,4)
 		}
 		if a.HasAudio {
-			fill(dc,rect{left,104,right,140},palette.audio)
-			if valid {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
+			audioColor:=palette.audio
+			if offline {audioColor=rgb(74,44,49)}
+			fill(dc,rect{left,104,right,140},audioColor)
+			if valid && !offline {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
+			if offline && right-left>48 {textAt(dc,rect{left+6,104,right-5,140},"Offline audio",rgb(255,166,166),4)}
 			if e.clipSelected(i,c) && len(e.group)>1 {fill(dc,rect{left,104,right,106},palette.accent)}
 		}
 	}

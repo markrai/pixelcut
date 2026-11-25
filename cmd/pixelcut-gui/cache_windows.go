@@ -27,8 +27,10 @@ func (e *editor) checkSourceVersions(force bool) {
 	}
 	if !maps.Equal(e.sourceVersions,next) {
 		e.sourceVersions=next
+		e.mediaListDirty=true
 		e.invalidateTimeline()
 	}
+	if !force && e.mediaListDirty && e.canOpenMenu() {e.refreshMediaList()}
 }
 
 func (e *editor) openMediaCache() {

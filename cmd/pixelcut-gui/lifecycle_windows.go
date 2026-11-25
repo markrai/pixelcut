@@ -138,8 +138,8 @@ func (e *editor) switchProject(path string,closing bool) error {
 	if path!="" {note=e.rememberProject(path)}
 	switch {
 	case closing:e.tell("Project closed. Empty workspace ready.")
-	case len(merged)>0:e.tell(fmt.Sprintf("Project opened. Merged %d duplicate asset(s); all clips retained.",len(merged))+note)
-	case path!="":e.tell("Project opened: "+path+note)
+	case len(merged)>0:e.tell(fmt.Sprintf("Project opened. Merged %d duplicate asset(s); all clips retained.",len(merged))+note+e.missingNotice())
+	case path!="":e.tell("Project opened: "+path+note+e.missingNotice())
 	default:e.tell("New untitled project.")
 	}
 	return nil

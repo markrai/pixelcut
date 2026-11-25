@@ -113,6 +113,10 @@ const (
 	idRecent
 	idCloseProject
 	idMediaCache
+	idRelinkMenu
+	idRelinkAsset
+	idReplaceAsset
+	idRelinkFolder
 )
 
 type windowClass struct {
@@ -157,6 +161,7 @@ type result struct {
 	placement *placementRequest
 	frames *frameJobResult
 	cacheCleared bool
+	relink *relinkPlan
 	err error
 	message string
 }
@@ -219,6 +224,7 @@ type editor struct {
 	mediaDisk *mediacache.Cache
 	sourceVersions map[string]mediacache.Source
 	lastSourceCheck time.Time
+	mediaListDirty bool
 }
 
 func u(s string) *uint16 {
@@ -306,11 +312,8 @@ func listAdd(h uintptr, s string) { send.Call(h, lbAdd, 0, uintptr(unsafe.Pointe
 func (e *editor) refresh() {
 	e.checkSourceVersions(true)
 	a, c := e.controls[idAssets], e.controls[idClips]
-	send.Call(a, lbReset, 0, 0)
+	e.refreshMediaList()
 	send.Call(c, lbReset, 0, 0)
-	for _, item := range e.p.Assets {
-		listAdd(a, fmt.Sprintf("%s  [%dx%d]", filepath.Base(item.Path), item.Width, item.Height))
-	}
 	for _, item := range e.track().Clips {
 		asset, _ := e.p.Asset(item.AssetID)
 		listAdd(c, fmt.Sprintf("%s  |  %ss - %ss", filepath.Base(asset.Path), fmtTime(item.Start), fmtTime(item.Start+(item.Out-item.In))))
@@ -376,6 +379,7 @@ func (e *editor) finished() {
 	if r.err != nil { e.tell(r.err.Error()); return }
 	if r.batch!=nil {e.finishImport(r.batch,r.placement);return}
 	if r.frames!=nil {e.finishFrames(r.frames);return}
+	if r.relink!=nil {e.finishRelink(r.relink);return}
 	e.tell(r.message)
 }
 
@@ -401,6 +405,7 @@ func (e *editor) startPreview(paused bool) error {
 	if !ok { return fmt.Errorf("select a timeline clip") }
 	a, ed, err := e.p.MediaEdit(c)
 	if err != nil { return err }
+	if !project.SourceAvailable(a.Path) {e.stopPreview();return fmt.Errorf("source offline: %s; use Relink",filepath.Base(a.Path))}
 	e.stopPreview()
 	ctx, cancel := context.WithCancel(context.Background())
 	if e.playhead < c.Start || e.playhead >= c.Start+(c.Out-c.In) {
@@ -478,6 +483,12 @@ func (e *editor) command(id, notification int) error {
 		return e.showRecent()
 	case idMediaCache:
 		return e.showMediaCache()
+	case idRelinkMenu:
+		return e.showRelinkMenu()
+	case idRelinkAsset,idReplaceAsset:
+		return e.relinkOne(e.selectedAssetID(),id==idReplaceAsset)
+	case idRelinkFolder:
+		return e.relinkFolder()
 	case idImport:
 		paths,err:=pickImportFiles()
 		if err!=nil || len(paths)==0 {return err}
@@ -621,6 +632,7 @@ func (e *editor) command(id, notification int) error {
 		if !ok { return fmt.Errorf("select a clip") }
 		a,ed,err:=e.p.MediaEdit(c)
 		if err!=nil { return err }
+		if !project.SourceAvailable(a.Path) {return fmt.Errorf("source offline: %s; use Relink",filepath.Base(a.Path))}
 		path,err:=pick(true,"MP4 video (*.mp4)\x00*.mp4\x00","mp4","Export selected clip")
 		if err!=nil || path=="" { return err }
 		e.stopPreview()
@@ -653,7 +665,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idMediaCache && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idRelinkFolder && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -733,6 +745,7 @@ func main() {
 	button("Redo",557,10,65,idRedo)
 	button("Shortcuts",628,10,110,idKeys)
 	button("Cache",744,10,75,idMediaCache)
+	button("Relink",825,10,132,idRelinkMenu)
 	button("Export clip",970,10,126,idExport)
 	applyDarkTitle(mainWindow)
 	label("Media bin / Drop files",12,50,245)

@@ -282,6 +282,10 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		return
 	}
 	c:=e.track().Clips[index]
+	if a,ok:=e.p.Asset(c.AssetID);!ok || !project.SourceAvailable(a.Path) {
+		e.stopPreview();e.playhead=t;e.selectClip(index);e.refreshPlaybackMarker()
+		e.tell("Source offline; use Relink. Timeline edits retained.");return
+	}
 	if t==c.Start+(c.Out-c.In) {playing=false}
 	if e.clock!=nil && e.previewActive() && e.clock.clip.ID==c.ID {
 		e.playhead=t

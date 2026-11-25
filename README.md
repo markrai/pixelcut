@@ -149,3 +149,7 @@ See [media architecture](docs/architecture.md) and [qualification procedure](doc
 ### Persistent media cache
 
 The Cache toolbar menu shows disk usage, lets you choose 256 MiB, 1 GiB (default) or 4 GiB, and clears disposable thumbnails, waveforms, frame indexes and import metadata. Cached media is reused across projects and restarts when the source path, size, modification time and relevant processing parameters match. Cache entries are local and checksummed; clearing them does not remove recordings, projects or recovery data. Visible media regenerates as needed.
+
+### Missing media and relinking
+
+Offline assets retain every timeline edit. The Relink toolbar menu and asset/clip context menus locate moved recordings, search a folder for compatible filename matches, or explicitly replace a source. Candidates are freshly inspected and confirmed before updating references; original media is never modified. Relinking is undoable and integrates with session recovery.

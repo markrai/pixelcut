@@ -88,6 +88,7 @@ func (e *editor) beginOrApplyCrop() error {
 	if !ok {return errors.New("Select a video clip first")}
 	a,ok:=e.p.Asset(c.AssetID)
 	if !ok {return errors.New("Source missing")}
+	if !project.SourceAvailable(a.Path) {return errors.New("Source offline; use Relink")}
 	if e.clock==nil || !e.previewActive() || e.clock.clip.ID!=c.ID {
 		if err:=e.startPreview(true);err!=nil {return err}
 	}
