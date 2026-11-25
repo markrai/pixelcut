@@ -94,6 +94,10 @@ const (
 	idRippleDelete
 	idRemoveGap
 	idRippleTrim
+	idCopy
+	idCut
+	idPaste
+	idDuplicate
 )
 
 type windowClass struct {
@@ -187,6 +191,7 @@ type editor struct {
 	anchor string
 	marquee *marqueeDrag
 	rippleTrim bool
+	clipboard project.ClipClipboard
 }
 
 func u(s string) *uint16 {
@@ -453,6 +458,7 @@ func (e *editor) command(id, notification int) error {
 		if err!=nil {return err}
 		e.stopPreview()
 		e.group=nil;e.anchor=""
+		e.clipboard=project.ClipClipboard{}
 		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,len(merged)>0
 		e.origin,e.playhead,e.zoom=0,0,0
 		e.projectPath=projectPath
@@ -539,6 +545,14 @@ func (e *editor) command(id, notification int) error {
 		e.invalidateTimeline()
 	case idSelectAll:
 		e.selectAllClips()
+	case idCopy:
+		return e.copySelection(false)
+	case idCut:
+		return e.copySelection(true)
+	case idPaste:
+		return e.pasteSelection(false)
+	case idDuplicate:
+		return e.pasteSelection(true)
 	case idDelete:
 		return e.deleteSelection()
 	case idRippleDelete:
@@ -626,7 +640,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idRippleTrim && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idDuplicate && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
