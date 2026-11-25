@@ -31,7 +31,7 @@ Windows acceptance for these recent slices is not recorded here.
 
 ## 2C.R: Architectural stabilization
 
-No new product features until this gate closes, except regression fixes.
+New product features require stabilization acceptance before merge/release. Work on 2C.2 is isolated on a feature branch at the user's request while physical qualification remains outstanding.
 Each slice must independently preserve existing functionality and project/recovery
 compatibility. Ownership rules are in [ARCHITECTURE.md](ARCHITECTURE.md).
 The next slice cannot be accepted until its predecessor's verification is recorded.
@@ -46,7 +46,7 @@ The next slice cannot be accepted until its predecessor's verification is record
 | 2C.R.6 | Deterministic composition evaluator | Video/audio contribution and time mapping tests independent of selection | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45712233364) |
 | 2C.R.7 | Project playback controller, separate mpv backend | Simulated backend state/seek/boundary/stale event tests | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45713898037) |
 | 2C.R.8 | Jobs, source monitoring, recovery and resource ownership | Canceled/stale results rejected, bounded shutdown, no periodic slow UI I/O | Implemented; verification pending; explicit lifecycle I/O remains |
-| 2C.R.9 | Regression and performance qualification | Baseline comparison, real Windows and media fidelity acceptance | Evidence collection started; [qualification procedure](docs/refactor-qualification.md); CI and native acceptance pending |
+| 2C.R.9 | Regression and performance qualification | Baseline comparison, real Windows and media fidelity acceptance | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45716772873); [paired benchmarks completed](https://github.com/markrai/pixelcut/actions/runs/45716773218); native acceptance and performance review pending |
 
 Keep snapshot undo until measurements justify a replacement. Preserve the current
 preview capabilities during extraction; a project clock alone is not a compositor.
@@ -57,7 +57,7 @@ from a build alone.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 2C.2 | Stacked lanes and cross-track dragging | Pending |
+| 2C.2 | Stacked lanes and cross-track dragging | Implemented on feature branch; automated and native verification pending |
 | 2C.3 | Independent audio playback, detach/relink | Pending |
 | 2C.4 | Track visibility, mute, solo, lock | Pending |
 | 2C.5 | Layering, opacity and picture-in-picture | Pending |

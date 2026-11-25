@@ -9,6 +9,7 @@ import (
 
 type DragRequest struct {
 	Ref            project.ClipRef
+	TargetTrack    string
 	Mode           string
 	GroupIDs       []string
 	Pixels         int32
@@ -41,6 +42,23 @@ func EvaluateDrag(p project.Project, req DragRequest) DragResult {
 	delta := int64(math.Round(raw/10000)) * 10000
 	tolerance := SnapTolerance(req.Scale, req.Magnetic && !req.Bypass)
 	track, id := req.Ref.TrackID, req.Ref.ClipID
+	if req.TargetTrack != "" && req.TargetTrack != track {
+		if req.Mode != "move" || req.Ripple || req.Frames != nil {
+			return result
+		}
+		ids := req.GroupIDs
+		if len(ids) == 0 {
+			ids = []string{id}
+		}
+		r, err := p.MoveClipsTo(track, req.TargetTrack, ids, delta, req.Marker, tolerance)
+		result.Project, result.Valid, result.Snapped, result.Target = r.Project, err == nil, r.Snapped, r.Target
+		if c, ok := r.Project.Clip(project.ClipRef{TrackID: req.TargetTrack, ClipID: id}); ok {
+			result.Clip = c
+		} else {
+			result.Valid = false
+		}
+		return result
+	}
 	if req.Frames != nil && !req.Bypass {
 		base := original.In
 		if req.Mode == "right" {

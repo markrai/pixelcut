@@ -23,6 +23,10 @@ func (e *editor) trackID() string  { return e.model.TrackID() }
 func (e *editor) audioTrack() bool { return e.track().Kind == "audio" }
 
 func (e *editor) syncTrackUI() {
+	if e.timeline != 0 && e.visibleTrack != e.trackID() {
+		e.visibleTrack = e.trackID()
+		e.laneScroll = e.timelineStack().Reveal(e.trackID())
+	}
 	if h := e.controls[idTracks]; h != 0 {
 		change(h, fmt.Sprintf("Track: %s (%d)", e.trackID(), len(e.model.Project().Tracks)))
 		user.NewProc("InvalidateRect").Call(h, 0, 1)

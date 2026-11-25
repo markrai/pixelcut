@@ -63,13 +63,21 @@ func (p Project) DeleteClips(trackID string, ids []string) (Project, error) {
 }
 
 func (p Project) MoveClips(trackID string, ids []string, delta, marker, tolerance int64) (GroupMove, error) {
+	return p.MoveClipsTo(trackID, trackID, ids, delta, marker, tolerance)
+}
+
+func (p Project) MoveClipsTo(from, to string, ids []string, delta, marker, tolerance int64) (GroupMove, error) {
 	result := GroupMove{Project: p}
-	i, selected, err := p.selectedTrack(trackID, ids)
+	i, selected, err := p.selectedTrack(from, ids)
 	if err != nil {
 		return result, err
 	}
 	if err = p.Validate(); err != nil {
 		return result, err
+	}
+	dst := p.TrackIndex(to)
+	if dst < 0 || p.Tracks[i].Kind != p.Tracks[dst].Kind {
+		return result, errors.New("destination must be a track of the same kind")
 	}
 	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)
 	targets := []int64{0}
@@ -83,18 +91,37 @@ func (p Project) MoveClips(trackID string, ids []string, delta, marker, toleranc
 			lo = max(lo, -c.Start)
 			hi = min(hi, math.MaxInt64-end)
 			edges = append(edges, c.Start, end)
-		} else {
+		} else if i == dst {
 			targets = append(targets, c.Start, end)
+		}
+	}
+	if i != dst {
+		for _, c := range p.Tracks[dst].Clips {
+			targets = append(targets, c.Start, c.End())
 		}
 	}
 	delta = max(lo, min(hi, delta))
 	try := func(d int64) (Project, error) {
 		q := p.Clone()
-		for j := range q.Tracks[i].Clips {
-			c := &q.Tracks[i].Clips[j]
-			if selected[c.ID] {
-				c.Start += d
+		if i == dst {
+			for j := range q.Tracks[i].Clips {
+				c := &q.Tracks[i].Clips[j]
+				if selected[c.ID] {
+					c.Start += d
+				}
 			}
+		} else {
+			q.Version = Version
+			kept := q.Tracks[i].Clips[:0]
+			for _, c := range q.Tracks[i].Clips {
+				if selected[c.ID] {
+					c.Start += d
+					q.Tracks[dst].Clips = append(q.Tracks[dst].Clips, c)
+				} else {
+					kept = append(kept, c)
+				}
+			}
+			q.Tracks[i].Clips = kept
 		}
 		return q, q.Validate()
 	}

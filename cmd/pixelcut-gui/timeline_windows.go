@@ -27,6 +27,8 @@ type paintStruct struct {
 
 type timelineDrag struct {
 	index               int
+	trackID, targetID   string
+	y                   int32
 	mode                string
 	x                   int32
 	scale               float64
@@ -71,9 +73,43 @@ func (e *editor) timeAt(x, w int32) int64 { return e.timelineView(w).TimeAt(x) }
 
 func (e *editor) xAt(t int64, w int32) int32 { return e.timelineView(w).XAt(t) }
 
+func (e *editor) timelineStack() timeline.Stack {
+	return timeline.LayoutStack(e.model.Project(), clientRect(e.timeline).Bottom, e.laneScroll)
+}
+
 func (e *editor) clipGeometry(v timeline.View, c project.Clip) (timeline.ClipGeometry, bool) {
+	l, ok := e.timelineStack().Find(e.trackID())
+	if !ok {
+		return timeline.ClipGeometry{}, false
+	}
+	return e.laneClipGeometry(v, c, l)
+}
+
+func (e *editor) laneClipGeometry(v timeline.View, c project.Clip, l timeline.Lane) (timeline.ClipGeometry, bool) {
 	a, ok := e.model.Project().Asset(c.AssetID)
-	return v.Clip(c, ok && a.HasAudio && !e.audioTrack())
+	g, visible := v.Clip(c, ok && a.HasAudio && l.Kind == project.VideoTrack)
+	g.OffsetY = l.Offset()
+	return g, visible
+}
+
+func (e *editor) selectTimelineLane(id string) {
+	if id != e.trackID() {
+		e.visibleTrack = id
+		e.switchTrack(id)
+	}
+}
+
+func beginLanePaint(dc uintptr, l timeline.Lane, w, bottom int32) uintptr {
+	top, end := max(timeline.TrackTop, l.Top), min(bottom, l.Bottom)
+	if end <= top {
+		return 0
+	}
+	saved, _, _ := gdi.NewProc("SaveDC").Call(dc)
+	if saved != 0 {
+		gdi.NewProc("IntersectClipRect").Call(dc, 0, uintptr(top), uintptr(w), uintptr(end))
+		gdi.NewProc("SetViewportOrgEx").Call(dc, 0, uintptr(l.Offset()), 0)
+	}
+	return saved
 }
 
 func (e *editor) zoomTimeline(id int) {
@@ -100,20 +136,30 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 	view := e.timelineView(w)
 	fill(dc, r, palette.black)
 	fill(dc, rect{0, 0, w, 32}, palette.panel)
-	fill(dc, rect{0, 33, trackHeader, h}, palette.panel)
-	fill(dc, rect{trackHeader, 33, w, 97}, palette.bg)
-	fill(dc, rect{trackHeader, 99, w, 145}, palette.bg)
+	stack := timeline.LayoutStack(e.model.Project(), h, e.laneScroll)
+	e.laneScroll = stack.Scroll
 	textAt(dc, rect{10, 0, trackHeader - 4, 32}, "TIME", palette.muted, 4)
-	kind := "Video"
-	if e.audioTrack() {
-		kind = "Audio"
-	}
-	textAt(dc, rect{12, laneTop, trackHeader - 4, laneBottom}, e.trackID()+" "+kind, palette.text, 4)
-	if !e.audioTrack() {
-		textAt(dc, rect{12, 99, trackHeader - 4, 145}, "Linked audio", palette.muted, 4)
-	} else {
-		textAt(dc, rect{12, 99, trackHeader - 4, 145}, "Independent", palette.muted, 4)
-		textAt(dc, rect{trackHeader + 8, 99, w - 8, 145}, "Audio editing only; mixed playback is not yet available.", palette.muted, 4)
+	for _, l := range stack.Lanes {
+		saved := beginLanePaint(dc, l, w, stack.Bottom)
+		if saved == 0 {
+			continue
+		}
+		header := palette.panel
+		if l.TrackID == e.trackID() {
+			header = palette.selected
+		}
+		end := timeline.TrackBottom
+		kind := "Audio"
+		if l.Kind == project.VideoTrack {
+			kind, end = "Video", timeline.ContentBottom
+		}
+		fill(dc, rect{0, timeline.TrackTop, trackHeader, end}, header)
+		fill(dc, rect{trackHeader, timeline.TrackTop, w, end}, palette.bg)
+		textAt(dc, rect{12, laneTop, trackHeader - 4, laneBottom}, l.TrackID+" "+kind, palette.text, 4)
+		if l.Kind == project.VideoTrack {
+			textAt(dc, rect{12, timeline.AudioTop, trackHeader - 4, timeline.AudioBottom}, "Linked audio", palette.muted, 4)
+		}
+		gdi.NewProc("RestoreDC").Call(dc, saved)
 	}
 	step := rulerStep(e.scale(w))
 	minor := max(int64(1), step/5)
@@ -125,7 +171,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 		}
 		if x >= trackHeader {
 			if t%step == 0 {
-				fill(dc, rect{x, 28, x + 1, h}, palette.line)
+				fill(dc, rect{x, 28, x + 1, stack.Bottom}, palette.line)
 				textAt(dc, rect{x + 4, 0, x + 82, 28}, rulerLabel(t, step), palette.muted, 4)
 			} else {
 				fill(dc, rect{x, 24, x + 1, 32}, palette.muted)
@@ -137,71 +183,81 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 	}
 	var demand []thumbnailKey
 	var audioDemand []waveformKey
-	for i, c := range e.track().Clips {
-		valid := true
-		if d := e.drag; d != nil && d.moved {
-			if d.ripple || (len(d.groupIDs) > 1 && e.model.Contains(c.ID)) {
-				c = d.groupProject.Tracks[e.trackIndex()].Clips[i]
-				valid = d.valid
-			} else if len(d.groupIDs) <= 1 && d.index == i {
-				c = d.candidate
-				valid = d.valid
-			}
-		}
-		geometry, visible := e.clipGeometry(view, c)
-		if !visible {
+	p := e.model.Project()
+	if d := e.drag; d != nil && d.moved {
+		p = d.groupProject
+	}
+	for _, l := range stack.Lanes {
+		ti := p.TrackIndex(l.TrackID)
+		if ti < 0 {
 			continue
 		}
-		left, right := geometry.Left, geometry.Right
-		col := palette.clip
-		if e.audioTrack() {
-			col = palette.audio
+		saved := beginLanePaint(dc, l, w, stack.Bottom)
+		if saved == 0 {
+			continue
 		}
-		if e.clipSelected(i, c) {
-			col = palette.selected
-		}
-		a, _ := e.model.Project().Asset(c.AssetID)
-		offline := e.offline(a.Path)
-		if offline {
-			col = rgb(94, 52, 60)
-		}
-		if !valid {
-			col = rgb(136, 55, 61)
-		}
-		fill(dc, rect{left, laneTop, right, laneBottom}, col)
-		if valid && !offline {
-			if e.audioTrack() {
-				e.paintWaveform(dc, left, right, w, laneTop+19, laneBottom, c, a, &audioDemand)
-			} else {
-				e.paintThumbnails(dc, left, right, w, c, a, &demand)
+		audioTrack := l.Kind == project.AudioTrack
+		for i, c := range p.Tracks[ti].Clips {
+			valid := true
+			if d := e.drag; d != nil && d.moved && !d.valid {
+				valid = !e.model.Contains(c.ID) && !(d.ripple && l.TrackID == d.trackID)
 			}
-		}
-		if offline && right-left > 48 {
-			textAt(dc, rect{left + 6, laneTop + 19, right - 5, laneBottom}, "MEDIA OFFLINE", rgb(255, 166, 166), 4)
-		}
-		if e.clipSelected(i, c) && right-left > 12 {
-			fill(dc, rect{left, laneTop, left + 3, laneBottom}, palette.accent)
-			fill(dc, rect{right - 3, laneTop, right, laneBottom}, palette.accent)
-		}
-		if right-left > 20 {
-			textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs", filepath.Base(a.Path), project.Seconds(c.Out-c.In)), palette.text, 4)
-		}
-		if geometry.LinkedAudio {
-			audioColor := palette.audio
+			a, _ := p.Asset(c.AssetID)
+			geometry, visible := view.Clip(c, a.HasAudio && !audioTrack)
+			if !visible {
+				continue
+			}
+			left, right := geometry.Left, geometry.Right
+			col := palette.clip
+			if audioTrack {
+				col = palette.audio
+			}
+			if e.clipSelected(i, c) {
+				col = palette.selected
+			}
+			offline := e.offline(a.Path)
 			if offline {
-				audioColor = rgb(74, 44, 49)
+				col = rgb(94, 52, 60)
 			}
-			fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioBottom}, audioColor)
+			if !valid {
+				col = rgb(136, 55, 61)
+			}
+			fill(dc, rect{left, laneTop, right, laneBottom}, col)
 			if valid && !offline {
-				e.paintWaveform(dc, left, right, w, timeline.AudioTop, timeline.AudioBottom, c, a, &audioDemand)
+				if audioTrack {
+					e.paintWaveform(dc, left, right, w, laneTop+19, laneBottom, c, a, &audioDemand)
+				} else {
+					e.paintThumbnails(dc, left, right, w, c, a, &demand)
+				}
 			}
 			if offline && right-left > 48 {
-				textAt(dc, rect{left + 6, timeline.AudioTop, right - 5, timeline.AudioBottom}, "Offline audio", rgb(255, 166, 166), 4)
+				textAt(dc, rect{left + 6, laneTop + 19, right - 5, laneBottom}, "MEDIA OFFLINE", rgb(255, 166, 166), 4)
 			}
-			if e.clipSelected(i, c) && e.model.Count() > 1 {
-				fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioTop + 2}, palette.accent)
+			if e.clipSelected(i, c) && right-left > 12 {
+				fill(dc, rect{left, laneTop, left + 3, laneBottom}, palette.accent)
+				fill(dc, rect{right - 3, laneTop, right, laneBottom}, palette.accent)
+			}
+			if right-left > 20 {
+				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs", filepath.Base(a.Path), project.Seconds(c.Out-c.In)), palette.text, 4)
+			}
+			if geometry.LinkedAudio {
+				audioColor := palette.audio
+				if offline {
+					audioColor = rgb(74, 44, 49)
+				}
+				fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioBottom}, audioColor)
+				if valid && !offline {
+					e.paintWaveform(dc, left, right, w, timeline.AudioTop, timeline.AudioBottom, c, a, &audioDemand)
+				}
+				if offline && right-left > 48 {
+					textAt(dc, rect{left + 6, timeline.AudioTop, right - 5, timeline.AudioBottom}, "Offline audio", rgb(255, 166, 166), 4)
+				}
+				if e.clipSelected(i, c) && e.model.Count() > 1 {
+					fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioTop + 2}, palette.accent)
+				}
 			}
 		}
+		gdi.NewProc("RestoreDC").Call(dc, saved)
 	}
 	if e.thumbnails != nil {
 		if e.drag != nil || e.assetDrag != nil || e.marquee != nil {
@@ -216,7 +272,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 	if d := e.drag; d != nil && d.snapped && d.valid {
 		x := e.xAt(d.snapTarget, w)
 		if x >= trackHeader && x < w {
-			fill(dc, rect{x, 28, x + 2, 145}, rgb(112, 220, 241))
+			fill(dc, rect{x, 28, x + 2, stack.Bottom}, rgb(112, 220, 241))
 			textAt(dc, rect{max(trackHeader, x-40), 0, min(w, x+80), 27}, func() string {
 				if d.frames != nil && !keyPressed(0x10) {
 					return "FRAME"
@@ -234,14 +290,16 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 		}
 		x := e.xAt(at, w)
 		if x >= trackHeader && x < w {
-			fill(dc, rect{x, laneTop, x + 1, laneBottom}, rgb(112, 220, 241))
+			if l, ok := stack.Find(d.trackID); ok {
+				fill(dc, rect{x, max(timeline.TrackTop, laneTop+l.Offset()), x + 1, min(stack.Bottom, laneBottom+l.Offset())}, rgb(112, 220, 241))
+			}
 		}
 	}
 	e.paintAssetGhost(dc, w)
 	e.paintMarquee(dc, w, h)
 	x := e.xAt(e.playhead, w)
 	if x >= trackHeader && x < w {
-		fill(dc, rect{x, 19, x + 2, h}, palette.accent)
+		fill(dc, rect{x, 19, x + 2, stack.Bottom}, palette.accent)
 		for i := int32(0); i < 8; i++ {
 			left, right := x-7+i, x+9-i
 			if left < trackHeader {
@@ -250,8 +308,8 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			fill(dc, rect{left, 12 + i, right, 13 + i}, palette.accent)
 		}
 	}
-	if h > 150 {
-		textAt(dc, rect{trackHeader + 8, 150, w - 8, h}, fmt.Sprintf("%s  |  , / .: frame step   Ctrl+arrows: edit boundaries   %.2gx", precisionStamp(e.playhead), e.speed()), palette.muted, 4)
+	if h > stack.Bottom {
+		textAt(dc, rect{trackHeader + 8, stack.Bottom, w - 8, h}, fmt.Sprintf("%s  |  Shift+wheel: tracks   Ctrl+wheel: zoom   %.2gx", precisionStamp(e.playhead), e.speed()), palette.muted, 4)
 	}
 }
 
@@ -261,7 +319,10 @@ func (e *editor) selectClip(i int) {
 }
 
 func (e *editor) beginTimeline(x, y, w int32) {
-	if e.menuOpen || e.busy || e.marquee != nil || e.assetDrag != nil || e.cropSession != nil || e.transformSession != nil || x < trackHeader {
+	if e.menuOpen || e.busy || e.marquee != nil || e.assetDrag != nil || e.cropSession != nil || e.transformSession != nil {
+		return
+	}
+	if x < trackHeader && y < timeline.TrackTop {
 		return
 	}
 	t := e.timeAt(x, w)
@@ -275,9 +336,20 @@ func (e *editor) beginTimeline(x, y, w int32) {
 		e.seekTimeline(t, false)
 		return
 	}
+	l, ok := e.timelineStack().At(y)
+	if !ok {
+		return
+	}
+	if l.TrackID != e.trackID() {
+		e.selectTimelineLane(l.TrackID)
+		playing = false
+	}
+	if x < trackHeader {
+		return
+	}
 	view := e.timelineView(w)
 	for i, c := range e.track().Clips {
-		geometry, visible := e.clipGeometry(view, c)
+		geometry, visible := e.laneClipGeometry(view, c, l)
 		if !visible {
 			continue
 		}
@@ -311,7 +383,7 @@ func (e *editor) beginTimeline(x, y, w int32) {
 					return
 				}
 			}
-			e.drag = &timelineDrag{index: i, mode: mode, x: x, scale: e.scale(w), original: c, candidate: c, valid: true, wasPlaying: playing, clickTime: t, groupIDs: ids, groupProject: e.model.Project(), ripple: e.rippleTrim && mode != "move" && len(ids) == 1, frames: frames, sourceDuration: duration}
+			e.drag = &timelineDrag{index: i, trackID: e.trackID(), targetID: e.trackID(), y: y, mode: mode, x: x, scale: e.scale(w), original: c, candidate: c, valid: true, wasPlaying: playing, clickTime: t, groupIDs: ids, groupProject: e.model.Project(), ripple: e.rippleTrim && mode != "move" && len(ids) == 1, frames: frames, sourceDuration: duration}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x, y, w)
 			return
@@ -325,33 +397,54 @@ func (e *editor) beginTimeline(x, y, w int32) {
 			return
 		}
 	}
-	if y >= timeline.TrackTop && y < timeline.ContentBottom {
+	if y >= l.Top && y < l.Bottom {
 		e.beginMarquee(x, y, t, playing)
 		return
 	}
 	e.seekTimeline(t, playing)
 }
 
-func (e *editor) moveTimeline(x int32) {
+func (e *editor) moveTimeline(x, y int32) {
 	d := e.drag
 	if d == nil {
 		return
 	}
-	if !d.moved && !timeline.DragStarted(x-d.x, 0) {
+	dy := int32(0)
+	if d.mode == "move" {
+		dy = y - d.y
+	}
+	if !d.moved && !timeline.DragStarted(x-d.x, dy) {
 		return
 	}
 	if !d.moved {
 		e.stopPreview()
 	}
 	d.moved = true
+	d.targetID = d.trackID
+	if d.mode == "move" {
+		l, ok := e.timelineStack().At(y)
+		if !ok || !l.MainContains(y) {
+			d.valid, d.snapped = false, false
+			d.groupProject = e.model.Project()
+			e.invalidateTimeline()
+			return
+		}
+		d.targetID = l.TrackID
+	}
 	r := timeline.EvaluateDrag(e.model.Project(), timeline.DragRequest{
-		Ref:  project.ClipRef{TrackID: e.trackID(), ClipID: d.original.ID},
+		Ref: project.ClipRef{TrackID: d.trackID, ClipID: d.original.ID}, TargetTrack: d.targetID,
 		Mode: d.mode, GroupIDs: d.groupIDs, Pixels: x - d.x, Scale: d.scale,
 		Marker: e.playhead, Magnetic: !e.snapDisabled, Bypass: keyPressed(0x10),
 		Ripple: d.ripple, Frames: d.frames, SourceDuration: d.sourceDuration,
 	})
 	d.candidate, d.groupProject = r.Clip, r.Project
 	d.valid, d.snapped, d.snapTarget, d.rippleDelta = r.Valid, r.Snapped, r.Target, r.RippleDelta
+	if d.targetID == d.trackID && !d.ripple && len(d.groupIDs) <= 1 {
+		d.groupProject = e.model.Project().Clone()
+		if ti, ci, ok := d.groupProject.ClipIndex(project.ClipRef{TrackID: d.trackID, ClipID: d.original.ID}); ok && r.Clip.ID == d.original.ID {
+			d.groupProject.Tracks[ti].Clips[ci] = r.Clip
+		}
+	}
 	e.invalidateTimeline()
 }
 
@@ -362,10 +455,6 @@ func (e *editor) finishTimeline() {
 	if d != nil && d.moved {
 		if d.valid {
 			q := d.groupProject
-			if !d.ripple && len(d.groupIDs) <= 1 {
-				q = e.model.Project().Clone()
-				q.Tracks[e.trackIndex()].Clips[d.index] = d.candidate
-			}
 			if d.ripple && d.rippleDelta == 0 {
 				e.invalidateTimeline()
 				return
@@ -375,7 +464,11 @@ func (e *editor) finishTimeline() {
 			} else {
 				end := q.EndTime()
 				playhead, zoom := timelineEditView(e.playhead, end, e.zoom, d.scale)
-				if err := e.commitEdit(q, editorstate.SelectionUpdate{}, &editView{playhead: playhead, zoom: zoom}); err != nil {
+				update := editorstate.SelectionUpdate{}
+				if d.targetID != d.trackID {
+					update = editorstate.SelectionUpdate{TrackID: d.targetID, ReplaceClips: true, ClipIDs: d.groupIDs, Primary: d.original.ID, Anchor: d.original.ID}
+				}
+				if err := e.commitEdit(q, update, &editView{playhead: playhead, zoom: zoom}); err != nil {
 					e.tell(err.Error())
 				} else if d.ripple {
 					e.tell("Ripple trim applied.")
@@ -384,7 +477,7 @@ func (e *editor) finishTimeline() {
 				}
 			}
 		} else {
-			e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")
+			e.tell("Edit rejected: choose a compatible track, avoid overlaps and stay within source bounds.")
 		}
 	} else if d != nil {
 		e.selectClip(d.index)
@@ -459,7 +552,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		} else if ui.scrubbing {
 			ui.seekTimeline(ui.timeAt(x, clientRect(hwnd).Right), false)
 		} else {
-			ui.moveTimeline(x)
+			ui.moveTimeline(x, y)
 		}
 		ui.setTimelineCursor(x, y, clientRect(hwnd).Right)
 		return 0
@@ -474,7 +567,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			user.NewProc("ReleaseCapture").Call()
 			ui.seekTimeline(t, playing)
 		} else {
-			ui.moveTimeline(x)
+			ui.moveTimeline(x, y)
 			ui.finishTimeline()
 		}
 		ui.setTimelineCursor(x, y, clientRect(hwnd).Right)
@@ -490,7 +583,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.invalidateTimeline()
 		return 0
 	case 0x020a:
-		if ui.menuOpen || ui.busy || ui.drag != nil || ui.assetDrag != nil || ui.marquee != nil {
+		if ui.menuOpen || ui.busy || ui.assetDrag != nil || ui.marquee != nil || ui.scrubbing || (ui.drag != nil && (wp&4 == 0 || wp&8 != 0 || ui.drag.mode != "move")) {
 			return 0
 		}
 		d := int16(wp >> 16)
@@ -500,6 +593,20 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			} else {
 				ui.zoomTimeline(idZoomOut)
 			}
+		} else if wp&4 != 0 {
+			stack := ui.timelineStack()
+			step := int32(48)
+			if d > 0 {
+				step = -step
+			}
+			ui.laneScroll = max(0, min(stack.MaxScroll, stack.Scroll+step))
+			if ui.drag != nil {
+				p := point{x, y}
+				user.NewProc("ScreenToClient").Call(hwnd, uintptr(unsafe.Pointer(&p)))
+				ui.moveTimeline(p.X, p.Y)
+				ui.setTimelineCursor(p.X, p.Y, clientRect(hwnd).Right)
+			}
+			ui.invalidateTimeline()
 		} else {
 			w := clientRect(hwnd).Right
 			ui.origin = ui.timelineView(w).Scroll(d < 0)
@@ -552,20 +659,24 @@ func (e *editor) timelineCursor(x, y, w int32) uintptr {
 	if x < trackHeader || x >= w {
 		return cursorArrow
 	}
-	view := e.timelineView(w)
-	for _, c := range e.track().Clips {
-		geometry, visible := e.clipGeometry(view, c)
-		if !visible {
-			continue
-		}
-		if mode := geometry.MainHit(x, y); mode != "" {
-			if e.model.Count() > 1 && e.model.Contains(c.ID) {
-				mode = "move"
+	l, ok := e.timelineStack().At(y)
+	if ok {
+		view := e.timelineView(w)
+		ti := e.model.Project().TrackIndex(l.TrackID)
+		for _, c := range e.model.Project().Tracks[ti].Clips {
+			geometry, visible := e.laneClipGeometry(view, c, l)
+			if !visible {
+				continue
 			}
-			return cursorForMode(mode, false)
-		}
-		if geometry.AudioHit(x, y) {
-			return cursorHand
+			if mode := geometry.MainHit(x, y); mode != "" {
+				if e.model.Count() > 1 && e.model.Contains(c.ID) {
+					mode = "move"
+				}
+				return cursorForMode(mode, false)
+			}
+			if geometry.AudioHit(x, y) {
+				return cursorHand
+			}
 		}
 	}
 	if y >= 0 && y < timeline.RulerBottom {

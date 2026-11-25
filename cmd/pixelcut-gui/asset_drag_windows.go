@@ -12,23 +12,25 @@ import (
 
 type placementRequest struct {
 	start, marker, tolerance int64
+	trackID                  string
 }
 
 type assetDrag struct {
-	id, clipID         string
-	origin             point
-	moved, over, valid bool
-	placement          project.AssetPlacement
+	id, clipID, trackID string
+	origin              point
+	moved, over, valid  bool
+	placement           project.AssetPlacement
 }
 
 func (e *editor) placementAt(x, y int32) (*placementRequest, bool) {
 	r := clientRect(e.timeline)
 	view := e.timelineView(r.Right)
-	if !view.DropTarget(x, y) {
+	lane, ok := e.timelineStack().At(y)
+	if !ok || !lane.MainContains(y) || x < trackHeader || x >= r.Right {
 		return nil, false
 	}
 	tolerance := timeline.SnapTolerance(view.Scale(), !e.snapDisabled && !keyPressed(0x10))
-	return &placementRequest{view.TimeAt(x), e.playhead, tolerance}, true
+	return &placementRequest{start: view.TimeAt(x), marker: e.playhead, tolerance: tolerance, trackID: lane.TrackID}, true
 }
 
 func (e *editor) beginAssetDrag(hwnd uintptr, lp uintptr) bool {
@@ -80,7 +82,8 @@ func (e *editor) updateAssetDrag() {
 	d.over, d.valid = over, false
 	if over {
 		var err error
-		d.placement, err = e.model.Project().PlaceAssets(e.trackID(), []string{d.id}, []string{d.clipID}, req.start, req.marker, req.tolerance)
+		d.trackID = req.trackID
+		d.placement, err = e.model.Project().PlaceAssets(req.trackID, []string{d.id}, []string{d.clipID}, req.start, req.marker, req.tolerance)
 		d.valid = err == nil
 	}
 	cursor := cursorNo
@@ -121,7 +124,7 @@ func (e *editor) finishAssetDrag() {
 		e.tell("Cannot place asset here: check track compatibility and overlapping clips.")
 		return
 	}
-	if err := e.commitPlacement(d.placement); err != nil {
+	if err := e.commitPlacementOnTrack(d.trackID, d.placement); err != nil {
 		e.tell(err.Error())
 		return
 	}
@@ -130,12 +133,16 @@ func (e *editor) finishAssetDrag() {
 }
 
 func (e *editor) commitPlacement(p project.AssetPlacement, selectedAsset ...string) error {
-	ti := p.Project.TrackIndex(e.trackID())
+	return e.commitPlacementOnTrack(e.trackID(), p, selectedAsset...)
+}
+
+func (e *editor) commitPlacementOnTrack(trackID string, p project.AssetPlacement, selectedAsset ...string) error {
+	ti := p.Project.TrackIndex(trackID)
 	if ti < 0 || p.FirstClip < 0 || p.FirstClip >= len(p.Project.Tracks[ti].Clips) {
 		return fmt.Errorf("invalid placement selection")
 	}
 	id := p.Project.Tracks[ti].Clips[p.FirstClip].ID
-	update := editorstate.SelectionUpdate{ReplaceClips: true, ClipIDs: []string{id}, Primary: id, Anchor: id}
+	update := editorstate.SelectionUpdate{TrackID: trackID, ReplaceClips: true, ClipIDs: []string{id}, Primary: id, Anchor: id}
 	if len(selectedAsset) > 0 {
 		update.ReplaceAsset, update.AssetID = true, selectedAsset[0]
 	}
@@ -145,6 +152,11 @@ func (e *editor) commitPlacement(p project.AssetPlacement, selectedAsset ...stri
 func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 	d := e.assetDrag
 	if d == nil || !d.moved || !d.over {
+		return
+	}
+	stack := e.timelineStack()
+	lane, ok := stack.Find(d.trackID)
+	if !ok {
 		return
 	}
 	span, visible := e.timelineView(w).Span(d.placement.Start, d.placement.End)
@@ -159,6 +171,10 @@ func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 	col := rgb(112, 220, 241)
 	if !d.valid {
 		col = rgb(242, 105, 112)
+	}
+	saved := beginLanePaint(dc, lane, w, stack.Bottom)
+	if saved == 0 {
+		return
 	}
 	r := rect{left, laneTop, right, laneBottom}
 	h, _, _ := gdi.NewProc("CreateHatchBrush").Call(5, col)
@@ -176,10 +192,11 @@ func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 		fill(dc, rect{left + 2, laneTop + 3, right - 2, laneTop + 22}, palette.panel)
 		textAt(dc, rect{left + 5, laneTop + 3, right - 5, laneTop + 22}, name, col, 4)
 	}
+	gdi.NewProc("RestoreDC").Call(dc, saved)
 	if d.valid && d.placement.Snapped {
 		x := e.xAt(d.placement.Target, w)
 		if x >= trackHeader && x < w {
-			fill(dc, rect{x, 28, x + 2, 145}, col)
+			fill(dc, rect{x, 28, x + 2, stack.Bottom}, col)
 		}
 	}
 }

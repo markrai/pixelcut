@@ -192,6 +192,8 @@ type editor struct {
 	generation              uint64
 	engine                  media.Engine
 	timeline                uintptr
+	laneScroll              int32
+	visibleTrack            string
 	layout                  []placedControl
 	zoom                    float64
 	origin, playhead        int64

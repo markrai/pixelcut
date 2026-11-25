@@ -86,10 +86,15 @@ func (e *editor) moveMarquee(x, y, w int32) {
 	for _, id := range ids {
 		seen[id] = true
 	}
+	l, ok := e.timelineStack().Find(e.trackID())
+	if !ok {
+		return
+	}
+	top, bottom = max(top, l.Top, timeline.TrackTop), min(bottom, l.Bottom, e.timelineStack().Bottom)
 	view := e.timelineView(w)
 	for _, c := range e.track().Clips {
-		geometry, visible := e.clipGeometry(view, c)
-		if visible && geometry.Intersects(left, top, right, bottom) && !seen[c.ID] {
+		geometry, visible := e.laneClipGeometry(view, c, l)
+		if visible && bottom >= top && geometry.Intersects(left, top, right, bottom) && !seen[c.ID] {
 			ids = append(ids, c.ID)
 			seen[c.ID] = true
 		}
@@ -125,7 +130,11 @@ func (e *editor) paintMarquee(dc uintptr, w, h int32) {
 		return
 	}
 	l, r := max(trackHeader, min(d.x, d.currentX)), min(w, max(d.x, d.currentX))
-	t, b := max(timeline.TrackTop, min(d.y, d.currentY)), min(h, max(d.y, d.currentY))
+	lane, ok := e.timelineStack().Find(e.trackID())
+	if !ok {
+		return
+	}
+	t, b := max(timeline.TrackTop, lane.Top, min(d.y, d.currentY)), min(h, e.timelineStack().Bottom, lane.Bottom, max(d.y, d.currentY))
 	if r <= l || b <= t {
 		return
 	}
