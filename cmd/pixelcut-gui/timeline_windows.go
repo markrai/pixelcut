@@ -133,10 +133,14 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	}
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
-		fill(dc,rect{x,25,x+2,h},palette.accent)
-		fill(dc,rect{x-4,22,x+6,28},palette.accent)
+		fill(dc,rect{x,19,x+2,h},palette.accent)
+		for i:=int32(0);i<8;i++ {
+			left,right:=x-7+i,x+9-i
+			if left<trackHeader {left=trackHeader}
+			fill(dc,rect{left,12+i,right,13+i},palette.accent)
+		}
 	}
-	if h>150 {textAt(dc,rect{trackHeader+8,150,w-8,h},fmt.Sprintf("%s  |  Wheel: scroll   Ctrl+wheel: zoom   Drag clip or edges",stamp(e.playhead)),palette.muted,4)}
+	if h>150 {textAt(dc,rect{trackHeader+8,150,w-8,h},fmt.Sprintf("%s.%03d  |  Space: play/stop   Wheel: scroll   Ctrl+wheel: zoom",stamp(e.playhead),(e.playhead/1000)%1000),palette.muted,4)}
 }
 
 func (e *editor) selectClip(i int) {
@@ -150,6 +154,15 @@ func (e *editor) beginTimeline(x,y,w int32) {
 	if e.busy || x<trackHeader {return}
 	e.stopPreview()
 	e.playhead=e.timeAt(x,w)
+	if e.playhead>e.endTime() {e.playhead=e.endTime()}
+	if y>=0 && y<32 {
+		for i,c:=range e.track().Clips {
+			if e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {e.selectClip(i);break}
+		}
+		change(e.controls[idAt],fmtTime(e.playhead))
+		e.invalidateTimeline()
+		return
+	}
 	for i,c:=range e.track().Clips {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if mode:=videoHitMode(x,y,l,r);mode!="" {

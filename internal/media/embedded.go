@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig string) (*exec.Cmd, error) {
+func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string) (*exec.Cmd, error) {
 	if window == 0 || start < 0 || duration <= 0 {
 		return nil, errors.New("preview requires a host window and positive source interval")
 	}
@@ -23,6 +23,9 @@ func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr
 		return nil, err
 	}
 	args := []string{"--no-config", "--vo=gpu-next", "--hwdec=no", "--wid=" + strconv.FormatUint(uint64(uint32(window)), 10), "--start=" + seconds(start), "--length=" + seconds(duration), "--keep-open=no", "--osc=yes", "--input-terminal=no"}
+	if ipcServer != "" {
+		args = append(args, "--input-ipc-server="+ipcServer)
+	}
 	if inputConfig != "" {
 		args = append(args, "--input-conf="+inputConfig)
 	}

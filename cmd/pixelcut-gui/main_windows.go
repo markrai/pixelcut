@@ -142,6 +142,7 @@ type editor struct {
 	zoom float64
 	origin, playhead int64
 	drag *timelineDrag
+	clock *previewClock
 }
 
 func u(s string) *uint16 {
@@ -310,6 +311,8 @@ func (e *editor) finished() {
 }
 
 func (e *editor) stopPreview() {
+	e.updatePlaybackClock()
+	e.clock=nil
 	e.generation++
 	if e.previewCancel != nil {
 		e.previewCancel()
@@ -327,11 +330,12 @@ func (e *editor) play() error {
 	if err != nil { return err }
 	e.stopPreview()
 	ctx, cancel := context.WithCancel(context.Background())
-	if e.playhead >= c.Start && e.playhead < c.Start+(c.Out-c.In) {
-		delta := project.Seconds(e.playhead-c.Start)
-		ed.Start += delta
-		ed.Duration -= delta
+	if e.playhead < c.Start || e.playhead >= c.Start+(c.Out-c.In) {
+		e.playhead=c.Start
 	}
+	delta:=e.playhead-c.Start
+	ed.Start=project.Seconds(c.In+delta)
+	ed.Duration=project.Seconds(c.Out-c.In-delta)
 	bindings,err:=os.CreateTemp("","pixelcut-input-*.conf")
 	if err!=nil {cancel();return err}
 	name:=bindings.Name()
@@ -339,15 +343,23 @@ func (e *editor) play() error {
 	closeErr:=bindings.Close()
 	if err==nil {err=closeErr}
 	if err!=nil {os.Remove(name);cancel();return err}
-	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name)
+	pipe:=previewPipeName(name)
+	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe)
 	if err != nil {os.Remove(name); cancel(); return err }
 	if err = cmd.Start(); err != nil {os.Remove(name); cancel(); return err }
 	e.previewCancel = cancel
 	done := make(chan struct{})
 	e.previewDone = done
 	generation := e.generation
+	clock:=newPreviewClock(c,e.playhead)
+	e.clock=clock
+	processDone:=make(chan struct{})
+	clockDone:=make(chan struct{})
+	go func(){defer close(clockDone);clock.observe(ctx,pipe,processDone)}()
 	go func() {
 		err := cmd.Wait()
+		close(processDone)
+		select {case <-clockDone:case <-time.After(150*time.Millisecond):}
 		os.Remove(name)
 		close(done)
 		if ctx.Err() == nil {
@@ -361,6 +373,7 @@ func (e *editor) play() error {
 	change(e.controls[idPlay],"Stop  (Space)")
 	user.NewProc("InvalidateRect").Call(e.controls[idPlay],0,1)
 	user.NewProc("SetFocus").Call(e.timeline)
+	e.refreshPlaybackMarker()
 	e.tell("Playing source interval. Space or Esc stops; crop applied at export.")
 	return nil
 }
@@ -529,6 +542,8 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
+	case 0x0113:
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();return 0}
 	case wmDone:
 		ui.finished()
 		return 0
@@ -547,6 +562,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		if ui.confirmDiscard() { destroy.Call(hwnd) }
 		return 0
 	case 0x0002:
+		user.NewProc("KillTimer").Call(hwnd,playbackTimer)
 		ui.stopPreview()
 		if ui.cancel!=nil { ui.cancel() }
 		user.NewProc("PostQuitMessage").Call(0)
@@ -613,6 +629,7 @@ func main() {
 	ui.status=label("Import a supported HLG video to get started.",12,640,1084)
 	ui.refresh()
 	ui.resize()
+	if timer,_,_:=user.NewProc("SetTimer").Call(mainWindow,playbackTimer,33,0);timer==0 {fmt.Fprintln(os.Stderr,"unable to start playback UI timer")}
 	user.NewProc("ShowWindow").Call(mainWindow,5)
 	user.NewProc("UpdateWindow").Call(mainWindow)
 	var m message
