@@ -402,3 +402,12 @@ handling and is not claimed here. Cache scheduling and native worker
 implementation remain separate for thumbnail and waveform policies.
 No schema or external dependency changes. Physical Windows cancellation,
 shutdown and recovery acceptance and performance measurements remain pending.
+
+
+## 2C.2 stacked timeline lanes
+
+The portable timeline Stack computes video/linked-audio and independent audio lane bounds, viewport clamping, reveal and hit testing. The Windows adapter applies those same bounds to painting, pointer input, marquee, context menus and asset placement. Later video tracks appear above earlier ones; independent audio tracks follow in storage order. Vertical scroll is presentation state only. Existing time mapping is unchanged.
+
+Project.MoveClipsTo generalizes group movement to a compatible destination track, using destination edges, project origin and playhead for magnetic snapping. The operation preserves IDs, source intervals, transformations, group spacing and source references; it validates the entire detached candidate. Invalid candidates can be drawn as ghosts but never committed. The portable gesture evaluator rejects cross-kind moves and cross-track trims. The existing editor transaction commits a successful move with destination selection in one history entry. Asset and Explorer drops capture the target track ID rather than the current active track. No persistent schema, media engine or playback behavior changes. Cross-track selection and composition remain deferred.
+
+This feature is staged separately from the stabilization gate: R.9 automated CI and paired benchmark collection passed, while performance review and physical Windows acceptance remain outstanding.
