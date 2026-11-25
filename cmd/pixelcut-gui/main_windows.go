@@ -131,6 +131,7 @@ type openFileName struct {
 
 type result struct {
 	batch *project.ImportBatch
+	placement *placementRequest
 	err error
 	message string
 }
@@ -177,6 +178,7 @@ type editor struct {
 	savedView recoveryView
 	projectPath string
 	snapDisabled bool
+	assetDrag *assetDrag
 }
 
 func u(s string) *uint16 {
@@ -336,7 +338,7 @@ func (e *editor) finished() {
 	e.busy = false
 	for _, h := range e.controls { user.NewProc("EnableWindow").Call(h, 1) }
 	if r.err != nil { e.tell(r.err.Error()); return }
-	if r.batch!=nil {e.finishImport(r.batch);return}
+	if r.batch!=nil {e.finishImport(r.batch,r.placement);return}
 	e.tell(r.message)
 }
 
@@ -417,6 +419,7 @@ func (e *editor) startPreview(paused bool) error {
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
+	if e.assetDrag!=nil {return fmt.Errorf("finish the asset drag first")}
 	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
@@ -606,7 +609,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case 0x0113:
 		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();ui.checkpointView();return 0}
 	case wmDropFiles:
-		ui.handleDrop(wp)
+		ui.handleDrop(hwnd,wp)
 		return 0
 	case wmDone:
 		ui.finished()
@@ -622,6 +625,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x0010:
+		ui.cancelAssetDrag()
 		if ui.cropSession!=nil {ui.cancelVisualCrop()}
 		if ui.transformSession!=nil {ui.cancelTransform()}
 		if ui.busy { ui.tell("Wait for the current media operation to finish."); return 0 }

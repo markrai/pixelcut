@@ -80,7 +80,7 @@ func (e *editor) checkpoint() bool {
 }
 
 func (e *editor) checkpointView() {
-	if e.recovery==nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Second {return}
+	if e.recovery==nil || e.assetDrag!=nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Second {return}
 	if e.savedView!=e.view() || e.recoveryError!="" {e.checkpoint()}
 }
 

@@ -138,7 +138,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		}
 	}
 	if e.thumbnails!=nil {
-		if e.drag!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
+		if e.drag!=nil || e.assetDrag!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
 	}
 	if e.waveforms!=nil {e.waveforms.request(audioDemand)}
 	if d:=e.drag;d!=nil && d.snapped && d.valid {
@@ -148,6 +148,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 			textAt(dc,rect{max(trackHeader,x-40),0,min(w,x+80),27},"SNAP",rgb(112,220,241),4)
 		}
 	}
+	e.paintAssetGhost(dc,w)
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
 		fill(dc,rect{x,19,x+2,h},palette.accent)
@@ -237,7 +238,7 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 	x,y:=int32(int16(lp&0xffff)),int32(int16((lp>>16)&0xffff))
 	switch msg {
 	case wmDropFiles:
-		ui.handleDrop(wp);return 0
+		ui.handleDrop(hwnd,wp);return 0
 	case 0x000f:
 		var ps paintStruct
 		dc,_,_:=user.NewProc("BeginPaint").Call(hwnd,uintptr(unsafe.Pointer(&ps)))
@@ -289,7 +290,7 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 	case 0x0215:
 		ui.drag=nil;ui.scrubbing=false;ui.invalidateTimeline();return 0
 	case 0x020a:
-		if ui.busy || ui.drag!=nil {return 0}
+		if ui.busy || ui.drag!=nil || ui.assetDrag!=nil {return 0}
 		d:=int16(wp>>16)
 		if wp&8!=0 {
 			if d>0 {ui.zoomTimeline(idZoomIn)} else {ui.zoomTimeline(idZoomOut)}

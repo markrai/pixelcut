@@ -89,7 +89,7 @@ The desktop shell includes a dark theme, resizable layout, a graphical V1 lane a
 
 ## Drag-and-drop import
 
-Drop one or more supported video files from Windows Explorer onto the media bin or timeline, or select multiple files through Import video. Files are inspected in the background, duplicates select existing entries, and unsupported files are reported without discarding valid imports. Imported assets remain in the media bin until added to V1. Each successful batch is undoable and automatically recovered.
+Drop one or more supported video files from Windows Explorer onto the media bin or timeline, or select multiple files through Import video. Files are inspected in the background, duplicates select existing entries, and unsupported files are reported without discarding valid imports. Drag a media-bin item into V1 to place it at a chosen timestamp with snapping and a placement ghost. Explorer drops onto the V1 lane import and place successful assets contiguously; other drops import only. Overlapping placements are rejected without losing successfully imported assets. Each successful batch is undoable and automatically recovered.
 
 ## Timeline snapping and media-bin removal
 

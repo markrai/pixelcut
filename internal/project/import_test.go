@@ -20,6 +20,7 @@ func TestBatchImport(t *testing.T) {
 	}
 	result,err:=p.ImportPaths(context.Background(),[]string{a,a,bad,b,b},inspect)
 	if err!=nil || result.Added!=2 || result.Duplicates!=2 || len(result.Failures)!=1 || calls!=3 || result.Selected!=1 {t.Fatalf("batch: %+v calls=%d err=%v",result,calls,err)}
+	if !reflect.DeepEqual(result.AssetIDs,[]string{"a.mp4","b.mp4"}) {t.Fatalf("placement order: %v",result.AssetIDs)}
 	if len(p.Assets)!=0 || len(result.Project.Tracks[0].Clips)!=0 {t.Fatal("batch changed original or created clips")}
 	again,err:=result.Project.ImportPaths(context.Background(),[]string{a,b},inspect)
 	if err!=nil || again.Added!=0 || again.Duplicates!=2 || calls!=3 || !reflect.DeepEqual(again.Project,result.Project) {t.Fatal("duplicates were inspected or inserted again")}

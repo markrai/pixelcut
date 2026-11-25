@@ -44,16 +44,39 @@ func readDroppedFiles(drop uintptr) ([]string,error) {
 	return paths,nil
 }
 
-func (e *editor) handleDrop(drop uintptr) {
+func (e *editor) handleDrop(hwnd,drop uintptr) {
+	var req *placementRequest
+	var p point
+	if hwnd==e.timeline || hwnd==mainWindow {
+		ok,_,_:=shell.NewProc("DragQueryPoint").Call(drop,uintptr(unsafe.Pointer(&p)))
+		if ok!=0 {
+			if hwnd!=e.timeline {user.NewProc("MapWindowPoints").Call(hwnd,e.timeline,uintptr(unsafe.Pointer(&p)),1)}
+			req,_=e.placementAt(p.X,p.Y)
+		}
+	}
 	paths,err:=readDroppedFiles(drop)
-	if err==nil {err=e.importPaths(paths)}
+	if err==nil {err=e.importAt(paths,req)}
 	if err!=nil {e.tell(err.Error())}
 }
 
 func mediaDropProc(hwnd uintptr,msg uint32,wp,lp,id,data uintptr) uintptr {
 	if msg==wmDropFiles && ui!=nil {
-		ui.handleDrop(wp)
+		ui.handleDrop(hwnd,wp)
 		return 0
+	}
+	if ui!=nil {
+		switch msg {
+		case 0x0201:
+			if ui.beginAssetDrag(hwnd,lp) {return 0}
+		case 0x0200:
+			if ui.assetDrag!=nil {ui.updateAssetDrag();return 0}
+		case 0x0202:
+			if ui.assetDrag!=nil {ui.finishAssetDrag();return 0}
+		case 0x001f:
+			if ui.assetDrag!=nil {ui.cancelAssetDrag()}
+		case 0x0215:
+			if ui.assetDrag!=nil {ui.assetDrag=nil;ui.invalidateTimeline()}
+		}
 	}
 	if msg==0x0082 {
 		acceptFiles.Call(hwnd,0)
@@ -77,8 +100,10 @@ func (e *editor) enableFileDrops() {
 	fmt.Fprintln(os.Stderr,"Media-bin drop registration failed; use the timeline or Import video.")
 }
 
-func (e *editor) importPaths(paths []string) error {
-	if e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
+func (e *editor) importPaths(paths []string) error {return e.importAt(paths,nil)}
+
+func (e *editor) importAt(paths []string,placement *placementRequest) error {
+	if e.assetDrag!=nil || e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
 	if len(paths)==0 || len(paths)>project.MaxImportFiles {return fmt.Errorf("select between 1 and %d files",project.MaxImportFiles)}
 	snapshot:=e.p.Clone()
 	engine:=e.engine
@@ -95,21 +120,37 @@ func (e *editor) importPaths(paths []string) error {
 			return project.FromReport(nextID("asset"),path,report)
 		})
 		if err!=nil {return result{err:err}}
-		return result{batch:&batch}
+		return result{batch:&batch,placement:placement}
 	})
 	return nil
 }
 
-func (e *editor) finishImport(b *project.ImportBatch) {
-	if b.Added>0 {
-		e.asset=b.Selected
-		if err:=e.commit(b.Project);err!=nil {e.tell(err.Error());return}
-	} else if b.Selected>=0 {
-		e.asset=b.Selected
-		send.Call(e.controls[idAssets],lbSet,uintptr(e.asset),0)
-		e.checkpoint()
+func (e *editor) finishImport(b *project.ImportBatch,req *placementRequest) {
+	placed:=0
+	placementError:=""
+	if req!=nil && len(b.AssetIDs)>0 {
+		ids:=make([]string,len(b.AssetIDs))
+		prefix:=nextID("clip")
+		for i:=range ids {ids[i]=fmt.Sprintf("%s-%d",prefix,i)}
+		p,err:=b.Project.PlaceAssets("V1",b.AssetIDs,ids,req.start,req.marker,req.tolerance)
+		if err==nil {
+			e.asset=b.Selected
+			if err=e.commitPlacement(p);err!=nil {e.tell(err.Error());return}
+			placed=len(ids)
+			user.NewProc("SetFocus").Call(e.timeline)
+		} else {placementError=" Placement rejected; imported assets remain in media bin."}
 	}
-	summary:=fmt.Sprintf("Imported %d; already in media bin %d; failed %d.",b.Added,b.Duplicates,len(b.Failures))
+	if placed==0 {
+		if b.Added>0 {
+			e.asset=b.Selected
+			if err:=e.commit(b.Project);err!=nil {e.tell(err.Error());return}
+		} else if b.Selected>=0 {
+			e.asset=b.Selected
+			send.Call(e.controls[idAssets],lbSet,uintptr(e.asset),0)
+			e.checkpoint()
+		}
+	}
+	summary:=fmt.Sprintf("Imported %d; already in media bin %d; failed %d; placed %d.",b.Added,b.Duplicates,len(b.Failures),placed)+placementError
 	e.tell(summary)
 	if len(b.Failures)>0 {
 		var details strings.Builder

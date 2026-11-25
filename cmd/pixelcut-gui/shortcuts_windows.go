@@ -120,6 +120,10 @@ func (e *editor) cancelTimelineDrag() {
 
 func (e *editor) handleShortcut(m message) bool {
 	if m.Message!=0x0100 {return false}
+	if e.assetDrag!=nil {
+		if m.WParam==0x1b {e.cancelAssetDrag()}
+		return true
+	}
 	if m.Window!=mainWindow {
 		child,_,_:=user.NewProc("IsChild").Call(mainWindow,m.Window)
 		if child==0 {return false}
