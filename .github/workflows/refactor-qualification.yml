@@ -8,6 +8,7 @@ on:
       - 'go.sum'
       - '.github/workflows/refactor-qualification.yml'
       - 'scripts/compare-refactor-benchmarks.py'
+      - 'scripts/test-compare-refactor-benchmarks.py'
   workflow_dispatch:
 
 permissions:
@@ -25,6 +26,8 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: false
+      - name: Test benchmark report validation
+        run: python3 scripts/test-compare-refactor-benchmarks.py
       - name: Collect paired benchmark evidence
         shell: bash
         run: |
@@ -45,7 +48,7 @@ jobs:
             lscpu
           } > "$reports/environment.txt"
           run_bench() {
-            local ref="$1" label="$2" round="$3"
+            local ref="$1" label="$2"
             git -C "$work" checkout --detach "$ref"
             (
               cd "$work"
@@ -54,11 +57,11 @@ jobs:
           }
           for round in 1 2 3 4 5; do
             if (( round % 2 )); then
-              run_bench "$baseline" baseline "$round"
-              run_bench "$candidate" candidate "$round"
+              run_bench "$baseline" baseline
+              run_bench "$candidate" candidate
             else
-              run_bench "$candidate" candidate "$round"
-              run_bench "$baseline" baseline "$round"
+              run_bench "$candidate" candidate
+              run_bench "$baseline" baseline
             fi
           done
           python3 scripts/compare-refactor-benchmarks.py "$reports/baseline.txt" "$reports/candidate.txt" | tee "$reports/comparison.md"
