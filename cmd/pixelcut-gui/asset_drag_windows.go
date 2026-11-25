@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -132,12 +133,16 @@ func (e *editor) finishAssetDrag() {
 }
 
 func (e *editor) commitPlacement(p project.AssetPlacement, selectedAsset ...string) error {
-	return e.commitWithSelection(p.Project, func() {
-		e.model.SelectIndex(p.FirstClip)
-		if len(selectedAsset) > 0 {
-			e.model.SetAssetID(selectedAsset[0])
-		}
-	})
+	ti := p.Project.TrackIndex(e.trackID())
+	if ti < 0 || p.FirstClip < 0 || p.FirstClip >= len(p.Project.Tracks[ti].Clips) {
+		return fmt.Errorf("invalid placement selection")
+	}
+	id := p.Project.Tracks[ti].Clips[p.FirstClip].ID
+	update := editorstate.SelectionUpdate{ReplaceClips: true, ClipIDs: []string{id}, Primary: id, Anchor: id}
+	if len(selectedAsset) > 0 {
+		update.ReplaceAsset, update.AssetID = true, selectedAsset[0]
+	}
+	return e.commitWithSelection(p.Project, update)
 }
 
 func (e *editor) paintAssetGhost(dc uintptr, w int32) {

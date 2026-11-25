@@ -25,7 +25,6 @@ func (e *editor) view() recoveryView {
 }
 
 func (e *editor) openRecovery() error {
-	e.savedFingerprint = e.model.Project().Fingerprint()
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		e.recoveryError = err.Error()
@@ -66,8 +65,10 @@ func (e *editor) openRecovery() error {
 		e.model = editorstate.New(state.Project)
 		e.model.Restore(state.ActiveTrack, state.Asset, state.Clip, state.SelectedClips)
 		e.playhead, e.origin, e.zoom = state.Playhead, state.Origin, state.Zoom
-		e.dirty, e.projectPath = state.Dirty, state.ProjectPath
-		e.projectRevision, e.savedFingerprint = state.ProjectRevision, state.SavedFingerprint
+		e.projectPath, e.projectRevision = state.ProjectPath, state.ProjectRevision
+		if state.SavedFingerprint != "" || state.Dirty {
+			e.model.SetSavedBaseline(state.SavedFingerprint)
+		}
 		e.restoreSaveBaseline()
 		q, merged, err := e.model.Project().MergeDuplicateAssets()
 		if err == nil && len(merged) > 0 {
@@ -75,9 +76,10 @@ func (e *editor) openRecovery() error {
 			if id, ok := merged[selectedID]; ok {
 				selectedID = id
 			}
-			e.model.Adopt(q)
-			e.model.SetAssetID(selectedID)
-			e.dirty = true
+			baseline := e.model.SavedFingerprint()
+			e.model = editorstate.New(q)
+			e.model.Restore(state.ActiveTrack, q.AssetIndex(selectedID), state.Clip, state.SelectedClips)
+			e.model.SetSavedBaseline(baseline)
 		}
 	}
 	e.savedView = e.view()
@@ -96,7 +98,7 @@ func (e *editor) checkpoint() bool {
 		return false
 	}
 	e.lastCheckpoint = time.Now()
-	s := session.State{Project: e.model.Project(), Asset: e.model.AssetIndex(), Clip: e.model.ClipIndex(), ActiveTrack: e.trackID(), Playhead: e.playhead, Origin: e.origin, Zoom: e.zoom, Dirty: e.dirty, ProjectPath: e.projectPath, ProjectRevision: e.projectRevision, SavedFingerprint: e.savedFingerprint}
+	s := session.State{Project: e.model.Project(), Asset: e.model.AssetIndex(), Clip: e.model.ClipIndex(), ActiveTrack: e.trackID(), Playhead: e.playhead, Origin: e.origin, Zoom: e.zoom, Dirty: e.model.Dirty(), ProjectPath: e.projectPath, ProjectRevision: e.projectRevision, SavedFingerprint: e.model.SavedFingerprint()}
 	if e.model.Count() > 1 {
 		s.SelectedClips = e.selectionIDs()
 	}
@@ -126,7 +128,7 @@ func (e *editor) checkpointView() {
 }
 
 func (e *editor) updateRecoveryTitle() {
-	title := projectTitle(e.projectPath, e.dirty, e.recoveryError != "")
+	title := projectTitle(e.projectPath, e.model.Dirty(), e.recoveryError != "")
 	if mainWindow != 0 {
 		change(mainWindow, title)
 	}

@@ -189,7 +189,7 @@ func (e *editor) timelineContext(lp uintptr) {
 	if keyboard {
 		at = e.playhead
 	}
-	s := timelineMenuState{audioTrack: e.audioTrack(), paste: e.pastePossible(e.playhead), hasClips: len(e.track().Clips) > 0, undo: len(e.undo) > 0, redo: len(e.redo) > 0, snap: !e.snapDisabled, ripple: e.rippleTrim, frameSnap: e.frameSnap}
+	s := timelineMenuState{audioTrack: e.audioTrack(), paste: e.pastePossible(e.playhead), hasClips: len(e.track().Clips) > 0, undo: e.model.CanUndo(), redo: e.model.CanRedo(), snap: !e.snapDisabled, ripple: e.rippleTrim, frameSnap: e.frameSnap}
 	if hit >= 0 {
 		if !e.clipSelected(hit, e.track().Clips[hit]) {
 			e.selectClip(hit)
@@ -207,7 +207,7 @@ func (e *editor) timelineContext(lp uintptr) {
 		_, _, err := e.model.Project().RemoveGap(e.trackID(), at)
 		s.gap = err == nil
 	}
-	id := e.popup(timelineMenuItems(s), screen)
+	id := e.popup(eligibleItems(timelineMenuItems(s), e.availability()), screen)
 	if id == 0 {
 		return
 	}
@@ -293,7 +293,7 @@ func (e *editor) mediaContext(hwnd, lp uintptr) {
 		e.checkpoint()
 	}
 	offline := index >= 0 && e.offline(e.model.Project().Assets[index].Path)
-	id := e.popup(assetMenuItems(index >= 0, offline, e.missingCount() > 0), screen)
+	id := e.popup(eligibleItems(assetMenuItems(index >= 0, offline, e.missingCount() > 0), e.availability()), screen)
 	if id == 0 {
 		return
 	}

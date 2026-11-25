@@ -5,6 +5,7 @@ import (
 	"math"
 	"strings"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -149,10 +150,8 @@ func (e *editor) deleteSelection() error {
 	if err != nil {
 		return err
 	}
-	e.stopPreview()
-	end := q.EndTime()
-	e.playhead = min(e.playhead, end)
-	if err = e.commitWithSelection(q, e.model.Clear); err != nil {
+	view := editView{playhead: min(e.playhead, q.EndTime()), zoom: e.zoom}
+	if err = e.commitEdit(q, editorstate.SelectionUpdate{ReplaceClips: true}, &view); err != nil {
 		return err
 	}
 	e.tell(fmt.Sprintf("Removed %d clip(s); sources unchanged.", len(ids)))

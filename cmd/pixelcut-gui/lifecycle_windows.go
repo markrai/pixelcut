@@ -40,29 +40,21 @@ func projectTitle(path string, dirty, recoveryFailed bool) string {
 }
 
 func (e *editor) updateDirty() {
-	if e.savedFingerprint != "" {
-		e.dirty = e.model.Project().Fingerprint() != e.savedFingerprint
-	}
 	e.updateRecoveryTitle()
 }
 
 func (e *editor) restoreSaveBaseline() {
 	if e.projectPath == "" {
-		if !e.dirty {
-			e.savedFingerprint = e.model.Project().Fingerprint()
-		}
 		return
 	}
 	p, rev, err := project.LoadRevision(e.projectPath)
 	if err == nil && p.Fingerprint() == e.model.Project().Fingerprint() {
 		e.projectRevision = rev
-		e.savedFingerprint = p.Fingerprint()
-		e.dirty = false
+		e.model.MarkSaved()
 		return
 	}
 	if err != nil || rev != e.projectRevision {
-		e.savedFingerprint = ""
-		e.dirty = true
+		e.model.SetSavedBaseline("")
 	}
 }
 
@@ -105,8 +97,7 @@ func (e *editor) saveProject(as bool) (bool, error) {
 		e.projectRevision = rev
 	}
 	e.projectPath = path
-	e.savedFingerprint = e.model.Project().Fingerprint()
-	e.dirty = false
+	e.model.MarkSaved()
 	e.updateRecoveryTitle()
 	recovered := e.checkpoint()
 	note := e.rememberProject(path)
@@ -118,7 +109,7 @@ func (e *editor) saveProject(as bool) (bool, error) {
 }
 
 func (e *editor) confirmProjectSwitch() (bool, error) {
-	if !e.dirty {
+	if !e.model.Dirty() {
 		return true, nil
 	}
 	msg := "Save changes to " + projectName(e.projectPath) + " before switching projects?\n\nYes: Save\nNo: Discard\nCancel: Keep editing"
@@ -176,9 +167,9 @@ func (e *editor) switchProject(path string, closing bool) error {
 	e.stopPreview()
 	e.clipboard = project.ClipClipboard{}
 	e.model = editorstate.New(q)
-	e.undo, e.redo, e.dirty = nil, nil, len(merged) > 0
+	e.model.SetSavedBaseline(fingerprint)
 	e.origin, e.playhead, e.zoom = 0, 0, 0
-	e.projectPath, e.projectRevision, e.savedFingerprint = path, rev, fingerprint
+	e.projectPath, e.projectRevision = path, rev
 	e.refresh()
 	note := ""
 	if path != "" {

@@ -34,19 +34,22 @@ func TestRestoreSaveBaseline(t *testing.T) {
 	}
 	q := p.Clone()
 	q.Assets = append(q.Assets, project.Asset{ID: "a", Path: filepath.Join(t.TempDir(), "media.mp4"), Duration: 1000000, Width: 1080, Height: 1920})
-	ed := editor{model: editorstate.New(p), projectPath: path, dirty: true}
+	ed := editor{model: editorstate.New(p), projectPath: path}
+	ed.model.SetSavedBaseline("")
 	ed.restoreSaveBaseline()
-	if ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != p.Fingerprint() {
+	if ed.model.Dirty() || ed.projectRevision != rev || ed.model.SavedFingerprint() != p.Fingerprint() {
 		t.Fatal("identical saved project did not restore baseline")
 	}
-	ed = editor{model: editorstate.New(q), projectPath: path, dirty: true}
+	ed = editor{model: editorstate.New(q), projectPath: path}
+	ed.model.SetSavedBaseline("")
 	ed.restoreSaveBaseline()
-	if !ed.dirty || ed.projectRevision != "" || ed.savedFingerprint != "" {
+	if !ed.model.Dirty() || ed.projectRevision != "" || ed.model.SavedFingerprint() != "" {
 		t.Fatal("legacy dirty recovery adopted an unverified baseline")
 	}
-	ed = editor{model: editorstate.New(q), projectPath: path, dirty: true, projectRevision: rev, savedFingerprint: p.Fingerprint()}
+	ed = editor{model: editorstate.New(q), projectPath: path, projectRevision: rev}
+	ed.model.SetSavedBaseline(p.Fingerprint())
 	ed.restoreSaveBaseline()
-	if !ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != p.Fingerprint() {
+	if !ed.model.Dirty() || ed.projectRevision != rev || ed.model.SavedFingerprint() != p.Fingerprint() {
 		t.Fatal("valid dirty recovery lost baseline")
 	}
 	newRev, err := q.SaveExisting(path, rev)
@@ -54,12 +57,12 @@ func TestRestoreSaveBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	ed.restoreSaveBaseline()
-	if ed.dirty || ed.projectRevision != newRev {
+	if ed.model.Dirty() || ed.projectRevision != newRev {
 		t.Fatal("save before checkpoint not reconciled")
 	}
-	ed = editor{model: editorstate.New(p), projectPath: path, projectRevision: rev, savedFingerprint: p.Fingerprint()}
+	ed = editor{model: editorstate.New(p), projectPath: path, projectRevision: rev}
 	ed.restoreSaveBaseline()
-	if !ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != "" {
+	if !ed.model.Dirty() || ed.projectRevision != rev || ed.model.SavedFingerprint() != "" {
 		t.Fatal("external update treated as safe overwrite")
 	}
 }

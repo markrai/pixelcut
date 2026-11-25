@@ -278,7 +278,7 @@ func (e *editor) handleShortcut(m message) bool {
 			return true
 		}
 		if m.WParam == 0x0d {
-			if err := e.applyTransform(); err != nil {
+			if err := e.command(idTransformApply, 0); err != nil {
 				e.tell(err.Error())
 			}
 			return true
@@ -315,7 +315,7 @@ func (e *editor) handleShortcut(m message) bool {
 			e.cancelVisualCrop()
 		}
 		if m.WParam == 0x0d && !keyPressed(0x11) && !keyPressed(0x12) {
-			if err := e.applyVisualCrop(); err != nil {
+			if err := e.command(idCropVisual, 0); err != nil {
 				e.tell(err.Error())
 			}
 		}

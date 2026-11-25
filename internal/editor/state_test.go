@@ -46,7 +46,7 @@ func TestSelectionByIdentity(t *testing.T) {
 	q := p.Clone()
 	q.Assets[0], q.Assets[1] = q.Assets[1], q.Assets[0]
 	q.Tracks[0].Clips[0], q.Tracks[0].Clips[1] = q.Tracks[0].Clips[1], q.Tracks[0].Clips[0]
-	s.Adopt(q)
+	s.adopt(q)
 	if s.AssetID() != "b" || s.AssetIndex() != 0 || s.PrimaryID() != "early" || s.ClipIndex() != 0 || s.Count() != 2 {
 		t.Fatal("selection shifted with storage order")
 	}
@@ -70,15 +70,15 @@ func TestTransferAndHistoryReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Adopt(q)
+	s.adopt(q)
 	if s.TrackID() != "V2" || s.PrimaryID() != "middle" || s.Count() != 2 || s.AnchorID() != "early" {
 		t.Fatal("selection did not follow transfer")
 	}
-	s.Adopt(p)
+	s.adopt(p)
 	if s.TrackID() != "V1" || s.PrimaryID() != "middle" || s.Count() != 2 {
 		t.Fatal("selection did not follow undo")
 	}
-	s.Adopt(q)
+	s.adopt(q)
 	if s.TrackID() != "V2" || s.PrimaryID() != "middle" {
 		t.Fatal("selection did not follow redo")
 	}
@@ -86,7 +86,7 @@ func TestTransferAndHistoryReconciliation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Adopt(deleted)
+	s.adopt(deleted)
 	if s.PrimaryID() != "early" || s.Count() != 1 {
 		t.Fatal("surviving selection lost")
 	}
@@ -97,7 +97,7 @@ func TestTransferAndHistoryReconciliation(t *testing.T) {
 		t.Fatal("invalid track switch")
 	}
 	s.SwitchTrack("V2")
-	s.Adopt(project.New())
+	s.adopt(project.New())
 	if s.TrackID() != "V1" || s.Count() != 0 || s.ClipIndex() != -1 {
 		t.Fatal("removed track fallback")
 	}
@@ -122,7 +122,7 @@ func TestRestoreLegacySelection(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s.Adopt(q)
+	s.adopt(q)
 	if s.AssetIndex() != -1 || s.ClipIndex() != -1 || s.Count() != 0 {
 		t.Fatal("removed references retained")
 	}

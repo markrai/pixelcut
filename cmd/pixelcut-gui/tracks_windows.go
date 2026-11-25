@@ -5,6 +5,7 @@ import (
 	"strings"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -110,13 +111,11 @@ func (e *editor) showTracks() error {
 		return err
 	}
 	e.stopPreview()
-	if err = e.commitWithSelection(q, func() {
-		e.model.SwitchTrack(target)
-		if len(ids) > 0 {
-			e.model.Select(ids, ids[0])
-			e.model.SetAnchor(ids[0])
-		}
-	}); err != nil {
+	update := editorstate.SelectionUpdate{TrackID: target, ReplaceClips: true, ClipIDs: ids}
+	if len(ids) > 0 {
+		update.Primary, update.Anchor = ids[0], ids[0]
+	}
+	if err = e.commitWithSelection(q, update); err != nil {
 		return err
 	}
 	e.tell("Tracks updated. Active track: " + target + ". Ctrl+Z to undo.")

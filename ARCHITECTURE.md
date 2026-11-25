@@ -175,3 +175,35 @@ the final transaction API. Crop and transform still have special live-preview
 commit paths. 2C.R.4 will move history, dirty state and validated transactions into
 the controller, including complete selection/history semantics. No schema or
 media processing changes are introduced.
+
+## 2C.R.4 transaction ownership
+
+The portable editor controller owns committed project snapshots, selection,
+history and the saved fingerprint. Commit validates the candidate project and
+typed selection update before publishing either; it deep-copies caller-owned
+project data and uses the canonical fingerprint to distinguish a no-op from
+an edit. A selection-only transaction does not add history or discard redo.
+A changed transaction records one before/after entry, including active track,
+asset, selection, primary and anchor. Undo/redo restore those recorded editing
+selections rather than the selection at the time the history command is invoked.
+History is limited to 50 edits, remains in memory, and uses immutable project
+snapshots shared between adjacent entries. A new changed commit discards redo.
+The saved fingerprint is independent of history; returning to the saved project
+is clean, and an unknown recovery baseline remains dirty until saved.
+
+All ordinary edits and live crop/transform apply use State.Commit. The native
+adapter selects preview invalidation and applies optional view changes only
+after success; crop/transform keep their live preview. Native controls, gesture
+drafts, clipboard and timeline view are not undoable history data. New/open and
+recovery initialize a fresh controller; save marks its saved baseline only after
+successful file persistence. Project returns a borrowed read-only value; callers
+must clone it before editing. No new project or recovery JSON fields are added.
+
+Portable command requirements cover single clip, video clip, group selection,
+asset selection, clipboard and history availability. Native IDs map to these
+requirements for command dispatch and menu filtering. Menus retain additional
+position/source-specific checks; individual operations still validate arguments
+and reject incompatible candidates. Native modality, busy and gesture handling
+remain at the presentation boundary. Toolbar appearance is not yet dynamically
+bound to all eligibility conditions. Geometry, playback and service lifecycle
+remain later extraction slices.

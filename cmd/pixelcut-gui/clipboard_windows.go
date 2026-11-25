@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -66,12 +67,8 @@ func (e *editor) pasteAt(duplicate bool, position *int64) error {
 	if err = r.Project.Validate(); err != nil {
 		return err
 	}
-	e.stopPreview()
-	_, e.zoom = timelineEditView(e.playhead, e.playhead, e.zoom, e.scale(clientRect(e.timeline).Right))
-	if err = e.commitWithSelection(r.Project, func() {
-		e.model.Select(ids, ids[0])
-		e.model.SetAnchor(ids[0])
-	}); err != nil {
+	_, zoom := timelineEditView(e.playhead, e.playhead, e.zoom, e.scale(clientRect(e.timeline).Right))
+	if err = e.commitEdit(r.Project, editorstate.SelectionUpdate{ReplaceClips: true, ClipIDs: ids, Primary: ids[0], Anchor: ids[0]}, &editView{playhead: e.playhead, zoom: zoom}); err != nil {
 		return err
 	}
 	user.NewProc("SetFocus").Call(e.timeline)

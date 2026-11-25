@@ -176,60 +176,58 @@ type previewResult struct {
 }
 
 type editor struct {
-	model                             editorstate.State
-	undo, redo                        []project.Project
-	controls                          map[int]uintptr
-	status, host                      uintptr
-	busy                              bool
-	cancel                            context.CancelFunc
-	results                           chan result
-	previewCancel                     context.CancelFunc
-	previewDone                       chan struct{}
-	previewResults                    chan previewResult
-	generation                        uint64
-	dirty                             bool
-	engine                            media.Engine
-	timeline                          uintptr
-	layout                            []placedControl
-	zoom                              float64
-	origin, playhead                  int64
-	drag                              *timelineDrag
-	clock                             *previewClock
-	scrubbing, scrubPlaying           bool
-	cropSession                       *cropSession
-	transformSession                  *transformSession
-	transformControls                 []uintptr
-	inspectorControls                 []uintptr
-	thumbnails                        *thumbnailCache
-	thumbnailRevision                 uint64
-	waveforms                         *waveformCache
-	waveformRevision                  uint64
-	recovery                          *session.Store
-	recoveryLock                      syscall.Handle
-	recoveryError                     string
-	lastCheckpoint                    time.Time
-	savedView                         recoveryView
-	projectPath                       string
-	snapDisabled                      bool
-	assetDrag                         *assetDrag
-	marquee                           *marqueeDrag
-	rippleTrim                        bool
-	clipboard                         project.ClipClipboard
-	menuOpen                          bool
-	frameCache                        map[string]frameCacheEntry
-	frameSnap                         bool
-	playbackSpeed                     float64
-	projectRevision, savedFingerprint string
-	recentDir                         string
-	recent                            []string
-	mediaDisk                         *mediacache.Cache
-	sourceVersions                    map[string]mediacache.Source
-	lastSourceCheck                   time.Time
-	mediaListDirty                    bool
-	prefs                             session.Preferences
-	preferencesWarning                string
-	previewLabel                      uintptr
-	timelineLabel                     uintptr
+	model                   editorstate.State
+	controls                map[int]uintptr
+	status, host            uintptr
+	busy                    bool
+	cancel                  context.CancelFunc
+	results                 chan result
+	previewCancel           context.CancelFunc
+	previewDone             chan struct{}
+	previewResults          chan previewResult
+	generation              uint64
+	engine                  media.Engine
+	timeline                uintptr
+	layout                  []placedControl
+	zoom                    float64
+	origin, playhead        int64
+	drag                    *timelineDrag
+	clock                   *previewClock
+	scrubbing, scrubPlaying bool
+	cropSession             *cropSession
+	transformSession        *transformSession
+	transformControls       []uintptr
+	inspectorControls       []uintptr
+	thumbnails              *thumbnailCache
+	thumbnailRevision       uint64
+	waveforms               *waveformCache
+	waveformRevision        uint64
+	recovery                *session.Store
+	recoveryLock            syscall.Handle
+	recoveryError           string
+	lastCheckpoint          time.Time
+	savedView               recoveryView
+	projectPath             string
+	snapDisabled            bool
+	assetDrag               *assetDrag
+	marquee                 *marqueeDrag
+	rippleTrim              bool
+	clipboard               project.ClipClipboard
+	menuOpen                bool
+	frameCache              map[string]frameCacheEntry
+	frameSnap               bool
+	playbackSpeed           float64
+	projectRevision         string
+	recentDir               string
+	recent                  []string
+	mediaDisk               *mediacache.Cache
+	sourceVersions          map[string]mediacache.Source
+	lastSourceCheck         time.Time
+	mediaListDirty          bool
+	prefs                   session.Preferences
+	preferencesWarning      string
+	previewLabel            uintptr
+	timelineLabel           uintptr
 }
 
 func u(s string) *uint16 {
@@ -346,24 +344,30 @@ func (e *editor) fields() {
 }
 
 func (e *editor) commit(q project.Project) error {
-	return e.commitWithSelection(q, nil)
+	return e.commitWithSelection(q, editorstate.SelectionUpdate{})
 }
 
-func (e *editor) commitWithSelection(q project.Project, update func()) error {
-	if err := q.ValidateEditorLayout(); err != nil {
+type editView struct {
+	playhead int64
+	zoom     float64
+}
+
+func (e *editor) commitWithSelection(q project.Project, update editorstate.SelectionUpdate) error {
+	return e.commitEdit(q, update, nil)
+}
+
+func (e *editor) commitEdit(q project.Project, update editorstate.SelectionUpdate, view *editView) error {
+	track, primary := e.trackID(), e.model.PrimaryID()
+	changed, err := e.model.Commit(q, update)
+	if err != nil {
 		return err
 	}
-	e.stopPreview()
-	e.undo = append(e.undo, e.model.Project().Clone())
-	if len(e.undo) > 50 {
-		e.undo = e.undo[1:]
+	if changed || track != e.trackID() || primary != e.model.PrimaryID() {
+		e.stopPreview()
 	}
-	e.redo = nil
-	e.model.Adopt(q)
-	if update != nil {
-		update()
+	if view != nil {
+		e.playhead, e.zoom = view.playhead, view.zoom
 	}
-	e.dirty = true
 	e.refresh()
 	return nil
 }
@@ -553,22 +557,15 @@ func (e *editor) command(id, notification int) error {
 	if e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing {
 		return fmt.Errorf("finish the active drag first")
 	}
-	if e.model.Count() > 1 {
-		switch id {
-		case idApply, idSplit, idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut:
-			return fmt.Errorf("select a single clip for this operation")
-		}
-	}
 	if e.transformSession != nil && id != idTransformApply && id != idTransformCancel && id != idTransformReset && id != idRotateLeft && id != idRotateRight && id != idFlipH && id != idFlipV {
 		return fmt.Errorf("Apply or cancel the active transform first")
 	}
 	if e.cropSession != nil && id != idCropVisual && id != idCropReset && id != idKeys {
 		return fmt.Errorf("Finish or cancel the active crop first")
 	}
-	if e.audioTrack() {
-		switch id {
-		case idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut:
-			return fmt.Errorf("this operation requires a video track")
+	if id != idUndo && id != idRedo {
+		if err := e.availability().Check(commandRequirement(id)); err != nil {
+			return err
 		}
 	}
 	switch id {
@@ -735,18 +732,16 @@ func (e *editor) command(id, notification int) error {
 		e.updateRippleButton()
 		e.tell("Ripple trimming updated." + e.rememberPreferences())
 	case idUndo, idRedo:
-		from, to := &e.undo, &e.redo
-		if id == idRedo {
-			from, to = to, from
-		}
-		if len(*from) == 0 {
+		if (id == idUndo && !e.model.CanUndo()) || (id == idRedo && !e.model.CanRedo()) {
 			return nil
 		}
 		e.stopPreview()
-		*to = append(*to, e.model.Project().Clone())
-		e.model.Adopt((*from)[len(*from)-1])
-		*from = (*from)[:len(*from)-1]
-		e.dirty = true
+		if id == idUndo {
+			e.model.Undo()
+		} else {
+			e.model.Redo()
+		}
+		e.playhead = min(e.playhead, e.endTime())
 		e.refresh()
 		if _, ok := e.selected(); ok && e.model.Count() <= 1 && !e.audioTrack() {
 			if err := e.startPreview(true); err != nil {
@@ -1051,10 +1046,13 @@ func (e *editor) removeAsset() error {
 	if err != nil {
 		return err
 	}
-	e.stopPreview()
 	assetIndex := min(e.model.AssetIndex(), len(q.Assets)-1)
-	e.playhead = min(e.playhead, q.EndTime())
-	if err = e.commitWithSelection(q, func() { e.model.SetAssetIndex(assetIndex) }); err != nil {
+	view := editView{playhead: min(e.playhead, q.EndTime()), zoom: e.zoom}
+	assetID := ""
+	if assetIndex >= 0 {
+		assetID = q.Assets[assetIndex].ID
+	}
+	if err = e.commitEdit(q, editorstate.SelectionUpdate{ReplaceAsset: true, AssetID: assetID}, &view); err != nil {
 		return err
 	}
 	e.tell("Asset removed from project; source file unchanged. Ctrl+Z to undo.")

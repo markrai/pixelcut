@@ -12,6 +12,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -198,7 +199,11 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 	}
 	if placed == 0 {
 		if b.Added > 0 {
-			if err := e.commitWithSelection(b.Project, func() { e.model.SetAssetIndex(b.Selected) }); err != nil {
+			assetID := ""
+			if b.Selected >= 0 && b.Selected < len(b.Project.Assets) {
+				assetID = b.Project.Assets[b.Selected].ID
+			}
+			if err := e.commitWithSelection(b.Project, editorstate.SelectionUpdate{ReplaceAsset: true, AssetID: assetID}); err != nil {
 				e.tell(err.Error())
 				return
 			}

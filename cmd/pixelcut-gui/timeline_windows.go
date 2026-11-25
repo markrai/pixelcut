@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/markrai/pixelcut/internal/media"
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -448,8 +449,8 @@ func (e *editor) finishTimeline() {
 				e.tell(err.Error())
 			} else {
 				end := q.EndTime()
-				e.playhead, e.zoom = timelineEditView(e.playhead, end, e.zoom, d.scale)
-				if err := e.commit(q); err != nil {
+				playhead, zoom := timelineEditView(e.playhead, end, e.zoom, d.scale)
+				if err := e.commitEdit(q, editorstate.SelectionUpdate{}, &editView{playhead: playhead, zoom: zoom}); err != nil {
 					e.tell(err.Error())
 				} else if d.ripple {
 					e.tell("Ripple trim applied.")

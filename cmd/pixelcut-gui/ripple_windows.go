@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -10,14 +11,9 @@ func (e *editor) commitRipple(q project.Project, clearSelection bool) error {
 	if err := q.Validate(); err != nil {
 		return err
 	}
-	e.stopPreview()
 	end := q.EndTime()
-	e.playhead, e.zoom = timelineEditView(e.playhead, end, e.zoom, e.scale(clientRect(e.timeline).Right))
-	return e.commitWithSelection(q, func() {
-		if clearSelection {
-			e.model.Clear()
-		}
-	})
+	playhead, zoom := timelineEditView(e.playhead, end, e.zoom, e.scale(clientRect(e.timeline).Right))
+	return e.commitEdit(q, editorstate.SelectionUpdate{ReplaceClips: clearSelection}, &editView{playhead: playhead, zoom: zoom})
 }
 
 func (e *editor) rippleDeleteSelection() error {

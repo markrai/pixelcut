@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/markrai/pixelcut/internal/media"
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -171,16 +172,9 @@ func (e *editor) applyVisualCrop() error {
 	}
 	q := e.model.Project().Clone()
 	q.Tracks[e.trackIndex()].Clips[e.model.ClipIndex()] = c
-	if err := q.Validate(); err != nil {
+	if _, err := e.model.Commit(q, editorstate.SelectionUpdate{}); err != nil {
 		return err
 	}
-	e.undo = append(e.undo, e.model.Project().Clone())
-	if len(e.undo) > 50 {
-		e.undo = e.undo[1:]
-	}
-	e.redo = nil
-	e.model.Adopt(q)
-	e.dirty = true
 	e.clock.setComposition(s.asset, c.Crop, c.Transform, false)
 	e.endVisualCropUI()
 	e.refresh()

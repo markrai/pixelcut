@@ -3,16 +3,21 @@ package editor
 import "github.com/markrai/pixelcut/internal/project"
 
 type State struct {
-	p       project.Project
-	track   string
-	asset   string
-	ids     map[string]bool
-	primary string
-	anchor  string
+	p                project.Project
+	track            string
+	asset            string
+	ids              map[string]bool
+	primary          string
+	anchor           string
+	history          history
+	fingerprint      string
+	savedFingerprint string
 }
 
 func New(p project.Project) State {
-	return State{p: p, track: "V1"}
+	p = p.Clone()
+	fingerprint := p.Fingerprint()
+	return State{p: p, track: "V1", fingerprint: fingerprint, savedFingerprint: fingerprint}
 }
 
 func (s *State) Project() project.Project { return s.p }
@@ -185,7 +190,7 @@ func (s *State) Modify(id string, ctrl, shift bool) {
 	}
 }
 
-func (s *State) Adopt(p project.Project) {
+func (s *State) adopt(p project.Project) {
 	ids, primary, anchor := s.IDs(), s.primary, s.anchor
 	s.p = p
 	s.SetAssetID(s.asset)
