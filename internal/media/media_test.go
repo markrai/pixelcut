@@ -81,6 +81,9 @@ func TestHLGMediaPipeline(t *testing.T) {
 	if err = v.ValidateHLG(); err != nil {
 		t.Fatalf("%v: %+v", err, v)
 	}
+	thumb,err:=e.Thumbnail(ctx,src,0.5,48,32)
+	if err!=nil || len(thumb)!=48*32*4 {t.Fatalf("thumbnail: %d bytes: %v",len(thumb),err)}
+	if _,err:=e.Thumbnail(ctx,src,0.5,47,32);err==nil {t.Fatal("accepted odd thumbnail width")}
 	copied := filepath.Join(dir, "copy.mp4")
 	if err = e.Remux(ctx, src, copied); err != nil {
 		t.Fatal(err)

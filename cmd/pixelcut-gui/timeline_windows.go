@@ -107,6 +107,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		}
 		if t>math.MaxInt64-step {break}
 	}
+	var demand []thumbnailKey
 	for i,c:=range e.track().Clips {
 		valid:=true
 		if e.drag!=nil && e.drag.index==i && e.drag.moved {c=e.drag.candidate;valid=e.drag.valid}
@@ -118,20 +119,21 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if i==e.clip {col=palette.selected}
 		if !valid {col=rgb(136,55,61)}
 		fill(dc,rect{left,laneTop,right,laneBottom},col)
+		a,_:=e.p.Asset(c.AssetID)
+		if valid {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
 		if i==e.clip && right-left>12 {
 			fill(dc,rect{left,laneTop,left+3,laneBottom},palette.accent)
 			fill(dc,rect{right-3,laneTop,right,laneBottom},palette.accent)
 		}
-		a,_:=e.p.Asset(c.AssetID)
 		if right-left>20 {
-			textAt(dc,rect{left+8,laneTop+3,right-7,laneTop+28},filepath.Base(a.Path),palette.text,4)
-			textAt(dc,rect{left+8,laneTop+27,right-7,laneBottom},fmt.Sprintf("%.2fs",project.Seconds(c.Out-c.In)),palette.text,4)
+			textAt(dc,rect{left+8,laneTop,right-7,laneTop+19},fmt.Sprintf("%s  %.2fs",filepath.Base(a.Path),project.Seconds(c.Out-c.In)),palette.text,4)
 		}
 		if a.HasAudio {
 			fill(dc,rect{left,104,right,140},palette.audio)
 			if right-left>35 {textAt(dc,rect{left+8,104,right-5,140},"Audio",palette.muted,4)}
 		}
 	}
+	if e.thumbnails!=nil {e.thumbnails.request(demand)}
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
 		fill(dc,rect{x,19,x+2,h},palette.accent)
