@@ -158,6 +158,9 @@ func (e *editor) timelineContext(lp uintptr) {
 	keyboard := lp == ^uintptr(0) || uint32(lp) == 0xffffffff
 	pos := point{max(trackHeader, min(w-1, e.xAt(e.playhead, w))), laneTop + 8}
 	if keyboard {
+		if l, ok := e.timelineStack().Find(e.trackID()); ok {
+			pos.Y = max(timeline.TrackTop, min(e.timelineStack().Bottom-1, laneTop+8+l.Offset()))
+		}
 		if c, ok := e.selected(); ok {
 			l, r := max(trackHeader, e.xAt(c.Start, w)), min(w, e.xAt(c.Start+(c.Out-c.In), w))
 			if r > l {
@@ -168,6 +171,13 @@ func (e *editor) timelineContext(lp uintptr) {
 	screen, local := contextPoint(e.timeline, lp, pos)
 	if local.X < trackHeader || local.X >= w {
 		return
+	}
+	if !keyboard {
+		if l, ok := e.timelineStack().At(local.Y); ok {
+			e.selectTimelineLane(l.TrackID)
+		} else if local.Y >= timeline.TrackTop {
+			return
+		}
 	}
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.updatePlaybackClock()
