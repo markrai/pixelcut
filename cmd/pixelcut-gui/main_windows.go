@@ -337,9 +337,10 @@ func (e *editor) finished() {
 	for _, h := range e.controls { user.NewProc("EnableWindow").Call(h, 1) }
 	if r.err != nil { e.tell(r.err.Error()); return }
 	if r.asset != nil {
-		q := e.p.Clone()
-		q.Assets = append(q.Assets, *r.asset)
-		e.asset = len(q.Assets)-1
+		q,index,added,err:=e.p.AddAsset(*r.asset)
+		if err!=nil {e.tell(err.Error());return}
+		if !added {e.selectExistingAsset(index);return}
+		e.asset=index
 		if err := e.commit(q); err != nil { e.tell(err.Error()); return }
 	}
 	e.tell(r.message)
@@ -439,12 +440,14 @@ func (e *editor) command(id, notification int) error {
 				return fmt.Errorf("this prototype only opens V1 projects with an empty A1 track")
 			}
 		}
+		q,merged,err:=q.MergeDuplicateAssets()
+		if err!=nil {return err}
 		e.stopPreview()
-		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,false
+		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,len(merged)>0
 		e.origin,e.playhead,e.zoom=0,0,0
 		e.projectPath=projectPath
 		e.refresh()
-		e.tell("Project ready.")
+		if len(merged)>0 {e.tell(fmt.Sprintf("Project ready. Merged %d duplicate asset(s); all clips retained.",len(merged)))} else {e.tell("Project ready.")}
 	case idSave:
 		path, err := pick(true,"PixelCut project (*.pixelcut.json)\x00*.pixelcut.json\x00","json","Save project as")
 		if err != nil || path == "" { return err }
@@ -459,6 +462,7 @@ func (e *editor) command(id, notification int) error {
 	case idImport:
 		path, err := pick(false,"Video files (*.mp4;*.mov)\x00*.mp4;*.mov\x00All files\x00*.*\x00","mp4","Import video")
 		if err != nil || path == "" { return err }
+		if index,ok:=e.p.FindAssetPath(path);ok {e.selectExistingAsset(index);return nil}
 		e.tell("Inspecting source...")
 		e.startJob(func(ctx context.Context) result {
 			r, err := e.engine.Inspect(ctx,path)
@@ -769,4 +773,11 @@ func (e *editor) updateSnapButton() {
 	h:=e.controls[idSnap]
 	change(h,label)
 	user.NewProc("InvalidateRect").Call(h,0,1)
+}
+
+func (e *editor) selectExistingAsset(index int) {
+	e.asset=index
+	send.Call(e.controls[idAssets],lbSet,uintptr(index),0)
+	e.checkpoint()
+	e.tell("Already imported: "+filepath.Base(e.p.Assets[index].Path))
 }

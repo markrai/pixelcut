@@ -43,6 +43,16 @@ func (e *editor) openRecovery() error {
 		e.asset,e.clip=state.Asset,state.Clip
 		e.playhead,e.origin,e.zoom=state.Playhead,state.Origin,state.Zoom
 		e.dirty,e.projectPath=state.Dirty,state.ProjectPath
+		q,merged,err:=e.p.MergeDuplicateAssets()
+		if err==nil && len(merged)>0 {
+			selectedID:=""
+			if e.asset>=0 && e.asset<len(e.p.Assets) {selectedID=e.p.Assets[e.asset].ID}
+			if id,ok:=merged[selectedID];ok {selectedID=id}
+			e.p=q
+			e.asset=-1
+			for i,a:=range q.Assets {if a.ID==selectedID {e.asset=i;break}}
+			e.dirty=true
+		}
 	}
 	e.savedView=e.view()
 	return nil
