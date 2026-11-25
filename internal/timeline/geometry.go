@@ -53,7 +53,7 @@ func (v View) XAt(t int64) int32 {
 
 func (v View) ZoomAt(marker int64, factor float64) (float64, int64) {
 	zoom := max(.05, min(1000, v.Scale()*factor))
-	offset := int64(max(0, float64(v.Width-Header))/zoom*float64(project.TicksPerSecond)/2)
+	offset := int64(max(0, float64(v.Width-Header)) / zoom * float64(project.TicksPerSecond) / 2)
 	return zoom, max(0, marker-offset)
 }
 

@@ -345,7 +345,7 @@ func (e *editor) moveTimeline(x int32) {
 	}
 	d.moved = true
 	r := timeline.EvaluateDrag(e.model.Project(), timeline.DragRequest{
-		Ref: project.ClipRef{TrackID: e.trackID(), ClipID: d.original.ID},
+		Ref:  project.ClipRef{TrackID: e.trackID(), ClipID: d.original.ID},
 		Mode: d.mode, GroupIDs: d.groupIDs, Pixels: x - d.x, Scale: d.scale,
 		Marker: e.playhead, Magnetic: !e.snapDisabled, Bypass: keyPressed(0x10),
 		Ripple: d.ripple, Frames: d.frames, SourceDuration: d.sourceDuration,
