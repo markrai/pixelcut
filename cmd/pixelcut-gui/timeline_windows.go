@@ -35,6 +35,8 @@ type timelineDrag struct {
 	snapTarget int64
 	groupIDs []string
 	groupProject project.Project
+	ripple bool
+	rippleDelta int64
 }
 
 func registerTimeline() {
@@ -117,7 +119,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	for i,c:=range e.track().Clips {
 		valid:=true
 		if d:=e.drag;d!=nil && d.moved {
-			if len(d.groupIDs)>1 && e.group[c.ID] {c=d.groupProject.Tracks[0].Clips[i];valid=d.valid} else if len(d.groupIDs)<=1 && d.index==i {c=d.candidate;valid=d.valid}
+			if d.ripple || (len(d.groupIDs)>1 && e.group[c.ID]) {c=d.groupProject.Tracks[0].Clips[i];valid=d.valid} else if len(d.groupIDs)<=1 && d.index==i {c=d.candidate;valid=d.valid}
 		}
 		left,right:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if right<=trackHeader || left>=w {continue}
@@ -152,6 +154,12 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 			fill(dc,rect{x,28,x+2,145},rgb(112,220,241))
 			textAt(dc,rect{max(trackHeader,x-40),0,min(w,x+80),27},"SNAP",rgb(112,220,241),4)
 		}
+	}
+	if d:=e.drag;d!=nil && d.ripple && d.moved && d.mode=="left" && d.valid {
+		at:=d.original.Start
+		if d.rippleDelta>=-at {at+=d.rippleDelta} else {at=0}
+		x:=e.xAt(at,w)
+		if x>=trackHeader && x<w {fill(dc,rect{x,laneTop,x+1,laneBottom},rgb(112,220,241))}
 	}
 	e.paintAssetGhost(dc,w)
 	e.paintMarquee(dc,w,h)
@@ -192,7 +200,7 @@ func (e *editor) beginTimeline(x,y,w int32) {
 			if keyPressed(0x11) || keyPressed(0x10) {e.modifySelection(i,keyPressed(0x11),keyPressed(0x10));return}
 			if !e.clipSelected(i,c) || len(e.group)<=1 {e.selectClip(i)} else {e.clip=i;e.syncSelectionUI();mode="move"}
 			ids:=e.selectionIDs()
-			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t,groupIDs:ids,groupProject:e.p}
+			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t,groupIDs:ids,groupProject:e.p,ripple:e.rippleTrim && mode!="move" && len(ids)==1}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x,y,w)
 			return
@@ -218,7 +226,10 @@ func (e *editor) moveTimeline(x int32) {
 	delta:=int64(math.Round(raw/10000))*10000
 	tolerance:=int64(0)
 	if !e.snapDisabled && !keyPressed(0x10) {tolerance=int64(math.Min(2000000,math.Round(8/d.scale*float64(project.TicksPerSecond))))}
-	if len(d.groupIDs)>1 {
+	if d.ripple {
+		r,err:=e.p.RippleTrim("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
+		d.groupProject=r.Project;d.rippleDelta=r.Delta;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
+	} else if len(d.groupIDs)>1 {
 		r,err:=e.p.MoveClips("V1",d.groupIDs,delta,e.playhead,tolerance)
 		d.groupProject=r.Project;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
 	} else {
@@ -234,12 +245,13 @@ func (e *editor) finishTimeline() {
 	if d!=nil && d.moved {
 		if d.valid {
 			q:=d.groupProject
-			if len(d.groupIDs)<=1 {q=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate}
+			if !d.ripple && len(d.groupIDs)<=1 {q=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate}
+			if d.ripple && d.rippleDelta==0 {e.invalidateTimeline();return}
 			if err:=q.Validate();err!=nil {e.tell(err.Error())} else {
 				var end int64
 				for _,clip:=range q.Tracks[0].Clips {end=max(end,clip.Start+(clip.Out-clip.In))}
 				e.playhead,e.zoom=timelineEditView(e.playhead,end,e.zoom,d.scale)
-				if err:=e.commit(q);err!=nil {e.tell(err.Error())} else {e.tell("Timeline edit applied.")}
+				if err:=e.commit(q);err!=nil {e.tell(err.Error())} else if d.ripple {e.tell("Ripple trim applied.")} else {e.tell("Timeline edit applied.")}
 			}
 		} else {e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")}
 	} else if d!=nil {

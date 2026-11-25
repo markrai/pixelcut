@@ -91,6 +91,9 @@ const (
 	idRemoveAsset
 	idSnap
 	idSelectAll
+	idRippleDelete
+	idRemoveGap
+	idRippleTrim
 )
 
 type windowClass struct {
@@ -183,6 +186,7 @@ type editor struct {
 	group map[string]bool
 	anchor string
 	marquee *marqueeDrag
+	rippleTrim bool
 }
 
 func u(s string) *uint16 {
@@ -424,7 +428,7 @@ func (e *editor) startPreview(paused bool) error {
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
-	if e.assetDrag!=nil || e.marquee!=nil {return fmt.Errorf("finish the active drag first")}
+	if e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing {return fmt.Errorf("finish the active drag first")}
 	if len(e.group)>1 {
 		switch id {case idApply,idSplit,idCropVisual,idCropReset,idTransform,idExport:return fmt.Errorf("select a single clip for this operation")}
 	}
@@ -537,6 +541,13 @@ func (e *editor) command(id, notification int) error {
 		e.selectAllClips()
 	case idDelete:
 		return e.deleteSelection()
+	case idRippleDelete:
+		return e.rippleDeleteSelection()
+	case idRemoveGap:
+		return e.removeGap()
+	case idRippleTrim:
+		e.rippleTrim=!e.rippleTrim
+		e.updateRippleButton()
 	case idUndo,idRedo:
 		from,to:=&e.undo,&e.redo
 		if id==idRedo { from,to=to,from }
@@ -615,7 +626,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idSnap && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idRippleTrim && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -719,7 +730,10 @@ func main() {
 	edit("",825,297,155,idAt)
 	button("Split",986,296,110,idSplit)
 	button("Remove clip",825,332,130,idDelete)
-	label("TIMELINE  /  V1 + linked audio",12,423,420)
+	label("TIMELINE  /  V1 + linked audio",12,423,310)
+	button("Ripple delete",330,419,125,idRippleDelete)
+	button("Remove gap",461,419,105,idRemoveGap)
+	button("Ripple: off",572,419,120,idRippleTrim)
 	button("-",832,419,48,idZoomOut)
 	button("+",886,419,48,idZoomIn)
 	button("Fit",940,419,70,idFit)

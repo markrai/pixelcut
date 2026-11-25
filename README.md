@@ -91,6 +91,10 @@ The desktop shell includes a dark theme, resizable layout, a graphical V1 lane a
 
 Drop one or more supported video files from Windows Explorer onto the media bin or timeline, or select multiple files through Import video. Files are inspected in the background, duplicates select existing entries, and unsupported files are reported without discarding valid imports. Drag a media-bin item into V1 to place it at a chosen timestamp with snapping and a placement ghost. Explorer drops onto the V1 lane import and place successful assets contiguously; other drops import only. Overlapping placements are rejected without losing successfully imported assets. Each successful batch is undoable and automatically recovered.
 
+## Ripple editing
+
+Shift+Delete ripple-deletes selected clips. G removes the gap at the playhead. R toggles ripple edge trimming, which anchors the edited clip's start and shifts later clips by the duration change. Regular Delete still leaves gaps.
+
 ## Multi-selection
 
 Ctrl-click clips to toggle selection, Shift-click to select a chronological range, Ctrl+A to select all timeline clips, or drag from empty lane space to select with a marquee. Move selected clips together with snapping, or delete them in one undoable operation. Clip properties and transformations remain single-clip operations.
