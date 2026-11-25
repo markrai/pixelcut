@@ -23,7 +23,7 @@ type Asset struct {
 	Width    int    `json:"width"`
 	Height   int    `json:"height"`
 	HasAudio bool   `json:"has_audio"`
-	Range string `json:"range,omitempty"`
+	Range    string `json:"range,omitempty"`
 }
 
 type Crop struct {
@@ -34,12 +34,12 @@ type Crop struct {
 }
 
 type Clip struct {
-	ID       string `json:"id"`
-	AssetID  string `json:"asset_id"`
-	Start    int64  `json:"start_us"`
-	In       int64  `json:"in_us"`
-	Out      int64  `json:"out_us"`
-	Crop     *Crop  `json:"crop,omitempty"`
+	ID        string           `json:"id"`
+	AssetID   string           `json:"asset_id"`
+	Start     int64            `json:"start_us"`
+	In        int64            `json:"in_us"`
+	Out       int64            `json:"out_us"`
+	Crop      *Crop            `json:"crop,omitempty"`
 	Transform *media.Transform `json:"transform,omitempty"`
 }
 
@@ -82,7 +82,7 @@ func FromReport(id, path string, r media.Report) (Asset, error) {
 	if err != nil {
 		return Asset{}, err
 	}
-	a := Asset{ID: id, Path: path, Duration: d, Width: v.Width, Height: v.Height, Range:v.Range}
+	a := Asset{ID: id, Path: path, Duration: d, Width: v.Width, Height: v.Height, Range: v.Range}
 	for _, s := range r.Streams {
 		if s.CodecType == "audio" {
 			a.HasAudio = true
@@ -144,11 +144,17 @@ func (p Project) Validate() error {
 					return fmt.Errorf("clip %q: %w", c.ID, err)
 				}
 			}
-			if c.Transform!=nil {
-				if a.Range!="" && a.Range!="tv" {return fmt.Errorf("clip %q: canvas transforms require limited-range HLG",c.ID)}
-				w,h:=a.Width,a.Height
-				if c.Crop!=nil {w,h=c.Crop.Width,c.Crop.Height}
-				if _,err:=c.Transform.Placement(w,h);err!=nil {return fmt.Errorf("clip %q: %w",c.ID,err)}
+			if c.Transform != nil {
+				if a.Range != "" && a.Range != "tv" {
+					return fmt.Errorf("clip %q: canvas transforms require limited-range HLG", c.ID)
+				}
+				w, h := a.Width, a.Height
+				if c.Crop != nil {
+					w, h = c.Crop.Width, c.Crop.Height
+				}
+				if _, err := c.Transform.Placement(w, h); err != nil {
+					return fmt.Errorf("clip %q: %w", c.ID, err)
+				}
 			}
 			clips[c.ID] = true
 			end = c.Start + (c.Out - c.In)
@@ -164,9 +170,9 @@ func (p Project) Clone() Project {
 	for i := range q.Tracks {
 		q.Tracks[i].Clips = append([]Clip{}, p.Tracks[i].Clips...)
 		for j := range q.Tracks[i].Clips {
-			if tr:=q.Tracks[i].Clips[j].Transform;tr!=nil {
-				copy:=*tr
-				q.Tracks[i].Clips[j].Transform=&copy
+			if tr := q.Tracks[i].Clips[j].Transform; tr != nil {
+				copy := *tr
+				q.Tracks[i].Clips[j].Transform = &copy
 			}
 			if c := q.Tracks[i].Clips[j].Crop; c != nil {
 				copy := *c
@@ -195,7 +201,10 @@ func (p Project) Split(track, clip, rightID string, at int64) (Project, error) {
 			}
 			right := c
 			right.ID, right.Start, right.In = rightID, at, c.In+(at-c.Start)
-			if right.Transform!=nil {copy:=*right.Transform;right.Transform=&copy}
+			if right.Transform != nil {
+				copy := *right.Transform
+				right.Transform = &copy
+			}
 			if right.Crop != nil {
 				copy := *right.Crop
 				right.Crop = &copy
@@ -222,26 +231,26 @@ func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
 	if c.In < 0 || c.Out <= c.In || c.Out > a.Duration {
 		return a, media.Edit{}, errors.New("invalid source interval")
 	}
-	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Out-c.In), Trim: c.In != 0 || c.Out != a.Duration}
+	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Out - c.In), Trim: c.In != 0 || c.Out != a.Duration}
 	if c.Crop != nil {
 		e.Crop = &media.Crop{X: c.Crop.X, Y: c.Crop.Y, Width: c.Crop.Width, Height: c.Crop.Height}
 		if err := e.Crop.Validate(media.Stream{Width: a.Width, Height: a.Height}); err != nil {
 			return a, media.Edit{}, err
 		}
 	}
-	if c.Transform!=nil {
-		copy:=*c.Transform
-		e.Transform=&copy
+	if c.Transform != nil {
+		copy := *c.Transform
+		e.Transform = &copy
 	}
 	return a, e, nil
 }
 
-func Load(path string) (Project,error) {
-	p,_,err:=LoadRevision(path)
-	return p,err
+func Load(path string) (Project, error) {
+	p, _, err := LoadRevision(path)
+	return p, err
 }
 
 func (p Project) SaveAs(path string) error {
-	_,err:=p.SaveNew(path)
+	_, err := p.SaveNew(path)
 	return err
 }

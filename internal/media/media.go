@@ -134,8 +134,12 @@ func (e Edit) validate(v Stream) error {
 		return errors.New("trim requires a finite nonnegative start and positive duration")
 	}
 	if e.Transform != nil {
-		if v.Range!="tv" {return errors.New("canvas transforms currently require limited-range HLG")}
-		if _,_,_,err:=VideoFilters(v.Width,v.Height,e.Crop,e.Transform);err!=nil {return err}
+		if v.Range != "tv" {
+			return errors.New("canvas transforms currently require limited-range HLG")
+		}
+		if _, _, _, err := VideoFilters(v.Width, v.Height, e.Crop, e.Transform); err != nil {
+			return err
+		}
 	}
 	if !e.Trim && e.Crop == nil && e.Transform == nil {
 		return errors.New("no edit requested")
@@ -189,9 +193,13 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 		args = append(args, "-ss", seconds(edit.Start), "-t", seconds(edit.Duration))
 	}
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
-	graph,w,h,err:=VideoFilters(display.Width,display.Height,edit.Crop,edit.Transform)
-	if err!=nil {return err}
-	if graph!="" {args=append(args,"-vf",graph)}
+	graph, w, h, err := VideoFilters(display.Width, display.Height, edit.Crop, edit.Transform)
+	if err != nil {
+		return err
+	}
+	if graph != "" {
+		args = append(args, "-vf", graph)
+	}
 	rangeName, chroma := "limited", "0"
 	if v.Range == "pc" {
 		rangeName = "full"
