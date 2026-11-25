@@ -152,7 +152,7 @@ func (e *editor) selectClip(i int) {
 }
 
 func (e *editor) beginTimeline(x,y,w int32) {
-	if e.busy || e.cropSession!=nil || x<trackHeader {return}
+	if e.busy || e.cropSession!=nil || e.transformSession!=nil || x<trackHeader {return}
 	t:=e.timeAt(x,w)
 	if t>e.endTime() {t=e.endTime()}
 	playing:=e.playing()

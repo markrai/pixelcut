@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -18,6 +19,7 @@ type cropRequest struct {
 	width,height int
 	crop project.Crop
 	edit bool
+	filters map[string]string
 }
 
 type cropSample struct {
@@ -51,14 +53,31 @@ func cropOrFull(a project.Asset,c *project.Crop) project.Crop {
 }
 
 func (r cropRequest) payload() string {
-	b,_:=json.Marshal(map[string]any{"serial":r.serial,"width":r.width,"height":r.height,"crop":r.crop,"edit":r.edit})
+	b,_:=json.Marshal(map[string]any{"serial":r.serial,"width":r.width,"height":r.height,"crop":r.crop,"edit":r.edit,"filters":r.filters})
 	return string(b)
 }
 
 func (c *previewClock) setCrop(a project.Asset, crop *project.Crop, editing bool) uint64 {
+	return c.setComposition(a,crop,nil,editing)
+}
+
+func (c *previewClock) setComposition(a project.Asset, crop *project.Crop, tr *media.Transform, editing bool) uint64 {
+	var filters map[string]string
+	if tr!=nil && !editing {
+		var mc *media.Crop
+		if crop!=nil {mc=&media.Crop{X:crop.X,Y:crop.Y,Width:crop.Width,Height:crop.Height}}
+		graph,_,_,err:=media.VideoFilters(a.Width,a.Height,mc,tr)
+		if err!=nil {c.cropError.Store(true);return 0}
+		filters=map[string]string{}
+		for _,rotation:=range []int{0,90,180,270} {
+			f,err:=media.PreviewFilters(graph,rotation)
+			if err!=nil {c.cropError.Store(true);return 0}
+			filters[fmt.Sprint(rotation)]=f
+		}
+	}
 	serial:=uint64(1)
 	if old:=c.cropRequest.Load();old!=nil {serial=old.serial+1}
-	c.cropRequest.Store(&cropRequest{serial:serial,width:a.Width,height:a.Height,crop:cropOrFull(a,crop),edit:editing})
+	c.cropRequest.Store(&cropRequest{serial:serial,width:a.Width,height:a.Height,crop:cropOrFull(a,crop),edit:editing,filters:filters})
 	return serial
 }
 
@@ -89,7 +108,7 @@ func (e *editor) cancelVisualCrop() {
 	if e.cropSession==nil {return}
 	c,ok:=e.selected()
 	if ok && e.clock!=nil {
-		e.clock.setCrop(e.cropSession.asset,c.Crop,false)
+		e.clock.setComposition(e.cropSession.asset,c.Crop,c.Transform,false)
 	}
 	e.endVisualCropUI()
 	e.fields()
@@ -113,7 +132,7 @@ func (e *editor) applyVisualCrop() error {
 	e.redo=nil
 	e.p=q
 	e.dirty=true
-	e.clock.setCrop(s.asset,c.Crop,false)
+	e.clock.setComposition(s.asset,c.Crop,c.Transform,false)
 	e.endVisualCropUI()
 	e.refresh()
 	e.tell("Crop applied. Preview and export use the selected rectangle.")

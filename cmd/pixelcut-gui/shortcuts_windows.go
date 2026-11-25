@@ -120,6 +120,18 @@ func (e *editor) handleShortcut(m message) bool {
 		child,_,_:=user.NewProc("IsChild").Call(mainWindow,m.Window)
 		if child==0 {return false}
 	}
+	if e.transformSession!=nil {
+		if m.WParam==0x1b {e.cancelTransform();return true}
+		if m.WParam==0x0d {if err:=e.applyTransform();err!=nil {e.tell(err.Error())};return true}
+		if m.WParam==0x09 {
+			prev:=uintptr(0)
+			if keyPressed(0x10) {prev=1}
+			h,_,_:=user.NewProc("GetNextDlgTabItem").Call(mainWindow,m.Window,prev)
+			if h!=0 {user.NewProc("SetFocus").Call(h)}
+			return true
+		}
+		return false
+	}
 	editing:=false
 	for _,id:=range []int{idStart,idIn,idOut,idCrop,idAt} {
 		if m.Window==e.controls[id] {editing=true;break}

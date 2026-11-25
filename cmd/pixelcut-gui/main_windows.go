@@ -74,6 +74,15 @@ const (
 	idKeys
 	idCropVisual
 	idCropReset
+	idTransform
+	idCanvasW
+	idCanvasH
+	idScale
+	idPositionX
+	idPositionY
+	idTransformApply
+	idTransformReset
+	idTransformCancel
 )
 
 type windowClass struct {
@@ -147,6 +156,9 @@ type editor struct {
 	clock *previewClock
 	scrubbing, scrubPlaying bool
 	cropSession *cropSession
+	transformSession *transformSession
+	transformControls []uintptr
+	inspectorControls []uintptr
 }
 
 func u(s string) *uint16 {
@@ -316,6 +328,7 @@ func (e *editor) finished() {
 
 func (e *editor) stopPreview() {
 	if e.cropSession!=nil {e.endVisualCropUI()}
+	if e.transformSession!=nil {e.endTransformUI()}
 	e.updatePlaybackClock()
 	e.clock=nil
 	e.generation++
@@ -361,7 +374,7 @@ func (e *editor) startPreview(paused bool) error {
 	e.previewDone = done
 	generation := e.generation
 	clock:=newPreviewClock(c,e.playhead,paused)
-	clock.setCrop(a,c.Crop,false)
+	clock.setComposition(a,c.Crop,c.Transform,false)
 	e.clock=clock
 	processDone:=make(chan struct{})
 	clockDone:=make(chan struct{})
@@ -390,6 +403,7 @@ func (e *editor) startPreview(paused bool) error {
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
+	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
 	case idNew,idOpen:
@@ -508,6 +522,14 @@ func (e *editor) command(id, notification int) error {
 		e.tell("History restored.")
 	case idZoomOut,idZoomIn,idFit:
 		e.zoomTimeline(id)
+	case idTransform:
+		return e.beginTransform()
+	case idTransformApply:
+		return e.applyTransform()
+	case idTransformReset:
+		e.resetTransformDraft()
+	case idTransformCancel:
+		e.cancelTransform()
 	case idCropVisual:
 		return e.beginOrApplyCrop()
 	case idCropReset:
@@ -529,7 +551,7 @@ func (e *editor) command(id, notification int) error {
 		e.tell("Exporting selected clip with source HDR...")
 		e.startJob(func(ctx context.Context) result {
 			var err error
-			if !ed.Trim && ed.Crop==nil { err=e.engine.Remux(ctx,a.Path,path) } else { err=e.engine.Render(ctx,a.Path,path,ed) }
+			if !ed.Trim && ed.Crop==nil && ed.Transform==nil { err=e.engine.Remux(ctx,a.Path,path) } else { err=e.engine.Render(ctx,a.Path,path,ed) }
 			return result{err:err,message:"Export complete: "+path}
 		})
 	}
@@ -555,12 +577,12 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idCropReset && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idTransformCancel && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
 	case 0x0113:
-		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();return 0}
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();return 0}
 	case wmDone:
 		ui.finished()
 		return 0
@@ -576,6 +598,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0010:
 		if ui.cropSession!=nil {ui.cancelVisualCrop()}
+		if ui.transformSession!=nil {ui.cancelTransform()}
 		if ui.busy { ui.tell("Wait for the current media operation to finish."); return 0 }
 		if ui.confirmDiscard() { destroy.Call(hwnd) }
 		return 0
@@ -633,8 +656,10 @@ func main() {
 	label("Crop: x,y,width,height (blank = full)",825,176,270)
 	edit("",825,199,271,idCrop)
 	button("Apply edits",825,234,130,idApply)
+	button("Transform",961,234,135,idTransform)
 	button("Visual crop",825,370,130,idCropVisual)
 	button("Reset crop",961,370,135,idCropReset)
+	ui.initTransformInspector()
 	label("Split at timeline time",825,273,270)
 	edit("",825,297,155,idAt)
 	button("Split",986,296,110,idSplit)

@@ -76,6 +76,19 @@ local function original_crop(b)
 end
 
 local function show_result()
+    if type(req.filters)=="table" then
+        if mp.get_property("video-params/colorlevels")~="limited" then publish(false,"Canvas transforms require limited-range HLG");return end
+        local rotation=(mp.get_property_number("video-params/rotate",0)%360+360)%360
+        local graph=req.filters[tostring(rotation)]
+        if not graph then publish(false,"Unsupported preview rotation");return end
+        local ok,err=mp.set_property("video-crop","")
+        if not ok then publish(false,tostring(err));return end
+        ok,err=mp.commandv("vf","set",graph)
+        publish(ok==true,ok and "" or tostring(err))
+        return
+    end
+    local ok,err=mp.commandv("vf","clr","")
+    if not ok then publish(false,tostring(err));return end
     local c=original_crop(box)
     if not c then publish(false,"Unsupported preview rotation");return end
     local value=""
@@ -161,7 +174,9 @@ mp.register_script_message("pixelcut-crop",function(payload)
     remove_bindings()
     if editing then
         mp.set_property_bool("pause",true)
-        local ok,err=mp.set_property("video-crop","")
+        local ok,err=mp.commandv("vf","clr","")
+        if not ok then publish(false,tostring(err));return end
+        ok,err=mp.set_property("video-crop","")
         if not ok then publish(false,tostring(err));return end
         bind_mouse("MBTN_LEFT","pc-crop-mouse",false)
         bind_mouse("Shift+MBTN_LEFT","pc-crop-shift",true)

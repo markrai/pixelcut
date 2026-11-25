@@ -119,6 +119,7 @@ func (c Crop) Validate(v Stream) error {
 
 type Edit struct {
 	Crop            *Crop
+	Transform       *Transform
 	Start, Duration float64
 	Trim            bool
 }
@@ -132,7 +133,11 @@ func (e Edit) validate(v Stream) error {
 	if e.Trim && (math.IsNaN(e.Start) || math.IsNaN(e.Duration) || math.IsInf(e.Start, 0) || math.IsInf(e.Duration, 0) || e.Start < 0 || e.Duration <= 0) {
 		return errors.New("trim requires a finite nonnegative start and positive duration")
 	}
-	if !e.Trim && e.Crop == nil {
+	if e.Transform != nil {
+		if v.Range!="tv" {return errors.New("canvas transforms currently require limited-range HLG")}
+		if _,_,_,err:=VideoFilters(v.Width,v.Height,e.Crop,e.Transform);err!=nil {return err}
+	}
+	if !e.Trim && e.Crop == nil && e.Transform == nil {
 		return errors.New("no edit requested")
 	}
 	if e.Trim {
@@ -184,12 +189,9 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 		args = append(args, "-ss", seconds(edit.Start), "-t", seconds(edit.Duration))
 	}
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
-	w, h := display.Width, display.Height
-	if edit.Crop != nil {
-		c := *edit.Crop
-		w, h = c.Width, c.Height
-		args = append(args, "-vf", fmt.Sprintf("crop=%d:%d:%d:%d", w, h, c.X, c.Y))
-	}
+	graph,w,h,err:=VideoFilters(display.Width,display.Height,edit.Crop,edit.Transform)
+	if err!=nil {return err}
+	if graph!="" {args=append(args,"-vf",graph)}
 	rangeName, chroma := "limited", "0"
 	if v.Range == "pc" {
 		rangeName = "full"

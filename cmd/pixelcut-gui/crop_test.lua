@@ -5,6 +5,8 @@ local mp={}
 function mp.create_osd_overlay() return {update=function() end,remove=function() end} end
 function mp.set_property_native(k,v) props[k]=v;return true end
 function mp.set_property(k,v) props[k]=v;return true end
+function mp.get_property(k) return props[k] end
+function mp.commandv(command,op,value) assert(command=="vf" and value~=nil);props["vf"]=value;return true end
 function mp.set_property_bool(k,v) props[k]=v;return true end
 function mp.get_property_native(k) return props[k] end
 function mp.get_property_number(k,default) return props[k] or default end
@@ -47,3 +49,16 @@ assert(not state.dragging and state.ready)
 bindings["pc-crop-enter"]()
 assert(props["user-data/pixelcut/crop"].action=="apply")
 print("Visual crop script tests passed")
+
+request(90,false)
+props["video-params/colorlevels"]="limited"
+payload.filters={["90"]="lavfi=[transpose=clock,scale=120:160,pad=240:320:60:80:color=black,setsar=1],format=rotate=0"}
+handlers["pixelcut-crop"]("fixture")
+assert(props["vf"]==payload.filters["90"] and props["video-crop"]=="")
+request(90,true)
+assert(props["vf"]=="" and props["video-crop"]=="")
+props["video-params/colorlevels"]="full"
+payload.edit=false;payload.filters={["90"]="test"}
+handlers["pixelcut-crop"]("fixture")
+assert(not props["user-data/pixelcut/crop"].ready)
+print("Transform preview script tests passed")
