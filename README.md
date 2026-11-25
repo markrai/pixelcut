@@ -91,6 +91,10 @@ The desktop shell includes a dark theme, resizable layout, a graphical V1 lane a
 
 Drop one or more supported video files from Windows Explorer onto the media bin or timeline, or select multiple files through Import video. Files are inspected in the background, duplicates select existing entries, and unsupported files are reported without discarding valid imports. Drag a media-bin item into V1 to place it at a chosen timestamp with snapping and a placement ghost. Explorer drops onto the V1 lane import and place successful assets contiguously; other drops import only. Overlapping placements are rejected without losing successfully imported assets. Each successful batch is undoable and automatically recovered.
 
+## Stacked timeline tracks
+
+All project tracks share a single ruler and playhead. Video tracks are stacked with the most recently added video track at the top; each has its attached source-audio waveform row. Independent audio tracks appear below the video tracks. Click a track header or clip to make that track active. Drag selected clip bodies horizontally and vertically onto a compatible track; snapping uses the destination track's boundaries. Overlapping or cross-kind drops are rejected, and a successful transfer is one undoable edit. Trim handles remain on the original track. Drag media-bin assets or Explorer files onto a specific main lane to place them there. Shift+mouse wheel scrolls the track stack; ordinary wheel scrolling and Ctrl+wheel zoom retain their existing behavior. Selection and marquee operations remain scoped to the active track. Preview and clip export are still isolated; independent audio playback and composition are not yet supported.
+
 ## Precision playback and editing
 
 Use comma/period to step through decoded frame timestamps, Ctrl+Left/Right to jump edit boundaries, I/O to set source In/Out, B to toggle source-frame trim snapping, and brackets to adjust preview speed. Frame indices are generated on demand from actual presentation timestamps rather than average FPS.
