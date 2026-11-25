@@ -32,6 +32,7 @@ func separator() menuItem {return menuItem{}}
 
 type timelineMenuState struct {
 	count int
+	audioTrack bool
 	frameSnap bool
 	offline bool
 	split,paste,pasteHere,gap,hasClips,undo,redo,snap,ripple bool
@@ -44,8 +45,8 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 		items=append(items,item(idSplit,"Split at playhead\tS",single&&s.split),separator(),
 			item(idCopy,"Copy\tCtrl+C",true),item(idCut,"Cut\tCtrl+X",true),
 			item(idPaste,"Paste at playhead\tCtrl+V",s.paste),item(idDuplicate,"Duplicate\tCtrl+D",true),separator(),
-			item(idSetIn,"Set source In at playhead\tI",single&&s.split&&!s.offline),item(idSetOut,"Set source Out at playhead\tO",single&&s.split&&!s.offline),separator(),
-			item(idCropVisual,"Visual crop",single&&!s.offline),item(idTransform,"Transform",single&&!s.offline),item(idExport,"Export clip\tCtrl+E",single&&!s.offline),separator(),
+			item(idSetIn,"Set source In at playhead\tI",single&&s.split&&!s.offline&&!s.audioTrack),item(idSetOut,"Set source Out at playhead\tO",single&&s.split&&!s.offline&&!s.audioTrack),separator(),
+			item(idCropVisual,"Visual crop",single&&!s.offline&&!s.audioTrack),item(idTransform,"Transform",single&&!s.offline&&!s.audioTrack),item(idExport,"Export clip\tCtrl+E",single&&!s.offline&&!s.audioTrack),separator(),
 			item(idDelete,"Delete\tDel",true),item(idRippleDelete,"Ripple delete\tShift+Del",true),separator(),
 			item(menuSelectAsset,"Select source in media bin",single),item(menuRevealClip,"Show source in Explorer",single&&!s.offline),
 			item(menuRelinkClip,"Relink source...",single&&s.offline),item(menuReplaceClip,"Replace source...",single))
@@ -61,7 +62,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 
 func assetMenuItems(selected,offline,hasMissing bool) []menuItem {
 	return []menuItem{item(idImport,"Import videos...\tCtrl+I",true),separator(),
-		item(idAdd,"Add to end of V1",selected),item(menuRevealAsset,"Show source in Explorer",selected&&!offline),separator(),
+		item(idAdd,"Add to end of active track",selected),item(menuRevealAsset,"Show source in Explorer",selected&&!offline),separator(),
 		item(idRelinkAsset,"Relink offline asset...",selected&&offline),item(idReplaceAsset,"Replace source...",selected),
 		item(idRelinkFolder,"Search folder for offline assets...",hasMissing),separator(),
 		item(idRemoveAsset,"Remove asset\tDel",selected)}
@@ -116,7 +117,7 @@ func (e *editor) pastePossible(at int64) bool {
 	ids:=make([]string,e.clipboard.Count())
 	prefix:=nextID("menu-check")
 	for i:=range ids {ids[i]=fmt.Sprintf("%s-%d",prefix,i)}
-	_,err:=e.p.PasteClips("V1",e.clipboard,at,ids)
+	_,err:=e.p.PasteClips(e.trackID(),e.clipboard,at,ids)
 	return err==nil
 }
 
@@ -144,12 +145,12 @@ func (e *editor) timelineContext(lp uintptr) {
 	} else {
 		for i,c:=range e.track().Clips {
 			a,_:=e.p.Asset(c.AssetID)
-			if timelineMenuHit(local.X,local.Y,e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w),a.HasAudio) {hit=i;break}
+			if timelineMenuHit(local.X,local.Y,e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w),a.HasAudio && !e.audioTrack()) {hit=i;break}
 		}
 	}
 	at:=e.timeAt(local.X,w)
 	if keyboard {at=e.playhead}
-	s:=timelineMenuState{paste:e.pastePossible(e.playhead),hasClips:len(e.track().Clips)>0,undo:len(e.undo)>0,redo:len(e.redo)>0,snap:!e.snapDisabled,ripple:e.rippleTrim,frameSnap:e.frameSnap}
+	s:=timelineMenuState{audioTrack:e.audioTrack(),paste:e.pastePossible(e.playhead),hasClips:len(e.track().Clips)>0,undo:len(e.undo)>0,redo:len(e.redo)>0,snap:!e.snapDisabled,ripple:e.rippleTrim,frameSnap:e.frameSnap}
 	if hit>=0 {
 		if !e.clipSelected(hit,e.track().Clips[hit]) {e.selectClip(hit)}
 		s.count=len(e.selectionIDs())
@@ -160,7 +161,7 @@ func (e *editor) timelineContext(lp uintptr) {
 		e.checkpoint()
 	} else {
 		s.pasteHere=e.pastePossible(at)
-		_,_,err:=e.p.RemoveGap("V1",at)
+		_,_,err:=e.p.RemoveGap(e.trackID(),at)
 		s.gap=err==nil
 	}
 	id:=e.popup(timelineMenuItems(s),screen)

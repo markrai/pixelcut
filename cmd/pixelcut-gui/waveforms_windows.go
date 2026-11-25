@@ -117,7 +117,7 @@ func waveformInterval(in,out int64,clipLeft,scale float64,x,right int32) (int64,
 	return start,end
 }
 
-func (e *editor) paintWaveform(dc uintptr,left,right,w int32,c project.Clip,a project.Asset,demand *[]waveformKey) {
+func (e *editor) paintWaveform(dc uintptr,left,right,w,top,bottom int32,c project.Clip,a project.Asset,demand *[]waveformKey) {
 	if e.waveforms==nil || right<=left {return}
 	source,ok:=e.sourceVersions[a.Path]
 	if !ok {return}
@@ -129,12 +129,13 @@ func (e *editor) paintWaveform(dc uintptr,left,right,w int32,c project.Clip,a pr
 			for _,k:=range *demand {if k==key {duplicate=true;break}}
 			if !duplicate {*demand=append(*demand,key)}
 		}
-		if right-left>65 {textAt(dc,rect{left+8,104,right-5,140},"Audio",palette.muted,4)}
+		if right-left>65 {textAt(dc,rect{left+8,top,right-5,bottom},"Audio",palette.muted,4)}
 		return
 	}
 	scale:=e.scale(w)
 	clipLeft:=float64(trackHeader)+project.Seconds(c.Start-e.origin)*scale
-	center:=int32(122)
+	center:=(top+bottom)/2
+	amplitude:=max(int32(1),(bottom-top)/2-2)
 	color:=rgb(133,201,156)
 	fill(dc,rect{left,center,right,center+1},rgb(82,115,92))
 	for x:=left;x<right;x+=2 {
@@ -142,7 +143,7 @@ func (e *editor) paintWaveform(dc uintptr,left,right,w int32,c project.Clip,a pr
 		start,end:=waveformInterval(c.In,c.Out,clipLeft,scale,x,r)
 		peak:=p.Peak(start,end)
 		if peak==0 {continue}
-		h:=int32(math.Max(1,math.Round(float64(peak)*16/32768)))
+		h:=int32(math.Max(1,math.Round(float64(peak)*float64(amplitude)/32768)))
 		fill(dc,rect{x,center-h,x+1,center+h+1},color)
 	}
 }

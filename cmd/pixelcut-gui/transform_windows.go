@@ -176,7 +176,7 @@ func (e *editor) applyTransform() error {
 	if !ok || c.ID!=s.clipID {return errors.New("Clip selection changed")}
 	c.Transform=s.draft
 	q:=e.p.Clone()
-	q.Tracks[0].Clips[e.clip]=c
+	q.Tracks[e.trackIndex()].Clips[e.clip]=c
 	if err:=q.Validate();err!=nil {return err}
 	e.undo=append(e.undo,e.p.Clone())
 	if len(e.undo)>50 {e.undo=e.undo[1:]}

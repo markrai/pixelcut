@@ -141,7 +141,7 @@ func (e *editor) finishImport(b *project.ImportBatch,req *placementRequest) {
 		ids:=make([]string,len(b.AssetIDs))
 		prefix:=nextID("clip")
 		for i:=range ids {ids[i]=fmt.Sprintf("%s-%d",prefix,i)}
-		p,err:=b.Project.PlaceAssets("V1",b.AssetIDs,ids,req.start,req.marker,req.tolerance)
+		p,err:=b.Project.PlaceAssets(e.trackID(),b.AssetIDs,ids,req.start,req.marker,req.tolerance)
 		if err==nil {
 			e.asset=b.Selected
 			if err=e.commitPlacement(p);err!=nil {e.tell(err.Error());return}

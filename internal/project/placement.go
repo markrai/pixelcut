@@ -18,13 +18,13 @@ func (p Project) PlaceAssets(trackID string,assetIDs,clipIDs []string,start,mark
 	result:=AssetPlacement{Project:p,Start:max(0,start),FirstClip:-1}
 	if len(assetIDs)==0 || len(assetIDs)!=len(clipIDs) || len(assetIDs)>MaxImportFiles {return result,errors.New("invalid asset placement batch")}
 	ti:=-1
-	for i,t:=range p.Tracks {if t.ID==trackID && t.Kind=="video" {ti=i;break}}
-	if ti<0 {return result,errors.New("video track not found")}
+	for i,t:=range p.Tracks {if t.ID==trackID {ti=i;break}}
+	if ti<0 {return result,errors.New("track not found")}
 	var duration int64
 	clips:=make([]Clip,0,len(assetIDs))
 	for i,id:=range assetIDs {
 		a,ok:=p.Asset(id)
-		if !ok || a.Duration<=0 || a.Duration>math.MaxInt64-duration {return result,errors.New("invalid placement source or duration")}
+		if !ok || (p.Tracks[ti].Kind=="audio" && !a.HasAudio) || a.Duration<=0 || a.Duration>math.MaxInt64-duration {return result,errors.New("invalid placement source or duration")}
 		clips=append(clips,Clip{ID:clipIDs[i],AssetID:id,Start:duration,Out:a.Duration})
 		duration+=a.Duration
 	}
@@ -56,6 +56,7 @@ func (p Project) PlaceAssets(trackID string,assetIDs,clipIDs []string,start,mark
 	}
 	try:=func(at int64)(Project,error){
 		q:=p.Clone()
+		if q.Tracks[ti].Kind=="audio" {q.Version=Version}
 		for _,c:=range clips {
 			c.Start+=at
 			q.Tracks[ti].Clips=append(q.Tracks[ti].Clips,c)

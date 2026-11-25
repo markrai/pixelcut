@@ -127,7 +127,7 @@ func (e *editor) applyVisualCrop() error {
 	crop:=state.Crop
 	if crop==cropOrFull(s.asset,nil) {c.Crop=nil} else {c.Crop=&crop}
 	q:=e.p.Clone()
-	q.Tracks[0].Clips[e.clip]=c
+	q.Tracks[e.trackIndex()].Clips[e.clip]=c
 	if err:=q.Validate();err!=nil {return err}
 	e.undo=append(e.undo,e.p.Clone())
 	if len(e.undo)>50 {e.undo=e.undo[1:]}
@@ -148,7 +148,7 @@ func (e *editor) resetVisualCrop() error {
 	if c.Crop==nil {return nil}
 	c.Crop=nil
 	q:=e.p.Clone()
-	q.Tracks[0].Clips[e.clip]=c
+	q.Tracks[e.trackIndex()].Clips[e.clip]=c
 	if err:=e.commit(q);err!=nil {return err}
 	return e.startPreview(true)
 }

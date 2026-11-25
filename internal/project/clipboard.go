@@ -9,6 +9,7 @@ import (
 
 type ClipClipboard struct {
 	clips []Clip
+	kind string
 	assets map[string]Asset
 	span int64
 	originalEnd int64
@@ -29,7 +30,7 @@ func (p Project) CopyClips(trackID string,ids []string) (ClipClipboard,error) {
 	if err:=p.Validate();err!=nil {return b,err}
 	i,selected,err:=p.selectedTrack(trackID,ids)
 	if err!=nil {return b,err}
-	if p.Tracks[i].Kind!="video" {return b,errors.New("clipboard requires a video track")}
+	b.kind=p.Tracks[i].Kind
 	b.assets=map[string]Asset{}
 	for _,c:=range p.Tracks[i].Clips {
 		if !selected[c.ID] {continue}
@@ -59,13 +60,14 @@ func (p Project) PasteClips(trackID string,b ClipClipboard,at int64,ids []string
 	if at<0 || b.span<=0 || at>math.MaxInt64-b.span {return result,errors.New("clipboard placement outside timeline bounds")}
 	if err:=p.Validate();err!=nil {return result,err}
 	ti:=-1
-	for i,t:=range p.Tracks {if t.ID==trackID && t.Kind=="video" {ti=i;break}}
-	if ti<0 {return result,errors.New("video track not found")}
+	for i,t:=range p.Tracks {if t.ID==trackID && t.Kind==b.kind {ti=i;break}}
+	if ti<0 {return result,errors.New("clipboard requires a track of the same kind")}
 	for id,source:=range b.assets {
 		a,ok:=p.Asset(id)
 		if !ok || a!=source {return result,fmt.Errorf("clipboard source unavailable or changed: %s",source.Path)}
 	}
 	q:=p.Clone()
+	if q.Tracks[ti].Kind=="audio" {q.Version=Version}
 	first:=len(q.Tracks[ti].Clips)
 	for i,c:=range b.clips {
 		c=cloneClipboardClip(c)

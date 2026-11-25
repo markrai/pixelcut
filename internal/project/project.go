@@ -12,7 +12,8 @@ import (
 	"github.com/markrai/pixelcut/internal/media"
 )
 
-const Version = 1
+const LegacyVersion = 1
+const Version = 2
 const TicksPerSecond int64 = 1000000
 
 type Asset struct {
@@ -110,7 +111,7 @@ func (p Project) Asset(id string) (Asset, bool) {
 }
 
 func (p Project) Validate() error {
-	if p.Version != Version {
+	if p.Version != Version && p.Version != LegacyVersion {
 		return fmt.Errorf("unsupported project version %d", p.Version)
 	}
 	assets := map[string]Asset{}

@@ -10,15 +10,14 @@ func (e *editor) commitRipple(q project.Project,clearSelection bool) error {
 	if err:=q.Validate();err!=nil {return err}
 	e.stopPreview()
 	if clearSelection {e.group=nil;e.anchor="";e.clip=-1}
-	var end int64
-	for _,c:=range q.Tracks[0].Clips {end=max(end,c.Start+(c.Out-c.In))}
+	end:=q.EndTime()
 	e.playhead,e.zoom=timelineEditView(e.playhead,end,e.zoom,e.scale(clientRect(e.timeline).Right))
 	return e.commit(q)
 }
 
 func (e *editor) rippleDeleteSelection() error {
 	ids:=e.selectionIDs()
-	q,err:=e.p.RippleDelete("V1",ids)
+	q,err:=e.p.RippleDelete(e.trackID(),ids)
 	if err!=nil {return err}
 	if err=e.commitRipple(q,true);err!=nil {return err}
 	e.tell(fmt.Sprintf("Ripple deleted %d clip(s); source files unchanged.",len(ids)))
@@ -28,7 +27,7 @@ func (e *editor) rippleDeleteSelection() error {
 func (e *editor) removeGap() error {return e.removeGapAt(e.playhead)}
 
 func (e *editor) removeGapAt(at int64) error {
-	q,duration,err:=e.p.RemoveGap("V1",at)
+	q,duration,err:=e.p.RemoveGap(e.trackID(),at)
 	if err!=nil {return err}
 	if err=e.commitRipple(q,false);err!=nil {return err}
 	e.tell(fmt.Sprintf("Removed %.3fs gap.",project.Seconds(duration)))

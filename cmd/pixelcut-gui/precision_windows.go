@@ -100,16 +100,16 @@ func (e *editor) precisionAction(action int) error {
 	if delta==0 {return nil}
 	var q project.Project
 	if e.rippleTrim {
-		r,err:=e.p.RippleTrim("V1",c.ID,mode,delta,-1,0)
+		r,err:=e.p.RippleTrim(e.trackID(),c.ID,mode,delta,-1,0)
 		if err!=nil {return err}
 		if r.Delta!=delta {return fmt.Errorf("frame boundary exceeds ripple limits")}
 		q=r.Project
 	} else {
-		trimmed,err:=e.p.DragClip("V1",c.ID,mode,delta)
+		trimmed,err:=e.p.DragClip(e.trackID(),c.ID,mode,delta)
 		if err!=nil {return err}
 		if (mode=="left" && trimmed.In!=c.In+delta) || (mode=="right" && trimmed.Out!=c.Out+delta) {return fmt.Errorf("frame boundary exceeds trim limits")}
 		q=e.p.Clone()
-		q.Tracks[0].Clips[e.clip]=trimmed
+		q.Tracks[e.trackIndex()].Clips[e.clip]=trimmed
 	}
 	if err:=e.commitRipple(q,false);err!=nil {return err}
 	e.tell("Source "+mode+" boundary set to a decoded frame timestamp.")

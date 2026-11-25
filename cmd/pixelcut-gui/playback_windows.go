@@ -282,6 +282,9 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		return
 	}
 	c:=e.track().Clips[index]
+	if e.audioTrack() {
+		e.stopPreview();e.playhead=t;e.selectClip(index);e.refreshPlaybackMarker();e.tell("Audio track editing; mixed playback is not yet available.");return
+	}
 	if a,ok:=e.p.Asset(c.AssetID);!ok || !project.SourceAvailable(a.Path) {
 		e.stopPreview();e.playhead=t;e.selectClip(index);e.refreshPlaybackMarker()
 		e.tell("Source offline; use Relink. Timeline edits retained.");return

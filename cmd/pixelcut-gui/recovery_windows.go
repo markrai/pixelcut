@@ -16,10 +16,11 @@ type recoveryView struct {
 	playhead,origin int64
 	zoom float64
 	selection string
+	track string
 }
 
 func (e *editor) view() recoveryView {
-	return recoveryView{e.asset,e.clip,e.playhead,e.origin,e.zoom,e.selectionKey()}
+	return recoveryView{e.asset,e.clip,e.playhead,e.origin,e.zoom,e.selectionKey(),e.trackID()}
 }
 
 func (e *editor) openRecovery() error {
@@ -44,6 +45,7 @@ func (e *editor) openRecovery() error {
 	e.recovery=store
 	if state!=nil {
 		e.p=state.Project
+		e.activeTrack=state.ActiveTrack
 		e.asset,e.clip=state.Asset,state.Clip
 		e.playhead,e.origin,e.zoom=state.Playhead,state.Origin,state.Zoom
 		e.dirty,e.projectPath=state.Dirty,state.ProjectPath
@@ -75,7 +77,7 @@ func (e *editor) closeRecovery() {
 func (e *editor) checkpoint() bool {
 	if e.recovery==nil {return false}
 	e.lastCheckpoint=time.Now()
-	s:=session.State{Project:e.p,Asset:e.asset,Clip:e.clip,Playhead:e.playhead,Origin:e.origin,Zoom:e.zoom,Dirty:e.dirty,ProjectPath:e.projectPath,ProjectRevision:e.projectRevision,SavedFingerprint:e.savedFingerprint}
+	s:=session.State{Project:e.p,Asset:e.asset,Clip:e.clip,ActiveTrack:e.trackID(),Playhead:e.playhead,Origin:e.origin,Zoom:e.zoom,Dirty:e.dirty,ProjectPath:e.projectPath,ProjectRevision:e.projectRevision,SavedFingerprint:e.savedFingerprint}
 	if len(e.group)>1 {s.SelectedClips=e.selectionIDs()}
 	if err:=e.recovery.Save(s);err!=nil {
 		if e.recoveryError!=err.Error() {
@@ -115,7 +117,7 @@ func (e *editor) finishRecovery() {
 		e.tell(fmt.Sprintf("Restored session; %d source file(s) offline. References retained; use Relink.",missing))
 		return
 	}
-	if c,ok:=e.selected();e.prefs.RestorePreview && ok && e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {
+	if c,ok:=e.selected();e.prefs.RestorePreview && !e.audioTrack() && ok && e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {
 		if err:=e.startPreview(true);err!=nil {
 			e.tell("Restored session; preview unavailable: "+err.Error())
 			return

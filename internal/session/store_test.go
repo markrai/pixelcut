@@ -100,3 +100,35 @@ func TestSaveBaselineRecovery(t *testing.T) {
 	state.ProjectRevision="invalid"
 	if err=s.Save(state);err==nil {t.Fatal("invalid revision accepted")}
 }
+
+func TestActiveTrackRecovery(t *testing.T) {
+	state:=fixture(t)
+	state.Project.Version=project.LegacyVersion
+	q,id,err:=state.Project.AddTrack("audio")
+	if err!=nil {t.Fatal(err)}
+	placed,err:=q.PlaceAssets(id,[]string{"a"},[]string{"sound"},0,-1,0)
+	if err!=nil {t.Fatal(err)}
+	state.Project=placed.Project
+	state.ActiveTrack=id
+	state.Clip=0
+	store,_,err:=Open(t.TempDir())
+	if err!=nil {t.Fatal(err)}
+	if err=store.Save(state);err!=nil {t.Fatal(err)}
+	_,got,err:=Open(store.dir)
+	if err!=nil || got==nil || !reflect.DeepEqual(*got,state) {t.Fatalf("track recovery: %+v %v",got,err)}
+	state.ActiveTrack="missing"
+	if err=store.Save(state);err==nil {t.Fatal("unknown active track accepted")}
+	state.ActiveTrack=id
+	state.Clip=1
+	if err=store.Save(state);err==nil {t.Fatal("selection outside active track accepted")}
+}
+
+func TestLegacyTrackRecovery(t *testing.T) {
+	state:=fixture(t)
+	state.Project.Version=project.LegacyVersion
+	store,_,err:=Open(t.TempDir())
+	if err!=nil {t.Fatal(err)}
+	if err=store.Save(state);err!=nil {t.Fatal(err)}
+	_,got,err:=Open(store.dir)
+	if err!=nil || got==nil || !reflect.DeepEqual(*got,state) {t.Fatal("legacy recovery was altered")}
+}

@@ -157,3 +157,7 @@ Offline assets retain every timeline edit. The Relink toolbar menu and asset/cli
 ### Application preferences
 
 Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or experimental HDR output, startup preview restoration, recovery view checkpoint timing and tool executable paths. Settings persist independently of projects. Space/Play starts from the marker, skips leading/interior gaps to the next clip, and does not restart playback at the final timeline end.
+
+### Multitrack foundation (2C.1)
+
+The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lane rendering, audio mixing and compositing follow in later phases. New projects use format version 2; legacy V1 projects remain readable.

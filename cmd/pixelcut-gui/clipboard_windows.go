@@ -8,10 +8,10 @@ import (
 
 func (e *editor) copySelection(cut bool) error {
 	ids:=e.selectionIDs()
-	b,err:=e.p.CopyClips("V1",ids)
+	b,err:=e.p.CopyClips(e.trackID(),ids)
 	if err!=nil {return err}
 	if cut {
-		q,err:=e.p.DeleteClips("V1",ids)
+		q,err:=e.p.DeleteClips(e.trackID(),ids)
 		if err!=nil {return err}
 		if err=e.commitRipple(q,true);err!=nil {return err}
 		e.clipboard=b
@@ -29,7 +29,7 @@ func (e *editor) pasteAt(duplicate bool,position *int64) error {
 	b:=e.clipboard
 	if duplicate {
 		var err error
-		b,err=e.p.CopyClips("V1",e.selectionIDs())
+		b,err=e.p.CopyClips(e.trackID(),e.selectionIDs())
 		if err!=nil {return err}
 	}
 	if b.Count()==0 {return fmt.Errorf("clip clipboard is empty")}
@@ -40,11 +40,11 @@ func (e *editor) pasteAt(duplicate bool,position *int64) error {
 	var r project.ClipboardPlacement
 	var err error
 	if duplicate {
-		r,err=e.p.DuplicateClips("V1",b,ids)
+		r,err=e.p.DuplicateClips(e.trackID(),b,ids)
 	} else {
 		at:=e.playhead
 		if position!=nil {at=*position}
-		r,err=e.p.PasteClips("V1",b,at,ids)
+		r,err=e.p.PasteClips(e.trackID(),b,at,ids)
 	}
 	if err!=nil {return fmt.Errorf("placement rejected: %w",err)}
 	if err=r.Project.Validate();err!=nil {return err}

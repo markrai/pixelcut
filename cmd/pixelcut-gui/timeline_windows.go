@@ -53,13 +53,7 @@ func (e *editor) invalidateTimeline() {
 	if e.timeline!=0 { user.NewProc("InvalidateRect").Call(e.timeline,0,0) }
 }
 
-func (e *editor) endTime() int64 {
-	var end int64
-	for _,c:=range e.track().Clips {
-		if n:=c.Start+(c.Out-c.In);n>end {end=n}
-	}
-	return end
-}
+func (e *editor) endTime() int64 {return e.p.EndTime()}
 
 func (e *editor) scale(w int32) float64 {
 	if e.zoom>0 { return e.zoom }
@@ -103,8 +97,13 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	fill(dc,rect{trackHeader,33,w,97},palette.bg)
 	fill(dc,rect{trackHeader,99,w,145},palette.bg)
 	textAt(dc,rect{10,0,trackHeader-4,32},"TIME",palette.muted,4)
-	textAt(dc,rect{12,laneTop,trackHeader-4,laneBottom},"V1  Video",palette.text,4)
-	textAt(dc,rect{12,99,trackHeader-4,145},"A1  Linked",palette.muted,4)
+	kind:="Video"
+	if e.audioTrack() {kind="Audio"}
+	textAt(dc,rect{12,laneTop,trackHeader-4,laneBottom},e.trackID()+" "+kind,palette.text,4)
+	if !e.audioTrack() {textAt(dc,rect{12,99,trackHeader-4,145},"Linked audio",palette.muted,4)} else {
+		textAt(dc,rect{12,99,trackHeader-4,145},"Independent",palette.muted,4)
+		textAt(dc,rect{trackHeader+8,99,w-8,145},"Audio editing only; mixed playback is not yet available.",palette.muted,4)
+	}
 	step:=rulerStep(e.scale(w))
 	minor:=max(int64(1),step/5)
 	start:=e.origin/minor*minor
@@ -124,20 +123,23 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	for i,c:=range e.track().Clips {
 		valid:=true
 		if d:=e.drag;d!=nil && d.moved {
-			if d.ripple || (len(d.groupIDs)>1 && e.group[c.ID]) {c=d.groupProject.Tracks[0].Clips[i];valid=d.valid} else if len(d.groupIDs)<=1 && d.index==i {c=d.candidate;valid=d.valid}
+			if d.ripple || (len(d.groupIDs)>1 && e.group[c.ID]) {c=d.groupProject.Tracks[e.trackIndex()].Clips[i];valid=d.valid} else if len(d.groupIDs)<=1 && d.index==i {c=d.candidate;valid=d.valid}
 		}
 		left,right:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if right<=trackHeader || left>=w {continue}
 		if left<trackHeader {left=trackHeader};if right>w {right=w}
 		if right<=left {right=left+1}
 		col:=palette.clip
+		if e.audioTrack() {col=palette.audio}
 		if e.clipSelected(i,c) {col=palette.selected}
 		a,_:=e.p.Asset(c.AssetID)
 		offline:=e.offline(a.Path)
 		if offline {col=rgb(94,52,60)}
 		if !valid {col=rgb(136,55,61)}
 		fill(dc,rect{left,laneTop,right,laneBottom},col)
-		if valid && !offline {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
+		if valid && !offline {
+			if e.audioTrack() {e.paintWaveform(dc,left,right,w,laneTop+19,laneBottom,c,a,&audioDemand)} else {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
+		}
 		if offline && right-left>48 {
 			textAt(dc,rect{left+6,laneTop+19,right-5,laneBottom},"MEDIA OFFLINE",rgb(255,166,166),4)
 		}
@@ -148,11 +150,11 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if right-left>20 {
 			textAt(dc,rect{left+8,laneTop,right-7,laneTop+19},fmt.Sprintf("%s  %.2fs",filepath.Base(a.Path),project.Seconds(c.Out-c.In)),palette.text,4)
 		}
-		if a.HasAudio {
+		if !e.audioTrack() && a.HasAudio {
 			audioColor:=palette.audio
 			if offline {audioColor=rgb(74,44,49)}
 			fill(dc,rect{left,104,right,140},audioColor)
-			if valid && !offline {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
+			if valid && !offline {e.paintWaveform(dc,left,right,w,104,140,c,a,&audioDemand)}
 			if offline && right-left>48 {textAt(dc,rect{left+6,104,right-5,140},"Offline audio",rgb(255,166,166),4)}
 			if e.clipSelected(i,c) && len(e.group)>1 {fill(dc,rect{left,104,right,106},palette.accent)}
 		}
@@ -215,7 +217,7 @@ func (e *editor) beginTimeline(x,y,w int32) {
 			ids:=e.selectionIDs()
 			var frames *media.FrameIndex
 			var duration int64
-			if e.frameSnap && mode!="move" && len(ids)==1 {
+			if !e.audioTrack() && e.frameSnap && mode!="move" && len(ids)==1 {
 				a,ok:=e.p.Asset(c.AssetID)
 				if !ok {return}
 				duration=a.Duration
@@ -230,7 +232,7 @@ func (e *editor) beginTimeline(x,y,w int32) {
 			e.setTimelineCursor(x,y,w)
 			return
 		}
-		if x>=l && x<r && y>=104 && y<140 {
+		if !e.audioTrack() && x>=l && x<r && y>=104 && y<140 {
 			if a,ok:=e.p.Asset(c.AssetID);ok && a.HasAudio && (keyPressed(0x11) || keyPressed(0x10)) {e.modifySelection(i,keyPressed(0x11),keyPressed(0x10));return}
 			e.seekTimeline(t,playing)
 			return
@@ -260,10 +262,10 @@ func (e *editor) moveTimeline(x int32) {
 		d.valid=false;d.snapped=false;d.candidate=d.original;d.groupProject=e.p;d.rippleDelta=0
 		if ok {
 			if d.ripple {
-				r,err:=e.p.RippleTrim("V1",d.original.ID,d.mode,frameDelta,-1,0)
+				r,err:=e.p.RippleTrim(e.trackID(),d.original.ID,d.mode,frameDelta,-1,0)
 				d.groupProject=r.Project;d.rippleDelta=r.Delta;d.valid=err==nil && r.Delta==frameDelta
 			} else {
-				c,err:=e.p.DragClip("V1",d.original.ID,d.mode,frameDelta)
+				c,err:=e.p.DragClip(e.trackID(),d.original.ID,d.mode,frameDelta)
 				d.candidate=c
 				d.valid=err==nil && ((d.mode=="left" && c.In==d.original.In+frameDelta) || (d.mode=="right" && c.Out==d.original.Out+frameDelta))
 			}
@@ -276,13 +278,13 @@ func (e *editor) moveTimeline(x int32) {
 			}
 		}
 	} else if d.ripple {
-		r,err:=e.p.RippleTrim("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
+		r,err:=e.p.RippleTrim(e.trackID(),d.original.ID,d.mode,delta,e.playhead,tolerance)
 		d.groupProject=r.Project;d.rippleDelta=r.Delta;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
 	} else if len(d.groupIDs)>1 {
-		r,err:=e.p.MoveClips("V1",d.groupIDs,delta,e.playhead,tolerance)
+		r,err:=e.p.MoveClips(e.trackID(),d.groupIDs,delta,e.playhead,tolerance)
 		d.groupProject=r.Project;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
 	} else {
-		r,err:=e.p.SnapDrag("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
+		r,err:=e.p.SnapDrag(e.trackID(),d.original.ID,d.mode,delta,e.playhead,tolerance)
 		d.candidate=r.Clip;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
 	}
 	e.invalidateTimeline()
@@ -294,11 +296,10 @@ func (e *editor) finishTimeline() {
 	if d!=nil && d.moved {
 		if d.valid {
 			q:=d.groupProject
-			if !d.ripple && len(d.groupIDs)<=1 {q=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate}
+			if !d.ripple && len(d.groupIDs)<=1 {q=e.p.Clone();q.Tracks[e.trackIndex()].Clips[d.index]=d.candidate}
 			if d.ripple && d.rippleDelta==0 {e.invalidateTimeline();return}
 			if err:=q.Validate();err!=nil {e.tell(err.Error())} else {
-				var end int64
-				for _,clip:=range q.Tracks[0].Clips {end=max(end,clip.Start+(clip.Out-clip.In))}
+				end:=q.EndTime()
 				e.playhead,e.zoom=timelineEditView(e.playhead,end,e.zoom,d.scale)
 				if err:=e.commit(q);err!=nil {e.tell(err.Error())} else if d.ripple {e.tell("Ripple trim applied.")} else {e.tell("Timeline edit applied.")}
 			}
@@ -436,7 +437,7 @@ func (e *editor) timelineCursor(x,y,w int32) uintptr {
 			if len(e.group)>1 && e.group[c.ID] {mode="move"}
 			return cursorForMode(mode,false)
 		}
-		if x>=l && x<r && y>=104 && y<140 {
+		if !e.audioTrack() && x>=l && x<r && y>=104 && y<140 {
 			if a,ok:=e.p.Asset(c.AssetID);ok && a.HasAudio {return cursorHand}
 		}
 	}

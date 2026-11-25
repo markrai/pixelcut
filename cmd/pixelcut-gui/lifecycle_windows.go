@@ -102,9 +102,7 @@ func (e *editor) confirmProjectSwitch() (bool,error) {
 func loadEditorProject(path string) (project.Project,string,error) {
 	q,rev,err:=project.LoadRevision(path)
 	if err!=nil {return q,"",err}
-	if len(q.Tracks)!=2 || q.Tracks[0].ID!="V1" || q.Tracks[0].Kind!="video" || q.Tracks[1].ID!="A1" || q.Tracks[1].Kind!="audio" || len(q.Tracks[1].Clips)!=0 {
-		return q,"",fmt.Errorf("this prototype only opens V1 projects with an empty A1 track")
-	}
+	if err=q.ValidateEditorLayout();err!=nil {return q,"",err}
 	return q,rev,nil
 }
 
@@ -128,7 +126,7 @@ func (e *editor) switchProject(path string,closing bool) error {
 	q,merged,err:=q.MergeDuplicateAssets()
 	if err!=nil {return err}
 	e.stopPreview()
-	e.group=nil;e.anchor=""
+	e.group=nil;e.anchor="";e.activeTrack="V1"
 	e.clipboard=project.ClipClipboard{}
 	e.p,e.undo,e.redo,e.asset,e.clip,e.dirty=q,nil,nil,-1,-1,len(merged)>0
 	e.origin,e.playhead,e.zoom=0,0,0

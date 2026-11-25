@@ -114,6 +114,7 @@ func (e *editor) previewActive() bool {
 }
 
 func (e *editor) togglePreview() error {
+	if e.audioTrack() {e.tell("Select a video track for preview; independent audio playback is not yet available.");return nil}
 	if e.playing() {return e.pausePreview()}
 	e.updatePlaybackClock()
 	index,at,ok:=project.PlaybackTarget(e.track().Clips,e.playhead)

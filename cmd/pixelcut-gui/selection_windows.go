@@ -120,7 +120,7 @@ func (e *editor) moveMarquee(x,y,w int32) {
 		if l>right || r<=left {continue}
 		a,_:=e.p.Asset(c.AssetID)
 		video:=top<laneBottom && bottom>=laneTop
-		audio:=a.HasAudio && top<140 && bottom>=104
+		audio:=!e.audioTrack() && a.HasAudio && top<140 && bottom>=104
 		if (video || audio) && !seen[c.ID] {ids=append(ids,c.ID);seen[c.ID]=true}
 	}
 	e.setSelection(ids,"")
@@ -163,12 +163,11 @@ func (e *editor) paintMarquee(dc uintptr,w,h int32) {
 
 func (e *editor) deleteSelection() error {
 	ids:=e.selectionIDs()
-	q,err:=e.p.DeleteClips("V1",ids)
+	q,err:=e.p.DeleteClips(e.trackID(),ids)
 	if err!=nil {return err}
 	e.stopPreview()
 	e.group=nil;e.anchor="";e.clip=-1
-	var end int64
-	for _,c:=range q.Tracks[0].Clips {end=max(end,c.Start+(c.Out-c.In))}
+	end:=q.EndTime()
 	e.playhead=min(e.playhead,end)
 	if err=e.commit(q);err!=nil {return err}
 	e.tell(fmt.Sprintf("Removed %d clip(s); sources unchanged.",len(ids)))

@@ -118,6 +118,7 @@ const (
 	idReplaceAsset
 	idRelinkFolder
 	idPreferences
+	idTracks
 )
 
 type windowClass struct {
@@ -230,6 +231,8 @@ type editor struct {
 	prefs session.Preferences
 	preferencesWarning string
 	previewLabel uintptr
+	activeTrack string
+	timelineLabel uintptr
 }
 
 func u(s string) *uint16 {
@@ -300,7 +303,7 @@ func pick(save bool, filter, ext, title string) (string, error) {
 
 func (e *editor) tell(s string) { change(e.status, s) }
 
-func (e *editor) track() *project.Track { return &e.p.Tracks[0] }
+func (e *editor) track() *project.Track { return &e.p.Tracks[e.trackIndex()] }
 
 func (e *editor) selected() (project.Clip, bool) {
 	t := e.track()
@@ -315,6 +318,7 @@ func fmtTime(t int64) string { return strconv.FormatFloat(project.Seconds(t), 'f
 func listAdd(h uintptr, s string) { send.Call(h, lbAdd, 0, uintptr(unsafe.Pointer(u(s)))) }
 
 func (e *editor) refresh() {
+	e.syncTrackUI()
 	e.checkSourceVersions(true)
 	a, c := e.controls[idAssets], e.controls[idClips]
 	e.refreshMediaList()
@@ -350,7 +354,7 @@ func (e *editor) fields() {
 }
 
 func (e *editor) commit(q project.Project) error {
-	if err := q.Validate(); err != nil { return err }
+	if err := q.ValidateEditorLayout(); err != nil { return err }
 	e.stopPreview()
 	e.undo = append(e.undo, e.p.Clone())
 	if len(e.undo) > 50 { e.undo = e.undo[1:] }
@@ -407,6 +411,7 @@ func (e *editor) stopPreview() {
 func (e *editor) play() error { return e.startPreview(false) }
 
 func (e *editor) startPreview(paused bool) error {
+	if e.audioTrack() {return fmt.Errorf("Independent audio preview is not yet supported; select a video track")}
 	c, ok := e.selected()
 	if !ok { return fmt.Errorf("select a timeline clip") }
 	a, ed, err := e.p.MediaEdit(c)
@@ -475,6 +480,9 @@ func (e *editor) command(id, notification int) error {
 	}
 	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
+	if e.audioTrack() {
+		switch id {case idCropVisual,idCropReset,idTransform,idExport,idFrameBack,idFrameForward,idSetIn,idSetOut:return fmt.Errorf("this operation requires a video track")}
+	}
 	switch id {
 	case idNew,idCloseProject:
 		return e.switchProject("",id==idCloseProject)
@@ -497,6 +505,8 @@ func (e *editor) command(id, notification int) error {
 		return e.relinkFolder()
 	case idPreferences:
 		return e.showPreferences()
+	case idTracks:
+		return e.showTracks()
 	case idImport:
 		paths,err:=pickImportFiles()
 		if err!=nil || len(paths)==0 {return err}
@@ -518,16 +528,13 @@ func (e *editor) command(id, notification int) error {
 	case idAdd:
 		if e.asset < 0 || e.asset >= len(e.p.Assets) { return fmt.Errorf("select a media asset") }
 		a := e.p.Assets[e.asset]
-		q := e.p.Clone()
 		var end int64
-		for _, c := range q.Tracks[0].Clips {
-			if n := c.Start+(c.Out-c.In); n>end { end=n }
-		}
-		q.Tracks[0].Clips = append(q.Tracks[0].Clips,project.Clip{ID:nextID("clip"),AssetID:a.ID,Start:end,Out:a.Duration})
-		e.group=nil;e.anchor=""
-		e.clip = len(q.Tracks[0].Clips)-1
-		if err := e.commit(q); err != nil { return err }
-		e.tell("Clip added.")
+		for _,c:=range e.track().Clips {end=max(end,c.Start+(c.Out-c.In))}
+		r,err:=e.p.PlaceAssets(e.trackID(),[]string{a.ID},[]string{nextID("clip")},end,-1,0)
+		if err!=nil {return err}
+		if r.Start!=end {return fmt.Errorf("clip exceeds timeline bounds")}
+		if err=e.commitPlacement(r);err!=nil {return err}
+		e.tell("Clip added to "+e.trackID()+".")
 	case idApply:
 		c, ok := e.selected()
 		if !ok { return fmt.Errorf("select a clip") }
@@ -547,15 +554,15 @@ func (e *editor) command(id, notification int) error {
 			c.Crop=&project.Crop{X:values[0],Y:values[1],Width:values[2],Height:values[3]}
 		}
 		q:=e.p.Clone()
-		q.Tracks[0].Clips[e.clip]=c
+		q.Tracks[e.trackIndex()].Clips[e.clip]=c
 		if err=e.commit(q); err!=nil { return err }
-		if err:=e.startPreview(true);err!=nil {e.tell("Edits applied; preview unavailable: "+err.Error())} else {e.tell("Clip properties applied.")}
+		if e.audioTrack() {e.tell("Audio clip properties applied.")} else if err:=e.startPreview(true);err!=nil {e.tell("Edits applied; preview unavailable: "+err.Error())} else {e.tell("Clip properties applied.")}
 	case idSplit:
 		c,ok:=e.selected()
 		if !ok { return fmt.Errorf("select a clip") }
 		at,err:=project.ParseSeconds(read(e.controls[idAt]))
 		if err!=nil { return err }
-		q,err:=e.p.Split("V1",c.ID,nextID("clip"),at)
+		q,err:=e.p.Split(e.trackID(),c.ID,nextID("clip"),at)
 		if err!=nil { return err }
 		if err=e.commit(q);err!=nil { return err }
 		e.tell("Clip split at timeline position.")
@@ -606,12 +613,13 @@ func (e *editor) command(id, notification int) error {
 		primary:=""
 		if c,ok:=e.selected();ok {primary=c.ID}
 		e.p=(*from)[len(*from)-1]
+		if e.p.TrackIndex(e.activeTrack)<0 {e.activeTrack="V1";ids=nil;primary=""}
 		e.setSelection(ids,primary)
 		e.anchor=primary
 		*from=(*from)[:len(*from)-1]
 		e.dirty=true
 		e.refresh()
-		if _,ok:=e.selected();ok && len(e.group)<=1 {
+		if _,ok:=e.selected();ok && len(e.group)<=1 && !e.audioTrack() {
 			if err:=e.startPreview(true);err!=nil {e.tell("History restored; preview unavailable: "+err.Error());return nil}
 		}
 		e.tell("History restored.")
@@ -675,7 +683,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idPreferences && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idTracks && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -790,7 +798,8 @@ func main() {
 	edit("",825,297,155,idAt)
 	button("Split",986,296,110,idSplit)
 	button("Remove clip",825,332,130,idDelete)
-	label("TIMELINE  /  V1 + linked audio",12,423,310)
+	ui.timelineLabel=label("TIMELINE / V1 / active track",12,423,180)
+	button("Track: V1 (2)",196,419,128,idTracks)
 	button("Ripple delete",330,419,125,idRippleDelete)
 	button("Remove gap",461,419,105,idRemoveGap)
 	button("Ripple: off",572,419,120,idRippleTrim)
@@ -842,10 +851,10 @@ func (e *editor) removeAsset() error {
 	e.asset=min(e.asset,len(q.Assets)-1)
 	e.clip=-1
 	var end int64
-	for i,c:=range q.Tracks[0].Clips {
+	for i,c:=range q.Tracks[e.trackIndex()].Clips {
 		if c.ID==selectedID {e.clip=i}
-		end=max(end,c.Start+(c.Out-c.In))
 	}
+	end=q.EndTime()
 	e.playhead=min(e.playhead,end)
 	if err=e.commit(q);err!=nil {return err}
 	e.tell("Asset removed from project; source file unchanged. Ctrl+Z to undo.")

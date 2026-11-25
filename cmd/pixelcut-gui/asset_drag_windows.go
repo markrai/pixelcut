@@ -64,7 +64,7 @@ func (e *editor) updateAssetDrag() {
 	d.over,d.valid=over,false
 	if over {
 		var err error
-		d.placement,err=e.p.PlaceAssets("V1",[]string{d.id},[]string{d.clipID},req.start,req.marker,req.tolerance)
+		d.placement,err=e.p.PlaceAssets(e.trackID(),[]string{d.id},[]string{d.clipID},req.start,req.marker,req.tolerance)
 		d.valid=err==nil
 	}
 	cursor:=cursorNo
@@ -88,7 +88,7 @@ func (e *editor) finishAssetDrag() {
 	e.cancelAssetDrag()
 	if !d.moved {e.checkpoint();return}
 	if !d.over {return}
-	if !d.valid {e.tell("Cannot place asset here: clips cannot overlap.");return}
+	if !d.valid {e.tell("Cannot place asset here: check track compatibility and overlapping clips.");return}
 	if err:=e.commitPlacement(d.placement);err!=nil {e.tell(err.Error());return}
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.tell("Asset placed on timeline.")
