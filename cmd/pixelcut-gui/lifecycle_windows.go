@@ -102,7 +102,7 @@ func (e *editor) saveProject(as bool) (bool, error) {
 	recovered := e.checkpoint()
 	note := e.rememberProject(path)
 	if !recovered {
-		note += " Recovery checkpoint unavailable."
+		note += " Recovery checkpoint could not be queued."
 	}
 	e.tell("Project saved: " + path + note)
 	return true, nil
@@ -166,6 +166,7 @@ func (e *editor) switchProject(path string, closing bool) error {
 	}
 	e.stopPreview()
 	e.clipboard = project.ClipClipboard{}
+	e.projectEpoch++
 	e.model = editorstate.New(q)
 	e.model.SetSavedBaseline(fingerprint)
 	e.origin, e.playhead, e.zoom = 0, 0, 0

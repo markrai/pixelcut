@@ -116,18 +116,7 @@ func (e *editor) applyPreferences(p session.Preferences) error {
 		e.stopPreview()
 	}
 	if toolsChanged {
-		if e.thumbnails != nil {
-			e.thumbnails.cancel()
-		}
-		if e.waveforms != nil {
-			e.waveforms.cancel()
-		}
-		if e.thumbnails != nil {
-			<-e.thumbnails.done
-		}
-		if e.waveforms != nil {
-			<-e.waveforms.done
-		}
+		e.retireMediaWorkers()
 		e.frameCache = nil
 	}
 	e.prefs = p

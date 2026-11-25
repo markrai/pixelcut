@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"slices"
 	"path/filepath"
 	"time"
 	"unsafe"
 
 	"github.com/markrai/pixelcut/internal/mediacache"
+	"github.com/markrai/pixelcut/internal/service"
 )
 
 func sourceMatches(path string, want mediacache.Source) bool {
@@ -17,24 +19,56 @@ func sourceMatches(path string, want mediacache.Source) bool {
 	return err == nil && s == want
 }
 
+func (e *editor) sourcesReady() bool {
+	return e.sourceRequest == e.sourceDone
+}
+
 func (e *editor) checkSourceVersions(force bool) {
-	if !force && time.Since(e.lastSourceCheck) < 2*time.Second {
-		return
+	if e.sourceScanner == nil {
+		e.sourceScanner = service.NewLatest(service.ScanSources)
 	}
-	e.lastSourceCheck = time.Now()
-	next := make(map[string]mediacache.Source, len(e.model.Project().Assets))
-	for _, a := range e.model.Project().Assets {
-		if _, ok := next[a.Path]; ok {
-			continue
+	paths := e.sourcePaths
+	fingerprint := e.model.Fingerprint()
+	if fingerprint != e.sourceFingerprint {
+		paths = make([]string, 0, len(e.model.Project().Assets))
+		for _, a := range e.model.Project().Assets {
+			paths = append(paths, a.Path)
 		}
-		if s, err := mediacache.Identify(a.Path); err == nil {
-			next[a.Path] = s
-		}
+		e.sourceFingerprint = fingerprint
 	}
-	if !maps.Equal(e.sourceVersions, next) {
-		e.sourceVersions = next
+	changed := !slices.Equal(paths, e.sourcePaths)
+	if changed {
+		e.sourcePaths = paths
+		e.sourceEpoch++
+		e.sourceChecked = nil
+		e.sourceVersions = nil
 		e.mediaListDirty = true
 		e.invalidateTimeline()
+	}
+	r := e.sourceScanner.Result()
+	if r.Sequence != 0 && r.Sequence > e.sourceDone {
+		e.sourceDone = r.Sequence
+		if r.Err == nil && r.Value.Epoch == e.sourceEpoch {
+			if !maps.Equal(e.sourceVersions, r.Value.Present) || !maps.Equal(e.sourceChecked, r.Value.Checked) {
+				e.sourceVersions, e.sourceChecked = r.Value.Present, r.Value.Checked
+				e.mediaListDirty = true
+				e.invalidateTimeline()
+			}
+		}
+	}
+	if !force && e.restorePending && e.sourcesReady() {
+		e.restorePending = false
+		if e.restoreView == e.view() && e.restoreFingerprint == e.model.Fingerprint() && !e.busy && !e.previewActive() {
+			e.finishRecovery()
+		}
+	}
+	if changed || (e.sourcesReady() && (force || time.Since(e.lastSourceCheck) >= 2*time.Second)) {
+		e.lastSourceCheck = time.Now()
+		e.sourceRequest = e.sourceScanner.Submit(service.SourceScan{Epoch: e.sourceEpoch, Paths: paths})
+	}
+	e.pruneRetiredWorkers()
+	if e.mediaWorkersPending && !e.busy && len(e.retiredWorkers) < 4 {
+		e.restartMediaWorkers()
 	}
 	if !force && e.mediaListDirty && e.canOpenMenu() {
 		e.refreshMediaList()
@@ -53,7 +87,39 @@ func (e *editor) openMediaCache() {
 	e.mediaDisk = c
 }
 
+func (e *editor) retireMediaWorkers() {
+	e.mediaWorkersPending = false
+	if e.thumbnails != nil {
+		e.thumbnails.cancel()
+		e.retiredWorkers = append(e.retiredWorkers, e.thumbnails.done)
+		e.thumbnails = nil
+	}
+	if e.waveforms != nil {
+		e.waveforms.cancel()
+		e.retiredWorkers = append(e.retiredWorkers, e.waveforms.done)
+		e.waveforms = nil
+	}
+	e.pruneRetiredWorkers()
+}
+
+func (e *editor) pruneRetiredWorkers() {
+	pending := e.retiredWorkers[:0]
+	for _, done := range e.retiredWorkers {
+		select {
+		case <-done:
+		default:
+			pending = append(pending, done)
+		}
+	}
+	e.retiredWorkers = pending
+}
+
 func (e *editor) restartMediaWorkers() {
+	e.retireMediaWorkers()
+	if len(e.retiredWorkers) >= 4 {
+		e.mediaWorkersPending = true
+		return
+	}
 	e.thumbnails = newThumbnailCache(e.engine, e.mediaDisk)
 	e.waveforms = newWaveformCache(e.engine, e.mediaDisk)
 	e.thumbnailRevision = 0
@@ -127,21 +193,16 @@ func (e *editor) clearMediaCache() error {
 	if r != 6 {
 		return nil
 	}
-	t, w, disk := e.thumbnails, e.waveforms, e.mediaDisk
-	if t != nil {
-		t.cancel()
-	}
-	if w != nil {
-		w.cancel()
-	}
+	disk := e.mediaDisk
+	e.retireMediaWorkers()
+	retired := append([]<-chan struct{}(nil), e.retiredWorkers...)
 	e.frameCache = nil
 	e.tell("Clearing media cache...")
 	e.startJob(func(ctx context.Context) result {
-		if t != nil {
-			<-t.done
-		}
-		if w != nil {
-			<-w.done
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := service.WaitAll(ctx, retired); err != nil {
+			return result{cacheCleared: true, err: fmt.Errorf("cache clear deferred: workers still stopping: %w", err)}
 		}
 		err := disk.Clear()
 		return result{cacheCleared: true, err: err, message: "Media cache cleared; visible media will regenerate."}

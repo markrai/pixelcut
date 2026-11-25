@@ -340,3 +340,65 @@ pipe I/O; bounded resource teardown, unified job lifecycle and asynchronous
 services are 2C.R.8 work. No project format, source color contract or
 external dependency changes. Physical native playback, VFR seeking and HDR
 display qualification remain outstanding.
+
+
+## 2C.R.8 background services
+
+The portable internal/service package provides a single-owner latest-value
+worker, foreground job identity and completion delivery, source inspection,
+and context-bounded worker waits. Latest retains at most one pending input
+and one completed result. Work runs without holding the mailbox mutex.
+Inputs must be immutable for their lifetime; project snapshots are already
+detached on editor commit, and recovery borrows those immutable snapshots.
+A submission sequence is not a durable acknowledgement. Only completed
+successful Store.Save results are considered persisted. The session store
+remains single-writer, with the same checksummed two-slot format and
+atomic replacement. A failed write leaves the last valid slot intact.
+Rapid edits can coalesce intermediate recovery snapshots. The close path
+disables editing and polls for the final sequence, with a five-second
+deadline and explicit warning before closing without a successful
+checkpoint. The instance lock is never released while a recovery write
+may still run in this process; process exit releases it if necessary.
+
+Source monitoring now performs Identify/stat calls on a dedicated worker,
+not on the native timer. Immutable path lists are rebuilt only when the
+project fingerprint changes, and scan epochs reject results from previous
+path lists. New or changed sources are shown as CHECKING until inspected;
+only checked missing paths count as offline. Periodic scans are scheduled
+at two-second intervals when the previous scan completes. Startup preview
+restoration waits for the initial scan and is skipped if the user has moved
+the marker or changed the project/selection in the meantime. File identity
+is still path/size/mtime, not content identity. Explicit preview and relink
+operations retain fresh source checks for safety.
+
+Foreground media operations retain the existing single-job busy policy.
+The runner attaches a job ID and project epoch; the native adapter also
+checks the originating committed fingerprint before applying a result.
+Canceled work cannot publish into a later job. Completion notifications
+are hints; the UI timer can consume results even if a notification is
+lost, and duplicate notifications cannot block the event loop.
+The cancellation contract suppresses stale publication; it does not
+promise to forcibly interrupt arbitrary OS operations.
+
+Preview stop now cancels without waiting in the UI callback. A new preview
+allows at most a 250 ms wait for the retired process to release its host;
+if it has not stopped, startup fails explicitly and can be retried.
+The adapter closes its pipe on cancellation. Late process completions
+continue to use generation guards. Media-worker retirement is nonblocking;
+new workers use their own memory caches and the tool/source-keyed disk
+cache. Retired workers are tracked until completion and restart is deferred
+if four retired workers remain. Clear-cache waits for retired workers on
+the background job with a five-second deadline, and aborts rather than
+clearing while a producer can still write. Shutdown cancels workers
+without an unbounded native wait. OS calls such as stat, fsync, and named
+pipe operations may still take longer than cancellation; no claim of
+forced termination of a blocked OS call is made.
+
+Explicit open/save, preferences/recent persistence, startup recovery read,
+single-source availability checks and final relink revalidation remain
+synchronous. These are distinct user-triggered durability/safety paths;
+a fully nonblocking lifecycle UI would require additional continuation
+handling and is not claimed here. Cache scheduling and native worker
+implementation remain separate for thumbnail and waveform policies.
+No schema or external dependency changes. Physical Windows cancellation,
+shutdown and recovery acceptance and performance measurements remain pending.

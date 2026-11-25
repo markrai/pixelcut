@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"unsafe"
 
 	editorstate "github.com/markrai/pixelcut/internal/editor"
+	"github.com/markrai/pixelcut/internal/service"
 	"github.com/markrai/pixelcut/internal/session"
 )
 
@@ -60,7 +62,9 @@ func (e *editor) openRecovery() error {
 		e.recoveryError = err.Error()
 		return nil
 	}
-	e.recovery = store
+	e.recovery = service.NewLatest(func(_ context.Context, s session.State) (struct{}, error) {
+		return struct{}{}, store.Save(s)
+	})
 	if state != nil {
 		e.model = editorstate.New(state.Project)
 		e.model.Restore(state.ActiveTrack, state.Asset, state.Clip, state.SelectedClips)
@@ -87,6 +91,14 @@ func (e *editor) openRecovery() error {
 }
 
 func (e *editor) closeRecovery() {
+	if e.recovery != nil {
+		e.recovery.Close()
+		select {
+		case <-e.recovery.Done():
+		default:
+			return
+		}
+	}
 	if e.recoveryLock != 0 {
 		syscall.CloseHandle(e.recoveryLock)
 		e.recoveryLock = 0
@@ -102,29 +114,81 @@ func (e *editor) checkpoint() bool {
 	if e.model.Count() > 1 {
 		s.SelectedClips = e.selectionIDs()
 	}
-	if err := e.recovery.Save(s); err != nil {
-		if e.recoveryError != err.Error() {
-			e.recoveryError = err.Error()
-			fmt.Fprintln(os.Stderr, "PixelCut recovery:", err)
-			e.updateRecoveryTitle()
-		}
-		return false
-	}
+	e.recoveryRequest = e.recovery.Submit(s)
 	e.savedView = e.view()
-	if e.recoveryError != "" {
-		e.recoveryError = ""
+	return e.recoveryRequest != 0
+}
+
+func (e *editor) pollRecovery() {
+	if e.recovery == nil {
+		return
+	}
+	r := e.recovery.Result()
+	if r.Sequence == 0 || r.Sequence <= e.recoveryDone {
+		return
+	}
+	e.recoveryDone = r.Sequence
+	note := ""
+	if r.Err != nil {
+		note = r.Err.Error()
+	}
+	if note != e.recoveryError {
+		e.recoveryError = note
+		if note != "" {
+			fmt.Fprintln(os.Stderr, "PixelCut recovery:", note)
+		}
 		e.updateRecoveryTitle()
 	}
-	return true
 }
 
 func (e *editor) checkpointView() {
+	e.pollRecovery()
 	if e.recovery == nil || e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing || time.Since(e.lastCheckpoint) < time.Duration(max(1, e.prefs.ViewSeconds))*time.Second {
 		return
 	}
-	if e.savedView != e.view() || e.recoveryError != "" {
+	if e.savedView != e.view() || (e.recoveryError != "" && e.recoveryDone == e.recoveryRequest) {
 		e.checkpoint()
 	}
+}
+
+func (e *editor) beginClose(hwnd uintptr) {
+	if !e.checkpoint() {
+		if e.warnRecoveryClose() {
+			destroy.Call(hwnd)
+		}
+		return
+	}
+	if timer, _, _ := user.NewProc("SetTimer").Call(hwnd, playbackTimer, 33, 0); timer == 0 {
+		if e.warnRecoveryClose() {
+			destroy.Call(hwnd)
+		}
+		return
+	}
+	e.closeDeadline = time.Now().Add(5 * time.Second)
+	e.busy = true
+	e.setControlsEnabled(false)
+	e.tell("Saving final recovery checkpoint...")
+}
+
+func (e *editor) pollClose(hwnd uintptr) {
+	if e.closeDeadline.IsZero() {
+		return
+	}
+	e.pollRecovery()
+	if e.recoveryDone < e.recoveryRequest && time.Now().Before(e.closeDeadline) {
+		return
+	}
+	e.closeDeadline = time.Time{}
+	if e.recoveryDone == e.recoveryRequest && e.recoveryError == "" {
+		destroy.Call(hwnd)
+		return
+	}
+	if e.warnRecoveryClose() {
+		destroy.Call(hwnd)
+		return
+	}
+	e.busy = false
+	e.setControlsEnabled(true)
 }
 
 func (e *editor) updateRecoveryTitle() {
@@ -143,12 +207,13 @@ func (e *editor) finishRecovery() {
 	if len(e.model.Project().Assets) == 0 {
 		return
 	}
-	missing := 0
-	for _, a := range e.model.Project().Assets {
-		if info, err := os.Stat(a.Path); err != nil || !info.Mode().IsRegular() {
-			missing++
-		}
+	if !e.sourcesReady() {
+		e.restorePending = true
+		e.restoreView = e.view()
+		e.restoreFingerprint = e.model.Fingerprint()
+		return
 	}
+	missing := e.missingCount()
 	if missing > 0 {
 		e.tell(fmt.Sprintf("Restored session; %d source file(s) offline. References retained; use Relink.", missing))
 		return

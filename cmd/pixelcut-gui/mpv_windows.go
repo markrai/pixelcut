@@ -80,6 +80,8 @@ func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-c
 		}
 	}
 	defer f.Close()
+	stopClose := context.AfterFunc(ctx, func() { _ = f.Close() })
+	defer stopClose()
 	p := mpv.NewIPC(f, f)
 	var applied, appliedSeek, appliedCrop uint64
 	appliedSpeed := 1.0

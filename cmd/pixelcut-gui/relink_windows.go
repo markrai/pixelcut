@@ -31,7 +31,7 @@ type relinkPlan struct {
 func (e *editor) missingCount() int {
 	n := 0
 	for _, a := range e.model.Project().Assets {
-		if _, ok := e.sourceVersions[a.Path]; !ok {
+		if e.offline(a.Path) {
 			n++
 		}
 	}
@@ -40,7 +40,7 @@ func (e *editor) missingCount() int {
 
 func (e *editor) offline(path string) bool {
 	_, ok := e.sourceVersions[path]
-	return !ok
+	return e.sourceChecked[path] && !ok
 }
 
 func (e *editor) refreshMediaList() {
@@ -54,6 +54,8 @@ func (e *editor) refreshMediaList() {
 		prefix := ""
 		if e.offline(a.Path) {
 			prefix = "[OFFLINE] "
+		} else if !e.sourceChecked[a.Path] {
+			prefix = "[CHECKING] "
 		}
 		listAdd(h, fmt.Sprintf("%s%s  [%dx%d]", prefix, filepath.Base(a.Path), a.Width, a.Height))
 	}
@@ -134,7 +136,7 @@ func (e *editor) relinkFolder() error {
 	if !e.canOpenMenu() {
 		return fmt.Errorf("finish the current operation first")
 	}
-	if len(e.model.Project().MissingAssets()) == 0 {
+	if e.missingCount() == 0 {
 		return fmt.Errorf("no offline assets to relink")
 	}
 	dir, err := pickRelinkFolder()

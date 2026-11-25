@@ -18,6 +18,7 @@ import (
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/service"
 	"github.com/markrai/pixelcut/internal/session"
 )
 
@@ -181,10 +182,12 @@ type editor struct {
 	controls                map[int]uintptr
 	status, host            uintptr
 	busy                    bool
-	cancel                  context.CancelFunc
-	results                 chan result
+	jobs                    service.Jobs[result]
+	jobFingerprint          string
+	projectEpoch            uint64
 	previewCancel           context.CancelFunc
 	previewDone             chan struct{}
+	retiringPreview         <-chan struct{}
 	previewResults          chan previewResult
 	generation              uint64
 	engine                  media.Engine
@@ -203,7 +206,13 @@ type editor struct {
 	thumbnailRevision       uint64
 	waveforms               *waveformCache
 	waveformRevision        uint64
-	recovery                *session.Store
+	recovery                *service.Latest[session.State, struct{}]
+	recoveryRequest         uint64
+	recoveryDone            uint64
+	closeDeadline           time.Time
+	restorePending          bool
+	restoreView             recoveryView
+	restoreFingerprint      string
 	recoveryLock            syscall.Handle
 	recoveryError           string
 	lastCheckpoint          time.Time
@@ -223,6 +232,15 @@ type editor struct {
 	recent                  []string
 	mediaDisk               *mediacache.Cache
 	sourceVersions          map[string]mediacache.Source
+	sourceChecked           map[string]bool
+	sourcePaths             []string
+	sourceFingerprint       string
+	sourceScanner           *service.Latest[service.SourceScan, service.SourceResult]
+	sourceEpoch             uint64
+	sourceRequest           uint64
+	sourceDone              uint64
+	retiredWorkers          []<-chan struct{}
+	mediaWorkersPending     bool
 	lastSourceCheck         time.Time
 	mediaListDirty          bool
 	prefs                   session.Preferences
@@ -377,26 +395,37 @@ func (e *editor) commitEdit(q project.Project, update editorstate.SelectionUpdat
 
 func nextID(prefix string) string { return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano()) }
 
-func (e *editor) startJob(fn func(context.Context) result) {
-	ctx, cancel := context.WithCancel(context.Background())
-	e.cancel = cancel
-	e.busy = true
-	for _, h := range e.controls {
-		user.NewProc("EnableWindow").Call(h, 0)
+func (e *editor) setControlsEnabled(enabled bool) {
+	var value uintptr
+	if enabled {
+		value = 1
 	}
-	go func() {
-		e.results <- fn(ctx)
-		post.Call(mainWindow, wmDone, 0, 0)
-	}()
+	for _, h := range e.controls {
+		user.NewProc("EnableWindow").Call(h, value)
+	}
+}
+
+func (e *editor) startJob(fn func(context.Context) result) {
+	hwnd := mainWindow
+	if err := e.jobs.Start(e.projectEpoch, fn, func() { post.Call(hwnd, wmDone, 0, 0) }); err != nil {
+		e.tell(err.Error())
+		return
+	}
+	e.jobFingerprint = e.model.Fingerprint()
+	e.busy = true
+	e.setControlsEnabled(false)
 }
 
 func (e *editor) finished() {
-	r := <-e.results
-	e.cancel()
-	e.cancel = nil
+	r, ready, current := e.jobs.Take(e.projectEpoch)
+	if !ready {
+		return
+	}
 	e.busy = false
-	for _, h := range e.controls {
-		user.NewProc("EnableWindow").Call(h, 1)
+	e.setControlsEnabled(true)
+	if !current || e.jobFingerprint != e.model.Fingerprint() {
+		e.tell("Discarded background result for an outdated project.")
+		return
 	}
 	if r.cacheCleared {
 		e.restartMediaWorkers()
@@ -441,7 +470,7 @@ func (e *editor) stopPreview() {
 	e.generation++
 	if e.previewCancel != nil {
 		e.previewCancel()
-		<-e.previewDone
+		e.retiringPreview = e.previewDone
 		e.previewCancel = nil
 		e.previewDone = nil
 	}
@@ -470,6 +499,16 @@ func (e *editor) startPreview(paused bool) error {
 		return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 	}
 	e.stopPreview()
+	if e.retiringPreview != nil {
+		timer := time.NewTimer(250 * time.Millisecond)
+		defer timer.Stop()
+		select {
+		case <-e.retiringPreview:
+			e.retiringPreview = nil
+		case <-timer.C:
+			return fmt.Errorf("previous preview is still closing; retry Play or seek")
+		}
+	}
 	if !c.Contains(e.playhead) {
 		e.playhead = c.Start
 	}
@@ -785,6 +824,11 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0113:
 		if wp == playbackTimer && ui != nil {
+			if !ui.closeDeadline.IsZero() {
+				ui.pollClose(hwnd)
+				return 0
+			}
+			ui.finished()
 			ui.updatePlaybackClock()
 			ui.updateVisualCrop()
 			ui.updateTransformDraft()
@@ -801,7 +845,12 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.finished()
 		return 0
 	case wmPreviewDone:
-		r := <-ui.previewResults
+		var r previewResult
+		select {
+		case r = <-ui.previewResults:
+		default:
+			return 0
+		}
 		if r.generation == ui.generation {
 			ui.stopPreview()
 			fg, _, _ := user.NewProc("GetForegroundWindow").Call()
@@ -823,6 +872,13 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		ui.cancelAssetDrag()
 		ui.endMarquee(true)
+		if ui.drag != nil {
+			ui.cancelTimelineDrag()
+		}
+		if ui.scrubbing {
+			ui.scrubbing = false
+			user.NewProc("ReleaseCapture").Call()
+		}
 		if ui.cropSession != nil {
 			ui.cancelVisualCrop()
 		}
@@ -833,27 +889,18 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.tell("Wait for the current media operation to finish.")
 			return 0
 		}
-		if ui.checkpoint() || ui.warnRecoveryClose() {
-			destroy.Call(hwnd)
-		}
+		ui.beginClose(hwnd)
 		return 0
 	case 0x0002:
 		user.NewProc("KillTimer").Call(hwnd, playbackTimer)
 		ui.stopPreview()
-		if ui.thumbnails != nil {
-			ui.thumbnails.cancel()
+		ui.retireMediaWorkers()
+		ui.jobs.Cancel()
+		if ui.sourceScanner != nil {
+			ui.sourceScanner.Close()
 		}
-		if ui.waveforms != nil {
-			ui.waveforms.cancel()
-		}
-		if ui.thumbnails != nil {
-			<-ui.thumbnails.done
-		}
-		if ui.waveforms != nil {
-			<-ui.waveforms.done
-		}
-		if ui.cancel != nil {
-			ui.cancel()
+		if ui.recovery != nil {
+			ui.recovery.Close()
 		}
 		user.NewProc("PostQuitMessage").Call(0)
 		return 0
@@ -875,7 +922,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	ui = &editor{model: editorstate.New(project.New()), controls: map[int]uintptr{}, results: make(chan result, 1), previewResults: make(chan previewResult, 16), engine: media.Default()}
+	ui = &editor{model: editorstate.New(project.New()), controls: map[int]uintptr{}, previewResults: make(chan previewResult, 16), engine: media.Default()}
 	if err := ui.openRecovery(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		user.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(u(err.Error()))), uintptr(unsafe.Pointer(u("PixelCut recovery"))), 0x10)
