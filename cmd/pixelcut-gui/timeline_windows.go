@@ -559,11 +559,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		if ui.marquee != nil {
 			d := ui.marquee
 			ui.marquee = nil
-			primary := ""
-			if d.primary >= 0 && d.primary < len(ui.track().Clips) {
-				primary = ui.track().Clips[d.primary].ID
-			}
-			ui.setSelection(d.before, primary)
+			ui.setSelection(d.before, d.primary)
 		}
 		ui.invalidateTimeline()
 		return 0
