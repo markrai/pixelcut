@@ -95,7 +95,7 @@ func (e *editor) finishFrames(r *frameJobResult) {
 }
 
 func (e *editor) precisionAction(action int) error {
-	if len(e.group) > 1 {
+	if e.model.Count() > 1 {
 		return fmt.Errorf("select one clip for precision editing")
 	}
 	c, ok := e.selected()
@@ -107,7 +107,7 @@ func (e *editor) precisionAction(action int) error {
 	if e.playhead < c.Start || e.playhead > end {
 		return fmt.Errorf("position the playhead inside the selected clip")
 	}
-	a, ok := e.p.Asset(c.AssetID)
+	a, ok := e.model.Project().Asset(c.AssetID)
 	if !ok {
 		return fmt.Errorf("source asset missing")
 	}
@@ -154,7 +154,7 @@ func (e *editor) precisionAction(action int) error {
 	}
 	var q project.Project
 	if e.rippleTrim {
-		r, err := e.p.RippleTrim(e.trackID(), c.ID, mode, delta, -1, 0)
+		r, err := e.model.Project().RippleTrim(e.trackID(), c.ID, mode, delta, -1, 0)
 		if err != nil {
 			return err
 		}
@@ -163,15 +163,15 @@ func (e *editor) precisionAction(action int) error {
 		}
 		q = r.Project
 	} else {
-		trimmed, err := e.p.DragClip(e.trackID(), c.ID, mode, delta)
+		trimmed, err := e.model.Project().DragClip(e.trackID(), c.ID, mode, delta)
 		if err != nil {
 			return err
 		}
 		if (mode == "left" && trimmed.In != c.In+delta) || (mode == "right" && trimmed.Out != c.Out+delta) {
 			return fmt.Errorf("frame boundary exceeds trim limits")
 		}
-		q = e.p.Clone()
-		q.Tracks[e.trackIndex()].Clips[e.clip] = trimmed
+		q = e.model.Project().Clone()
+		q.Tracks[e.trackIndex()].Clips[e.model.ClipIndex()] = trimmed
 	}
 	if err := e.commitRipple(q, false); err != nil {
 		return err

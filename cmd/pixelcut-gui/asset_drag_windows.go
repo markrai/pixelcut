@@ -39,7 +39,7 @@ func (e *editor) beginAssetDrag(hwnd uintptr, lp uintptr) bool {
 	}
 	r, _, _ := send.Call(hwnd, 0x01a9, 0, lp)
 	index := int(r & 0xffff)
-	if (r>>16)&0xffff != 0 || index >= len(e.p.Assets) {
+	if (r>>16)&0xffff != 0 || index >= len(e.model.Project().Assets) {
 		return false
 	}
 	var item rect
@@ -54,8 +54,8 @@ func (e *editor) beginAssetDrag(hwnd uintptr, lp uintptr) bool {
 	}
 	user.NewProc("SetFocus").Call(hwnd)
 	send.Call(hwnd, lbSet, uintptr(index), 0)
-	e.asset = index
-	e.assetDrag = &assetDrag{id: e.p.Assets[index].ID, clipID: nextID("clip"), origin: p}
+	e.model.SetAssetIndex(index)
+	e.assetDrag = &assetDrag{id: e.model.Project().Assets[index].ID, clipID: nextID("clip"), origin: p}
 	user.NewProc("SetCapture").Call(hwnd)
 	return true
 }
@@ -82,7 +82,7 @@ func (e *editor) updateAssetDrag() {
 	d.over, d.valid = over, false
 	if over {
 		var err error
-		d.placement, err = e.p.PlaceAssets(e.trackID(), []string{d.id}, []string{d.clipID}, req.start, req.marker, req.tolerance)
+		d.placement, err = e.model.Project().PlaceAssets(e.trackID(), []string{d.id}, []string{d.clipID}, req.start, req.marker, req.tolerance)
 		d.valid = err == nil
 	}
 	cursor := cursorNo
@@ -131,14 +131,13 @@ func (e *editor) finishAssetDrag() {
 	e.tell("Asset placed on timeline.")
 }
 
-func (e *editor) commitPlacement(p project.AssetPlacement) error {
-	if err := p.Project.Validate(); err != nil {
-		return err
-	}
-	e.group = nil
-	e.anchor = ""
-	e.clip = p.FirstClip
-	return e.commit(p.Project)
+func (e *editor) commitPlacement(p project.AssetPlacement, selectedAsset ...string) error {
+	return e.commitWithSelection(p.Project, func() {
+		e.model.SelectIndex(p.FirstClip)
+		if len(selectedAsset) > 0 {
+			e.model.SetAssetID(selectedAsset[0])
+		}
+	})
 }
 
 func (e *editor) paintAssetGhost(dc uintptr, w int32) {
@@ -151,7 +150,7 @@ func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 	if right <= left {
 		return
 	}
-	a, ok := e.p.Asset(d.id)
+	a, ok := e.model.Project().Asset(d.id)
 	if !ok {
 		return
 	}

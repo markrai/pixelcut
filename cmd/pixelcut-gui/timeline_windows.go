@@ -57,7 +57,7 @@ func (e *editor) invalidateTimeline() {
 	}
 }
 
-func (e *editor) endTime() int64 { return e.p.EndTime() }
+func (e *editor) endTime() int64 { return e.model.Project().EndTime() }
 
 func (e *editor) scale(w int32) float64 {
 	if e.zoom > 0 {
@@ -155,7 +155,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 	for i, c := range e.track().Clips {
 		valid := true
 		if d := e.drag; d != nil && d.moved {
-			if d.ripple || (len(d.groupIDs) > 1 && e.group[c.ID]) {
+			if d.ripple || (len(d.groupIDs) > 1 && e.model.Contains(c.ID)) {
 				c = d.groupProject.Tracks[e.trackIndex()].Clips[i]
 				valid = d.valid
 			} else if len(d.groupIDs) <= 1 && d.index == i {
@@ -183,7 +183,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 		if e.clipSelected(i, c) {
 			col = palette.selected
 		}
-		a, _ := e.p.Asset(c.AssetID)
+		a, _ := e.model.Project().Asset(c.AssetID)
 		offline := e.offline(a.Path)
 		if offline {
 			col = rgb(94, 52, 60)
@@ -221,7 +221,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			if offline && right-left > 48 {
 				textAt(dc, rect{left + 6, 104, right - 5, 140}, "Offline audio", rgb(255, 166, 166), 4)
 			}
-			if e.clipSelected(i, c) && len(e.group) > 1 {
+			if e.clipSelected(i, c) && e.model.Count() > 1 {
 				fill(dc, rect{left, 104, right, 106}, palette.accent)
 			}
 		}
@@ -279,12 +279,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 }
 
 func (e *editor) selectClip(i int) {
-	e.group = nil
-	e.anchor = ""
-	e.clip = i
-	if c, ok := e.selected(); ok {
-		e.anchor = c.ID
-	}
+	e.model.SelectIndex(i)
 	e.syncSelectionUI()
 }
 
@@ -311,10 +306,10 @@ func (e *editor) beginTimeline(x, y, w int32) {
 				e.modifySelection(i, keyPressed(0x11), keyPressed(0x10))
 				return
 			}
-			if !e.clipSelected(i, c) || len(e.group) <= 1 {
+			if !e.clipSelected(i, c) || e.model.Count() <= 1 {
 				e.selectClip(i)
 			} else {
-				e.clip = i
+				e.model.SetPrimary(c.ID)
 				e.syncSelectionUI()
 				mode = "move"
 			}
@@ -322,7 +317,7 @@ func (e *editor) beginTimeline(x, y, w int32) {
 			var frames *media.FrameIndex
 			var duration int64
 			if !e.audioTrack() && e.frameSnap && mode != "move" && len(ids) == 1 {
-				a, ok := e.p.Asset(c.AssetID)
+				a, ok := e.model.Project().Asset(c.AssetID)
 				if !ok {
 					return
 				}
@@ -335,13 +330,13 @@ func (e *editor) beginTimeline(x, y, w int32) {
 					return
 				}
 			}
-			e.drag = &timelineDrag{index: i, mode: mode, x: x, scale: e.scale(w), original: c, candidate: c, valid: true, wasPlaying: playing, clickTime: t, groupIDs: ids, groupProject: e.p, ripple: e.rippleTrim && mode != "move" && len(ids) == 1, frames: frames, sourceDuration: duration}
+			e.drag = &timelineDrag{index: i, mode: mode, x: x, scale: e.scale(w), original: c, candidate: c, valid: true, wasPlaying: playing, clickTime: t, groupIDs: ids, groupProject: e.model.Project(), ripple: e.rippleTrim && mode != "move" && len(ids) == 1, frames: frames, sourceDuration: duration}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x, y, w)
 			return
 		}
 		if !e.audioTrack() && x >= l && x < r && y >= 104 && y < 140 {
-			if a, ok := e.p.Asset(c.AssetID); ok && a.HasAudio && (keyPressed(0x11) || keyPressed(0x10)) {
+			if a, ok := e.model.Project().Asset(c.AssetID); ok && a.HasAudio && (keyPressed(0x11) || keyPressed(0x10)) {
 				e.modifySelection(i, keyPressed(0x11), keyPressed(0x10))
 				return
 			}
@@ -386,16 +381,16 @@ func (e *editor) moveTimeline(x int32) {
 		d.valid = false
 		d.snapped = false
 		d.candidate = d.original
-		d.groupProject = e.p
+		d.groupProject = e.model.Project()
 		d.rippleDelta = 0
 		if ok {
 			if d.ripple {
-				r, err := e.p.RippleTrim(e.trackID(), d.original.ID, d.mode, frameDelta, -1, 0)
+				r, err := e.model.Project().RippleTrim(e.trackID(), d.original.ID, d.mode, frameDelta, -1, 0)
 				d.groupProject = r.Project
 				d.rippleDelta = r.Delta
 				d.valid = err == nil && r.Delta == frameDelta
 			} else {
-				c, err := e.p.DragClip(e.trackID(), d.original.ID, d.mode, frameDelta)
+				c, err := e.model.Project().DragClip(e.trackID(), d.original.ID, d.mode, frameDelta)
 				d.candidate = c
 				d.valid = err == nil && ((d.mode == "left" && c.In == d.original.In+frameDelta) || (d.mode == "right" && c.Out == d.original.Out+frameDelta))
 			}
@@ -412,20 +407,20 @@ func (e *editor) moveTimeline(x int32) {
 			}
 		}
 	} else if d.ripple {
-		r, err := e.p.RippleTrim(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
+		r, err := e.model.Project().RippleTrim(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
 		d.groupProject = r.Project
 		d.rippleDelta = r.Delta
 		d.valid = err == nil
 		d.snapped = r.Snapped
 		d.snapTarget = r.Target
 	} else if len(d.groupIDs) > 1 {
-		r, err := e.p.MoveClips(e.trackID(), d.groupIDs, delta, e.playhead, tolerance)
+		r, err := e.model.Project().MoveClips(e.trackID(), d.groupIDs, delta, e.playhead, tolerance)
 		d.groupProject = r.Project
 		d.valid = err == nil
 		d.snapped = r.Snapped
 		d.snapTarget = r.Target
 	} else {
-		r, err := e.p.SnapDrag(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
+		r, err := e.model.Project().SnapDrag(e.trackID(), d.original.ID, d.mode, delta, e.playhead, tolerance)
 		d.candidate = r.Clip
 		d.valid = err == nil
 		d.snapped = r.Snapped
@@ -442,7 +437,7 @@ func (e *editor) finishTimeline() {
 		if d.valid {
 			q := d.groupProject
 			if !d.ripple && len(d.groupIDs) <= 1 {
-				q = e.p.Clone()
+				q = e.model.Project().Clone()
 				q.Tracks[e.trackIndex()].Clips[d.index] = d.candidate
 			}
 			if d.ripple && d.rippleDelta == 0 {
@@ -656,13 +651,13 @@ func (e *editor) timelineCursor(x, y, w int32) uintptr {
 	for _, c := range e.track().Clips {
 		l, r := e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w)
 		if mode := videoHitMode(x, y, l, r); mode != "" {
-			if len(e.group) > 1 && e.group[c.ID] {
+			if e.model.Count() > 1 && e.model.Contains(c.ID) {
 				mode = "move"
 			}
 			return cursorForMode(mode, false)
 		}
 		if !e.audioTrack() && x >= l && x < r && y >= 104 && y < 140 {
-			if a, ok := e.p.Asset(c.AssetID); ok && a.HasAudio {
+			if a, ok := e.model.Project().Asset(c.AssetID); ok && a.HasAudio {
 				return cursorHand
 			}
 		}

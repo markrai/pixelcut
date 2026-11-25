@@ -143,3 +143,35 @@ are not mutations of the input project. Unified commit and history ownership
 remain 2C.R.4. The project-to-media geometry dependency remains intentional
 until composition requires a narrower shared contract; no duplicate geometry
 algorithm or new dependency is introduced.
+
+## 2C.R.3 editor state ownership
+
+`internal/editor.State` is the single owner of the current project, active
+track ID, selected asset ID, selected clip ID set, primary clip ID and range
+anchor ID. Clip references are track-scoped using the active track and globally
+unique clip IDs. Selection remains single-track; cross-track selection is not
+introduced by this refactor. Listbox indices are derived at UI and recovery
+boundaries, never stored as live selection. Membership checks are constant-time;
+ordered selection is derived in track storage order. Ctrl toggles, Shift ranges,
+select all, selection reconciliation and track switching are portable operations.
+After adopting a validated project snapshot, the controller follows a surviving
+primary clip across track transfers, removes missing references, and falls back
+to V1 when the active track disappears. A removed primary falls back to a
+surviving selected clip in the active track. Asset deletion retains the former
+nearest-list-row behavior in the GUI. Group and primary references are reconciled
+before refreshing native controls and writing a checkpoint. Existing index-based
+session JSON remains unchanged and is converted to IDs on restore; the range
+anchor is reconstructed from the primary, not serialized.
+
+New and Adopt take ownership of already validated project values; callers
+must relinquish mutation of their slices. Project returns a borrowed read-only
+value for transitional model queries; use Clone for independent edits. Selected
+returns a detached clip. This intentionally avoids a full-project copy per paint
+or query. Direct mutations of borrowed project slices are prohibited. The GUI
+still owns history, dirty baseline, view coordinates, clipboard, draft gestures,
+preview and native resources. CommitWithSelection installs the validated project
+and selects new IDs before the UI refresh; this is a transitional adapter, not
+the final transaction API. Crop and transform still have special live-preview
+commit paths. 2C.R.4 will move history, dirty state and validated transactions into
+the controller, including complete selection/history semantics. No schema or
+media processing changes are introduced.

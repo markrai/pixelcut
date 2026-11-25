@@ -146,7 +146,7 @@ func (e *editor) importAt(paths []string, placement *placementRequest) error {
 	if len(paths) == 0 || len(paths) > project.MaxImportFiles {
 		return fmt.Errorf("select between 1 and %d files", project.MaxImportFiles)
 	}
-	snapshot := e.p.Clone()
+	snapshot := e.model.Project().Clone()
 	engine := e.engine
 	disk := e.mediaDisk
 	e.tell(fmt.Sprintf("Inspecting %d file(s)...", len(paths)))
@@ -186,8 +186,7 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 		}
 		p, err := b.Project.PlaceAssets(e.trackID(), b.AssetIDs, ids, req.start, req.marker, req.tolerance)
 		if err == nil {
-			e.asset = b.Selected
-			if err = e.commitPlacement(p); err != nil {
+			if err = e.commitPlacement(p, b.Project.Assets[b.Selected].ID); err != nil {
 				e.tell(err.Error())
 				return
 			}
@@ -199,14 +198,13 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 	}
 	if placed == 0 {
 		if b.Added > 0 {
-			e.asset = b.Selected
-			if err := e.commit(b.Project); err != nil {
+			if err := e.commitWithSelection(b.Project, func() { e.model.SetAssetIndex(b.Selected) }); err != nil {
 				e.tell(err.Error())
 				return
 			}
 		} else if b.Selected >= 0 {
-			e.asset = b.Selected
-			send.Call(e.controls[idAssets], lbSet, uintptr(e.asset), 0)
+			e.model.SetAssetIndex(b.Selected)
+			send.Call(e.controls[idAssets], lbSet, uintptr(e.model.AssetIndex()), 0)
 			e.checkpoint()
 		}
 	}

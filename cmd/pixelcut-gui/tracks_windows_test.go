@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -38,17 +39,18 @@ func TestTrackMenuEligibility(t *testing.T) {
 	if _, ok := findMenuItem(items, trackMenuMove+1); ok {
 		t.Fatal("cross-kind move offered")
 	}
-	ed := editor{p: p, activeTrack: id}
+	ed := editor{model: editorstate.New(p)}
+	ed.model.SwitchTrack(id)
 	if ed.trackID() != id || ed.audioTrack() {
 		t.Fatal("active track not resolved")
 	}
-	ed.activeTrack = "A1"
+	ed.model.SwitchTrack("A1")
 	if !ed.audioTrack() {
 		t.Fatal("audio track not resolved")
 	}
-	ed.activeTrack = "missing"
-	if ed.trackID() != "V1" {
-		t.Fatal("invalid active track fallback")
+	ed.model.SwitchTrack("missing")
+	if ed.trackID() != "A1" {
+		t.Fatal("invalid active track switch")
 	}
 }
 

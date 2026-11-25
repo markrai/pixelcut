@@ -39,8 +39,8 @@ The next slice cannot be accepted until its predecessor's verification is record
 | Phase | Deliverable | Exit evidence | Status |
 | --- | --- | --- | --- |
 | 2C.R.1 | Baseline, architecture, formatting, CI, fixtures, benchmarks | Format/vet/race/tests, coverage and benchmark reports | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45691058409) |
-| 2C.R.2 | Model identity, time/intervals, validation, clone and schema contracts | Cross-entry invariants, compatibility and failure tests | Implemented; verification pending |
-| 2C.R.3 | Platform-independent editor and stable selection references | Selection, deletion and track switching tests without Win32 | Pending |
+| 2C.R.2 | Model identity, time/intervals, validation, clone and schema contracts | Cross-entry invariants, compatibility and failure tests | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45696335973) |
+| 2C.R.3 | Platform-independent editor and stable selection references | Selection, deletion and track switching tests without Win32 | Implemented; verification pending |
 | 2C.R.4 | Unified transactions, typed commands and history | Atomic failure/no-op tests, one history entry per edit | Pending |
 | 2C.R.5 | Pure timeline geometry, hit testing and gestures | Shared geometry for draw/input/drop, snapping regression tests | Pending |
 | 2C.R.6 | Deterministic composition evaluator | Video/audio contribution and time mapping tests independent of selection | Pending |

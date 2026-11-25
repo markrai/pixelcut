@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/session"
 )
@@ -40,7 +41,7 @@ func projectTitle(path string, dirty, recoveryFailed bool) string {
 
 func (e *editor) updateDirty() {
 	if e.savedFingerprint != "" {
-		e.dirty = e.p.Fingerprint() != e.savedFingerprint
+		e.dirty = e.model.Project().Fingerprint() != e.savedFingerprint
 	}
 	e.updateRecoveryTitle()
 }
@@ -48,12 +49,12 @@ func (e *editor) updateDirty() {
 func (e *editor) restoreSaveBaseline() {
 	if e.projectPath == "" {
 		if !e.dirty {
-			e.savedFingerprint = e.p.Fingerprint()
+			e.savedFingerprint = e.model.Project().Fingerprint()
 		}
 		return
 	}
 	p, rev, err := project.LoadRevision(e.projectPath)
-	if err == nil && p.Fingerprint() == e.p.Fingerprint() {
+	if err == nil && p.Fingerprint() == e.model.Project().Fingerprint() {
 		e.projectRevision = rev
 		e.savedFingerprint = p.Fingerprint()
 		e.dirty = false
@@ -91,20 +92,20 @@ func (e *editor) saveProject(as bool) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		rev, err := e.p.SaveNew(path)
+		rev, err := e.model.Project().SaveNew(path)
 		if err != nil {
 			return false, err
 		}
 		e.projectRevision = rev
 	} else {
-		rev, err := e.p.SaveExisting(path, e.projectRevision)
+		rev, err := e.model.Project().SaveExisting(path, e.projectRevision)
 		if err != nil {
 			return false, err
 		}
 		e.projectRevision = rev
 	}
 	e.projectPath = path
-	e.savedFingerprint = e.p.Fingerprint()
+	e.savedFingerprint = e.model.Project().Fingerprint()
 	e.dirty = false
 	e.updateRecoveryTitle()
 	recovered := e.checkpoint()
@@ -173,11 +174,9 @@ func (e *editor) switchProject(path string, closing bool) error {
 		return err
 	}
 	e.stopPreview()
-	e.group = nil
-	e.anchor = ""
-	e.activeTrack = "V1"
 	e.clipboard = project.ClipClipboard{}
-	e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q, nil, nil, -1, -1, len(merged) > 0
+	e.model = editorstate.New(q)
+	e.undo, e.redo, e.dirty = nil, nil, len(merged) > 0
 	e.origin, e.playhead, e.zoom = 0, 0, 0
 	e.projectPath, e.projectRevision, e.savedFingerprint = path, rev, fingerprint
 	e.refresh()

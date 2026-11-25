@@ -8,12 +8,12 @@ import (
 
 func (e *editor) copySelection(cut bool) error {
 	ids := e.selectionIDs()
-	b, err := e.p.CopyClips(e.trackID(), ids)
+	b, err := e.model.Project().CopyClips(e.trackID(), ids)
 	if err != nil {
 		return err
 	}
 	if cut {
-		q, err := e.p.DeleteClips(e.trackID(), ids)
+		q, err := e.model.Project().DeleteClips(e.trackID(), ids)
 		if err != nil {
 			return err
 		}
@@ -35,7 +35,7 @@ func (e *editor) pasteAt(duplicate bool, position *int64) error {
 	b := e.clipboard
 	if duplicate {
 		var err error
-		b, err = e.p.CopyClips(e.trackID(), e.selectionIDs())
+		b, err = e.model.Project().CopyClips(e.trackID(), e.selectionIDs())
 		if err != nil {
 			return err
 		}
@@ -52,13 +52,13 @@ func (e *editor) pasteAt(duplicate bool, position *int64) error {
 	var r project.ClipboardPlacement
 	var err error
 	if duplicate {
-		r, err = e.p.DuplicateClips(e.trackID(), b, ids)
+		r, err = e.model.Project().DuplicateClips(e.trackID(), b, ids)
 	} else {
 		at := e.playhead
 		if position != nil {
 			at = *position
 		}
-		r, err = e.p.PasteClips(e.trackID(), b, at, ids)
+		r, err = e.model.Project().PasteClips(e.trackID(), b, at, ids)
 	}
 	if err != nil {
 		return fmt.Errorf("placement rejected: %w", err)
@@ -67,17 +67,11 @@ func (e *editor) pasteAt(duplicate bool, position *int64) error {
 		return err
 	}
 	e.stopPreview()
-	e.group = nil
-	if len(ids) > 1 {
-		e.group = make(map[string]bool, len(ids))
-		for _, id := range ids {
-			e.group[id] = true
-		}
-	}
-	e.clip = r.FirstClip
-	e.anchor = ids[0]
 	_, e.zoom = timelineEditView(e.playhead, e.playhead, e.zoom, e.scale(clientRect(e.timeline).Right))
-	if err = e.commit(r.Project); err != nil {
+	if err = e.commitWithSelection(r.Project, func() {
+		e.model.Select(ids, ids[0])
+		e.model.SetAnchor(ids[0])
+	}); err != nil {
 		return err
 	}
 	user.NewProc("SetFocus").Call(e.timeline)

@@ -96,7 +96,7 @@ func (e *editor) beginTransform() error {
 	if !ok {
 		return errors.New("Select a video clip first")
 	}
-	a, ok := e.p.Asset(c.AssetID)
+	a, ok := e.model.Project().Asset(c.AssetID)
 	if !ok {
 		return errors.New("Source missing")
 	}
@@ -231,17 +231,17 @@ func (e *editor) applyTransform() error {
 		return errors.New("Clip selection changed")
 	}
 	c.Transform = s.draft
-	q := e.p.Clone()
-	q.Tracks[e.trackIndex()].Clips[e.clip] = c
+	q := e.model.Project().Clone()
+	q.Tracks[e.trackIndex()].Clips[e.model.ClipIndex()] = c
 	if err := q.Validate(); err != nil {
 		return err
 	}
-	e.undo = append(e.undo, e.p.Clone())
+	e.undo = append(e.undo, e.model.Project().Clone())
 	if len(e.undo) > 50 {
 		e.undo = e.undo[1:]
 	}
 	e.redo = nil
-	e.p = q
+	e.model.Adopt(q)
 	e.dirty = true
 	e.endTransformUI()
 	e.refresh()

@@ -213,7 +213,7 @@ func (e *editor) togglePreview() error {
 		return nil
 	}
 	c := e.track().Clips[index]
-	if a, ok := e.p.Asset(c.AssetID); !ok || !project.SourceAvailable(a.Path) {
+	if a, ok := e.model.Project().Asset(c.AssetID); !ok || !project.SourceAvailable(a.Path) {
 		e.stopPreview()
 		e.playhead = at
 		e.selectClip(index)
@@ -223,7 +223,7 @@ func (e *editor) togglePreview() error {
 		return nil
 	}
 	if e.clock != nil && e.previewActive() && e.clock.clip.ID == c.ID && at == e.playhead {
-		if e.clip != index || len(e.group) > 1 {
+		if e.model.ClipIndex() != index || e.model.Count() > 1 {
 			e.selectClip(index)
 		}
 		e.clock.queue(at, false, false)

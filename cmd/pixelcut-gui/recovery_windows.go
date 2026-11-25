@@ -8,6 +8,7 @@ import (
 	"time"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/session"
 )
 
@@ -20,11 +21,11 @@ type recoveryView struct {
 }
 
 func (e *editor) view() recoveryView {
-	return recoveryView{e.asset, e.clip, e.playhead, e.origin, e.zoom, e.selectionKey(), e.trackID()}
+	return recoveryView{e.model.AssetIndex(), e.model.ClipIndex(), e.playhead, e.origin, e.zoom, e.selectionKey(), e.trackID()}
 }
 
 func (e *editor) openRecovery() error {
-	e.savedFingerprint = e.p.Fingerprint()
+	e.savedFingerprint = e.model.Project().Fingerprint()
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		e.recoveryError = err.Error()
@@ -62,36 +63,20 @@ func (e *editor) openRecovery() error {
 	}
 	e.recovery = store
 	if state != nil {
-		e.p = state.Project
-		e.activeTrack = state.ActiveTrack
-		e.asset, e.clip = state.Asset, state.Clip
+		e.model = editorstate.New(state.Project)
+		e.model.Restore(state.ActiveTrack, state.Asset, state.Clip, state.SelectedClips)
 		e.playhead, e.origin, e.zoom = state.Playhead, state.Origin, state.Zoom
 		e.dirty, e.projectPath = state.Dirty, state.ProjectPath
 		e.projectRevision, e.savedFingerprint = state.ProjectRevision, state.SavedFingerprint
 		e.restoreSaveBaseline()
-		if len(state.SelectedClips) > 1 {
-			e.group = map[string]bool{}
-			for _, id := range state.SelectedClips {
-				e.group[id] = true
-			}
-		}
-		q, merged, err := e.p.MergeDuplicateAssets()
+		q, merged, err := e.model.Project().MergeDuplicateAssets()
 		if err == nil && len(merged) > 0 {
-			selectedID := ""
-			if e.asset >= 0 && e.asset < len(e.p.Assets) {
-				selectedID = e.p.Assets[e.asset].ID
-			}
+			selectedID := e.model.AssetID()
 			if id, ok := merged[selectedID]; ok {
 				selectedID = id
 			}
-			e.p = q
-			e.asset = -1
-			for i, a := range q.Assets {
-				if a.ID == selectedID {
-					e.asset = i
-					break
-				}
-			}
+			e.model.Adopt(q)
+			e.model.SetAssetID(selectedID)
 			e.dirty = true
 		}
 	}
@@ -111,8 +96,8 @@ func (e *editor) checkpoint() bool {
 		return false
 	}
 	e.lastCheckpoint = time.Now()
-	s := session.State{Project: e.p, Asset: e.asset, Clip: e.clip, ActiveTrack: e.trackID(), Playhead: e.playhead, Origin: e.origin, Zoom: e.zoom, Dirty: e.dirty, ProjectPath: e.projectPath, ProjectRevision: e.projectRevision, SavedFingerprint: e.savedFingerprint}
-	if len(e.group) > 1 {
+	s := session.State{Project: e.model.Project(), Asset: e.model.AssetIndex(), Clip: e.model.ClipIndex(), ActiveTrack: e.trackID(), Playhead: e.playhead, Origin: e.origin, Zoom: e.zoom, Dirty: e.dirty, ProjectPath: e.projectPath, ProjectRevision: e.projectRevision, SavedFingerprint: e.savedFingerprint}
+	if e.model.Count() > 1 {
 		s.SelectedClips = e.selectionIDs()
 	}
 	if err := e.recovery.Save(s); err != nil {
@@ -153,11 +138,11 @@ func (e *editor) finishRecovery() {
 		e.tell("Automatic recovery unavailable: " + e.recoveryError)
 		return
 	}
-	if len(e.p.Assets) == 0 {
+	if len(e.model.Project().Assets) == 0 {
 		return
 	}
 	missing := 0
-	for _, a := range e.p.Assets {
+	for _, a := range e.model.Project().Assets {
 		if info, err := os.Stat(a.Path); err != nil || !info.Mode().IsRegular() {
 			missing++
 		}

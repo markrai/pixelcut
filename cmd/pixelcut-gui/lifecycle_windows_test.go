@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
@@ -33,17 +34,17 @@ func TestRestoreSaveBaseline(t *testing.T) {
 	}
 	q := p.Clone()
 	q.Assets = append(q.Assets, project.Asset{ID: "a", Path: filepath.Join(t.TempDir(), "media.mp4"), Duration: 1000000, Width: 1080, Height: 1920})
-	ed := editor{p: p, projectPath: path, dirty: true}
+	ed := editor{model: editorstate.New(p), projectPath: path, dirty: true}
 	ed.restoreSaveBaseline()
 	if ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != p.Fingerprint() {
 		t.Fatal("identical saved project did not restore baseline")
 	}
-	ed = editor{p: q, projectPath: path, dirty: true}
+	ed = editor{model: editorstate.New(q), projectPath: path, dirty: true}
 	ed.restoreSaveBaseline()
 	if !ed.dirty || ed.projectRevision != "" || ed.savedFingerprint != "" {
 		t.Fatal("legacy dirty recovery adopted an unverified baseline")
 	}
-	ed = editor{p: q, projectPath: path, dirty: true, projectRevision: rev, savedFingerprint: p.Fingerprint()}
+	ed = editor{model: editorstate.New(q), projectPath: path, dirty: true, projectRevision: rev, savedFingerprint: p.Fingerprint()}
 	ed.restoreSaveBaseline()
 	if !ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != p.Fingerprint() {
 		t.Fatal("valid dirty recovery lost baseline")
@@ -56,7 +57,7 @@ func TestRestoreSaveBaseline(t *testing.T) {
 	if ed.dirty || ed.projectRevision != newRev {
 		t.Fatal("save before checkpoint not reconciled")
 	}
-	ed = editor{p: p, projectPath: path, projectRevision: rev, savedFingerprint: p.Fingerprint()}
+	ed = editor{model: editorstate.New(p), projectPath: path, projectRevision: rev, savedFingerprint: p.Fingerprint()}
 	ed.restoreSaveBaseline()
 	if !ed.dirty || ed.projectRevision != rev || ed.savedFingerprint != "" {
 		t.Fatal("external update treated as safe overwrite")

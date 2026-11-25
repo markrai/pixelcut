@@ -387,7 +387,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		e.tell("Audio track editing; mixed playback is not yet available.")
 		return
 	}
-	if a, ok := e.p.Asset(c.AssetID); !ok || !project.SourceAvailable(a.Path) {
+	if a, ok := e.model.Project().Asset(c.AssetID); !ok || !project.SourceAvailable(a.Path) {
 		e.stopPreview()
 		e.playhead = t
 		e.selectClip(index)
@@ -405,7 +405,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 	}
 	if e.clock != nil && e.previewActive() && e.clock.clip.ID == c.ID {
 		e.playhead = t
-		if e.clip != index {
+		if e.model.ClipIndex() != index {
 			e.selectClip(index)
 		}
 		e.clock.queue(t, true, !playing)

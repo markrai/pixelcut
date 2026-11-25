@@ -139,7 +139,7 @@ func (e *editor) pastePossible(at int64) bool {
 	for i := range ids {
 		ids[i] = fmt.Sprintf("%s-%d", prefix, i)
 	}
-	_, err := e.p.PasteClips(e.trackID(), e.clipboard, at, ids)
+	_, err := e.model.Project().PasteClips(e.trackID(), e.clipboard, at, ids)
 	return err == nil
 }
 
@@ -174,11 +174,11 @@ func (e *editor) timelineContext(lp uintptr) {
 	hit := -1
 	if keyboard {
 		if _, ok := e.selected(); ok {
-			hit = e.clip
+			hit = e.model.ClipIndex()
 		}
 	} else {
 		for i, c := range e.track().Clips {
-			a, _ := e.p.Asset(c.AssetID)
+			a, _ := e.model.Project().Asset(c.AssetID)
 			if timelineMenuHit(local.X, local.Y, e.xAt(c.Start, w), e.xAt(c.Start+(c.Out-c.In), w), a.HasAudio && !e.audioTrack()) {
 				hit = i
 				break
@@ -197,14 +197,14 @@ func (e *editor) timelineContext(lp uintptr) {
 		s.count = len(e.selectionIDs())
 		if c, ok := e.selected(); ok {
 			s.split = e.playhead > c.Start && e.playhead < c.Start+(c.Out-c.In)
-			if a, ok := e.p.Asset(c.AssetID); ok {
+			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
 			}
 		}
 		e.checkpoint()
 	} else {
 		s.pasteHere = e.pastePossible(at)
-		_, _, err := e.p.RemoveGap(e.trackID(), at)
+		_, _, err := e.model.Project().RemoveGap(e.trackID(), at)
 		s.gap = err == nil
 	}
 	id := e.popup(timelineMenuItems(s), screen)
@@ -224,13 +224,13 @@ func (e *editor) timelineContext(lp uintptr) {
 	case menuSelectAsset, menuRevealClip:
 		if c, ok := e.selected(); ok && len(e.selectionIDs()) == 1 {
 			if id == menuRevealClip {
-				if a, ok := e.p.Asset(c.AssetID); ok {
+				if a, ok := e.model.Project().Asset(c.AssetID); ok {
 					err = revealSource(a.Path)
 				}
 			} else {
-				for i, a := range e.p.Assets {
+				for i, a := range e.model.Project().Assets {
 					if a.ID == c.AssetID {
-						e.asset = i
+						e.model.SetAssetIndex(i)
 						send.Call(e.controls[idAssets], lbSet, uintptr(i), 0)
 						e.checkpoint()
 						e.tell("Source selected in media bin.")
@@ -261,9 +261,9 @@ func (e *editor) mediaContext(hwnd, lp uintptr) {
 	}
 	keyboard := uint32(lp) == 0xffffffff
 	pos := point{8, 8}
-	if keyboard && e.asset >= 0 && e.asset < len(e.p.Assets) {
+	if keyboard && e.model.AssetIndex() >= 0 && e.model.AssetIndex() < len(e.model.Project().Assets) {
 		var r rect
-		ok, _, _ := send.Call(hwnd, 0x0198, uintptr(e.asset), uintptr(unsafe.Pointer(&r)))
+		ok, _, _ := send.Call(hwnd, 0x0198, uintptr(e.model.AssetIndex()), uintptr(unsafe.Pointer(&r)))
 		if int32(ok) >= 0 && r.Bottom > 0 && r.Top < clientRect(hwnd).Bottom {
 			pos.Y = max(0, r.Top) + min(8, max(0, r.Bottom-r.Top-1))
 		}
@@ -272,14 +272,14 @@ func (e *editor) mediaContext(hwnd, lp uintptr) {
 	user.NewProc("SetFocus").Call(hwnd)
 	index := -1
 	if keyboard {
-		if e.asset >= 0 && e.asset < len(e.p.Assets) {
-			index = e.asset
+		if e.model.AssetIndex() >= 0 && e.model.AssetIndex() < len(e.model.Project().Assets) {
+			index = e.model.AssetIndex()
 		}
 	} else {
 		packed := uintptr(uint16(local.X)) | uintptr(uint16(local.Y))<<16
 		r, _, _ := send.Call(hwnd, 0x01a9, 0, packed)
 		i := int(r & 0xffff)
-		if (r>>16)&0xffff == 0 && i < len(e.p.Assets) {
+		if (r>>16)&0xffff == 0 && i < len(e.model.Project().Assets) {
 			var bounds rect
 			ok, _, _ := send.Call(hwnd, 0x0198, uintptr(i), uintptr(unsafe.Pointer(&bounds)))
 			if int32(ok) >= 0 && local.Y >= bounds.Top && local.Y < bounds.Bottom {
@@ -288,18 +288,18 @@ func (e *editor) mediaContext(hwnd, lp uintptr) {
 		}
 	}
 	if index >= 0 {
-		e.asset = index
+		e.model.SetAssetIndex(index)
 		send.Call(hwnd, lbSet, uintptr(index), 0)
 		e.checkpoint()
 	}
-	offline := index >= 0 && e.offline(e.p.Assets[index].Path)
+	offline := index >= 0 && e.offline(e.model.Project().Assets[index].Path)
 	id := e.popup(assetMenuItems(index >= 0, offline, e.missingCount() > 0), screen)
 	if id == 0 {
 		return
 	}
 	var err error
 	if id == menuRevealAsset {
-		err = revealSource(e.p.Assets[index].Path)
+		err = revealSource(e.model.Project().Assets[index].Path)
 	} else {
 		err = e.command(id, 0)
 	}

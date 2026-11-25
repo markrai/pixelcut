@@ -16,21 +16,14 @@ const (
 	trackMenuRemove = 6202
 )
 
-func (e *editor) trackIndex() int {
-	i := e.p.TrackIndex(e.activeTrack)
-	if i < 0 {
-		return 0
-	}
-	return i
-}
+func (e *editor) trackIndex() int { return e.model.TrackIndex() }
 
-func (e *editor) trackID() string  { return e.track().ID }
+func (e *editor) trackID() string  { return e.model.TrackID() }
 func (e *editor) audioTrack() bool { return e.track().Kind == "audio" }
 
 func (e *editor) syncTrackUI() {
-	e.activeTrack = e.trackID()
 	if h := e.controls[idTracks]; h != 0 {
-		change(h, fmt.Sprintf("Track: %s (%d)", e.trackID(), len(e.p.Tracks)))
+		change(h, fmt.Sprintf("Track: %s (%d)", e.trackID(), len(e.model.Project().Tracks)))
 		user.NewProc("InvalidateRect").Call(h, 0, 1)
 	}
 	if h := e.controls[idAdd]; h != 0 {
@@ -43,14 +36,11 @@ func (e *editor) syncTrackUI() {
 }
 
 func (e *editor) switchTrack(id string) {
-	if e.p.TrackIndex(id) < 0 || id == e.trackID() {
+	if e.model.Project().TrackIndex(id) < 0 || id == e.trackID() {
 		return
 	}
 	e.stopPreview()
-	e.activeTrack = id
-	e.group = nil
-	e.anchor = ""
-	e.clip = -1
+	e.model.SwitchTrack(id)
 	e.refresh()
 	e.tell("Editing " + id + ". Preview is isolated to the active video track.")
 }
@@ -85,12 +75,12 @@ func (e *editor) showTracks() error {
 	if ok, _, _ := user.NewProc("GetWindowRect").Call(e.controls[idTracks], uintptr(unsafe.Pointer(&r))); ok == 0 {
 		return fmt.Errorf("could not locate track menu")
 	}
-	id := e.popup(trackMenuItems(e.p, e.trackID(), e.selectionIDs()), point{r.Left, r.Bottom})
+	id := e.popup(trackMenuItems(e.model.Project(), e.trackID(), e.selectionIDs()), point{r.Left, r.Bottom})
 	if id == 0 {
 		return nil
 	}
-	if id >= trackMenuSelect && id < trackMenuSelect+len(e.p.Tracks) {
-		e.switchTrack(e.p.Tracks[id-trackMenuSelect].ID)
+	if id >= trackMenuSelect && id < trackMenuSelect+len(e.model.Project().Tracks) {
+		e.switchTrack(e.model.Project().Tracks[id-trackMenuSelect].ID)
 		return nil
 	}
 	var q project.Project
@@ -103,13 +93,13 @@ func (e *editor) showTracks() error {
 		if id == trackMenuAudio {
 			kind = "audio"
 		}
-		q, target, err = e.p.AddTrack(kind)
+		q, target, err = e.model.Project().AddTrack(kind)
 	case id == trackMenuRemove:
-		q, err = e.p.RemoveTrack(e.trackID())
-	case id >= trackMenuMove && id < trackMenuMove+len(e.p.Tracks):
-		target = e.p.Tracks[id-trackMenuMove].ID
+		q, err = e.model.Project().RemoveTrack(e.trackID())
+	case id >= trackMenuMove && id < trackMenuMove+len(e.model.Project().Tracks):
+		target = e.model.Project().Tracks[id-trackMenuMove].ID
 		ids = e.selectionIDs()
-		q, err = e.p.TransferClips(e.trackID(), target, ids)
+		q, err = e.model.Project().TransferClips(e.trackID(), target, ids)
 	default:
 		return nil
 	}
@@ -120,16 +110,14 @@ func (e *editor) showTracks() error {
 		return err
 	}
 	e.stopPreview()
-	e.activeTrack = target
-	e.group = nil
-	e.anchor = ""
-	e.clip = -1
-	if err = e.commit(q); err != nil {
+	if err = e.commitWithSelection(q, func() {
+		e.model.SwitchTrack(target)
+		if len(ids) > 0 {
+			e.model.Select(ids, ids[0])
+			e.model.SetAnchor(ids[0])
+		}
+	}); err != nil {
 		return err
-	}
-	if len(ids) > 0 {
-		e.setSelection(ids, ids[0])
-		e.checkpoint()
 	}
 	e.tell("Tracks updated. Active track: " + target + ". Ctrl+Z to undo.")
 	return nil

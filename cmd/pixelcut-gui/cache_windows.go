@@ -22,8 +22,8 @@ func (e *editor) checkSourceVersions(force bool) {
 		return
 	}
 	e.lastSourceCheck = time.Now()
-	next := make(map[string]mediacache.Source, len(e.p.Assets))
-	for _, a := range e.p.Assets {
+	next := make(map[string]mediacache.Source, len(e.model.Project().Assets))
+	for _, a := range e.model.Project().Assets {
 		if _, ok := next[a.Path]; ok {
 			continue
 		}

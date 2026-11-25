@@ -11,19 +11,18 @@ func (e *editor) commitRipple(q project.Project, clearSelection bool) error {
 		return err
 	}
 	e.stopPreview()
-	if clearSelection {
-		e.group = nil
-		e.anchor = ""
-		e.clip = -1
-	}
 	end := q.EndTime()
 	e.playhead, e.zoom = timelineEditView(e.playhead, end, e.zoom, e.scale(clientRect(e.timeline).Right))
-	return e.commit(q)
+	return e.commitWithSelection(q, func() {
+		if clearSelection {
+			e.model.Clear()
+		}
+	})
 }
 
 func (e *editor) rippleDeleteSelection() error {
 	ids := e.selectionIDs()
-	q, err := e.p.RippleDelete(e.trackID(), ids)
+	q, err := e.model.Project().RippleDelete(e.trackID(), ids)
 	if err != nil {
 		return err
 	}
@@ -37,7 +36,7 @@ func (e *editor) rippleDeleteSelection() error {
 func (e *editor) removeGap() error { return e.removeGapAt(e.playhead) }
 
 func (e *editor) removeGapAt(at int64) error {
-	q, duration, err := e.p.RemoveGap(e.trackID(), at)
+	q, duration, err := e.model.Project().RemoveGap(e.trackID(), at)
 	if err != nil {
 		return err
 	}

@@ -30,7 +30,7 @@ type relinkPlan struct {
 
 func (e *editor) missingCount() int {
 	n := 0
-	for _, a := range e.p.Assets {
+	for _, a := range e.model.Project().Assets {
 		if _, ok := e.sourceVersions[a.Path]; !ok {
 			n++
 		}
@@ -50,16 +50,16 @@ func (e *editor) refreshMediaList() {
 	}
 	top, _, _ := send.Call(h, 0x018e, 0, 0)
 	send.Call(h, lbReset, 0, 0)
-	for _, a := range e.p.Assets {
+	for _, a := range e.model.Project().Assets {
 		prefix := ""
 		if e.offline(a.Path) {
 			prefix = "[OFFLINE] "
 		}
 		listAdd(h, fmt.Sprintf("%s%s  [%dx%d]", prefix, filepath.Base(a.Path), a.Width, a.Height))
 	}
-	send.Call(h, lbSet, uintptr(e.asset), 0)
-	if len(e.p.Assets) > 0 && int(top) >= 0 {
-		send.Call(h, 0x0197, uintptr(min(int(top), len(e.p.Assets)-1)), 0)
+	send.Call(h, lbSet, uintptr(e.model.AssetIndex()), 0)
+	if len(e.model.Project().Assets) > 0 && int(top) >= 0 {
+		send.Call(h, 0x0197, uintptr(min(int(top), len(e.model.Project().Assets)-1)), 0)
 	}
 	label := "Relink"
 	if n := e.missingCount(); n > 0 {
@@ -80,12 +80,7 @@ func (e *editor) missingNotice() string {
 	return fmt.Sprintf(" %d offline source(s); use Relink.", n)
 }
 
-func (e *editor) selectedAssetID() string {
-	if e.asset < 0 || e.asset >= len(e.p.Assets) {
-		return ""
-	}
-	return e.p.Assets[e.asset].ID
-}
+func (e *editor) selectedAssetID() string { return e.model.AssetID() }
 
 func (e *editor) showRelinkMenu() error {
 	if !e.canOpenMenu() {
@@ -94,7 +89,7 @@ func (e *editor) showRelinkMenu() error {
 	e.checkSourceVersions(true)
 	e.refreshMediaList()
 	id := e.selectedAssetID()
-	a, selected := e.p.Asset(id)
+	a, selected := e.model.Project().Asset(id)
 	items := []menuItem{
 		item(idRelinkAsset, "Relink selected offline asset...", selected && e.offline(a.Path)),
 		item(idReplaceAsset, "Replace selected source...", selected),
@@ -116,7 +111,7 @@ func (e *editor) relinkOne(id string, replace bool) error {
 	if !e.canOpenMenu() {
 		return fmt.Errorf("finish the current operation first")
 	}
-	a, ok := e.p.Asset(id)
+	a, ok := e.model.Project().Asset(id)
 	if !ok {
 		return fmt.Errorf("select a media-bin asset")
 	}
@@ -139,7 +134,7 @@ func (e *editor) relinkFolder() error {
 	if !e.canOpenMenu() {
 		return fmt.Errorf("finish the current operation first")
 	}
-	if len(e.p.MissingAssets()) == 0 {
+	if len(e.model.Project().MissingAssets()) == 0 {
 		return fmt.Errorf("no offline assets to relink")
 	}
 	dir, err := pickRelinkFolder()
@@ -152,7 +147,7 @@ func (e *editor) relinkFolder() error {
 
 func (e *editor) startRelink(folder string, requests []project.RelinkCandidate, replace bool) {
 	e.stopPreview()
-	snapshot := e.p.Clone()
+	snapshot := e.model.Project().Clone()
 	engine := e.engine
 	e.tell("Checking relink candidates against existing source metadata...")
 	e.startJob(func(ctx context.Context) result {
@@ -253,7 +248,7 @@ func (e *editor) finishRelink(plan *relinkPlan) {
 				fmt.Fprintf(&b, "\n%d more matched asset(s).", len(plan.changes)-i)
 				break
 			}
-			fmt.Fprintf(&b, "\n%s (%d clip(s))", shortRelinkText(filepath.Base(v.asset.Path), 120), e.p.AssetReferences(v.asset.ID))
+			fmt.Fprintf(&b, "\n%s (%d clip(s))", shortRelinkText(filepath.Base(v.asset.Path), 120), e.model.Project().AssetReferences(v.asset.ID))
 		}
 	} else {
 		v := plan.changes[0]
@@ -261,7 +256,7 @@ func (e *editor) finishRelink(plan *relinkPlan) {
 		if v.replace {
 			verb = "Replace"
 		}
-		fmt.Fprintf(&b, "%s source for %d clip(s)?\n\nFrom: %s\nTo: %s\n\nDuration: %.6fs to %.6fs", verb, e.p.AssetReferences(v.asset.ID), shortRelinkText(v.original.Path, 400), shortRelinkText(v.asset.Path, 400), project.Seconds(v.original.Duration), project.Seconds(v.asset.Duration))
+		fmt.Fprintf(&b, "%s source for %d clip(s)?\n\nFrom: %s\nTo: %s\n\nDuration: %.6fs to %.6fs", verb, e.model.Project().AssetReferences(v.asset.ID), shortRelinkText(v.original.Path, 400), shortRelinkText(v.asset.Path, 400), project.Seconds(v.original.Duration), project.Seconds(v.asset.Duration))
 	}
 	if len(plan.issues) > 0 {
 		fmt.Fprintf(&b, "\n\n%d unresolved asset(s) will remain offline:%s", len(plan.issues), relinkIssueText(plan.issues))
@@ -274,7 +269,7 @@ func (e *editor) finishRelink(plan *relinkPlan) {
 		e.tell("Relink canceled; no sources changed.")
 		return
 	}
-	q, err := applyRelinkPlan(e.p, plan)
+	q, err := applyRelinkPlan(e.model.Project(), plan)
 	if err != nil {
 		e.tell("Relink canceled: " + err.Error())
 		return

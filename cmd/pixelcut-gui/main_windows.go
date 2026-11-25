@@ -13,6 +13,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
@@ -175,11 +176,10 @@ type previewResult struct {
 }
 
 type editor struct {
-	p                                 project.Project
+	model                             editorstate.State
 	undo, redo                        []project.Project
 	controls                          map[int]uintptr
 	status, host                      uintptr
-	asset, clip                       int
 	busy                              bool
 	cancel                            context.CancelFunc
 	results                           chan result
@@ -212,8 +212,6 @@ type editor struct {
 	projectPath                       string
 	snapDisabled                      bool
 	assetDrag                         *assetDrag
-	group                             map[string]bool
-	anchor                            string
 	marquee                           *marqueeDrag
 	rippleTrim                        bool
 	clipboard                         project.ClipClipboard
@@ -231,7 +229,6 @@ type editor struct {
 	prefs                             session.Preferences
 	preferencesWarning                string
 	previewLabel                      uintptr
-	activeTrack                       string
 	timelineLabel                     uintptr
 }
 
@@ -303,14 +300,10 @@ func pick(save bool, filter, ext, title string) (string, error) {
 
 func (e *editor) tell(s string) { change(e.status, s) }
 
-func (e *editor) track() *project.Track { return &e.p.Tracks[e.trackIndex()] }
+func (e *editor) track() *project.Track { return &e.model.Project().Tracks[e.trackIndex()] }
 
 func (e *editor) selected() (project.Clip, bool) {
-	t := e.track()
-	if e.clip < 0 || e.clip >= len(t.Clips) {
-		return project.Clip{}, false
-	}
-	return t.Clips[e.clip], true
+	return e.model.Selected()
 }
 
 func fmtTime(t int64) string { return strconv.FormatFloat(project.Seconds(t), 'f', 6, 64) }
@@ -324,19 +317,12 @@ func (e *editor) refresh() {
 	e.refreshMediaList()
 	send.Call(c, lbReset, 0, 0)
 	for _, item := range e.track().Clips {
-		asset, _ := e.p.Asset(item.AssetID)
+		asset, _ := e.model.Project().Asset(item.AssetID)
 		listAdd(c, fmt.Sprintf("%s  |  %ss - %ss", filepath.Base(asset.Path), fmtTime(item.Start), fmtTime(item.Start+(item.Out-item.In))))
 	}
-	if e.asset >= len(e.p.Assets) {
-		e.asset = -1
-	}
-	if e.clip >= len(e.track().Clips) {
-		e.clip = -1
-	}
-	e.normalizeGroup()
 	e.updateDirty()
-	send.Call(a, lbSet, uintptr(e.asset), 0)
-	send.Call(c, lbSet, uintptr(e.clip), 0)
+	send.Call(a, lbSet, uintptr(e.model.AssetIndex()), 0)
+	send.Call(c, lbSet, uintptr(e.model.ClipIndex()), 0)
 	e.fields()
 	e.invalidateTimeline()
 	e.checkpoint()
@@ -347,7 +333,7 @@ func (e *editor) fields() {
 	for _, id := range []int{idStart, idIn, idOut, idCrop, idAt} {
 		change(e.controls[id], "")
 	}
-	if !ok || len(e.group) > 1 {
+	if !ok || e.model.Count() > 1 {
 		return
 	}
 	change(e.controls[idStart], fmtTime(c.Start))
@@ -360,16 +346,23 @@ func (e *editor) fields() {
 }
 
 func (e *editor) commit(q project.Project) error {
+	return e.commitWithSelection(q, nil)
+}
+
+func (e *editor) commitWithSelection(q project.Project, update func()) error {
 	if err := q.ValidateEditorLayout(); err != nil {
 		return err
 	}
 	e.stopPreview()
-	e.undo = append(e.undo, e.p.Clone())
+	e.undo = append(e.undo, e.model.Project().Clone())
 	if len(e.undo) > 50 {
 		e.undo = e.undo[1:]
 	}
 	e.redo = nil
-	e.p = q
+	e.model.Adopt(q)
+	if update != nil {
+		update()
+	}
 	e.dirty = true
 	e.refresh()
 	return nil
@@ -458,7 +451,7 @@ func (e *editor) startPreview(paused bool) error {
 	if !ok {
 		return fmt.Errorf("select a timeline clip")
 	}
-	a, ed, err := e.p.MediaEdit(c)
+	a, ed, err := e.model.Project().MediaEdit(c)
 	if err != nil {
 		return err
 	}
@@ -560,7 +553,7 @@ func (e *editor) command(id, notification int) error {
 	if e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing {
 		return fmt.Errorf("finish the active drag first")
 	}
-	if len(e.group) > 1 {
+	if e.model.Count() > 1 {
 		switch id {
 		case idApply, idSplit, idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut:
 			return fmt.Errorf("select a single clip for this operation")
@@ -613,28 +606,26 @@ func (e *editor) command(id, notification int) error {
 	case idAssets:
 		if notification == 1 {
 			n, _, _ := send.Call(e.controls[idAssets], lbGet, 0, 0)
-			e.asset = int(n)
+			e.model.SetAssetIndex(int(n))
 		}
 	case idClips:
 		if notification == 1 {
 			n, _, _ := send.Call(e.controls[idClips], lbGet, 0, 0)
-			e.group = nil
-			e.anchor = ""
-			e.clip = int(n)
 			e.stopPreview()
+			e.model.SelectIndex(int(n))
 			e.fields()
 			e.invalidateTimeline()
 		}
 	case idAdd:
-		if e.asset < 0 || e.asset >= len(e.p.Assets) {
+		if e.model.AssetIndex() < 0 || e.model.AssetIndex() >= len(e.model.Project().Assets) {
 			return fmt.Errorf("select a media asset")
 		}
-		a := e.p.Assets[e.asset]
+		a := e.model.Project().Assets[e.model.AssetIndex()]
 		var end int64
 		for _, c := range e.track().Clips {
 			end = max(end, c.Start+(c.Out-c.In))
 		}
-		r, err := e.p.PlaceAssets(e.trackID(), []string{a.ID}, []string{nextID("clip")}, end, -1, 0)
+		r, err := e.model.Project().PlaceAssets(e.trackID(), []string{a.ID}, []string{nextID("clip")}, end, -1, 0)
 		if err != nil {
 			return err
 		}
@@ -675,8 +666,8 @@ func (e *editor) command(id, notification int) error {
 			}
 			c.Crop = &project.Crop{X: values[0], Y: values[1], Width: values[2], Height: values[3]}
 		}
-		q := e.p.Clone()
-		q.Tracks[e.trackIndex()].Clips[e.clip] = c
+		q := e.model.Project().Clone()
+		q.Tracks[e.trackIndex()].Clips[e.model.ClipIndex()] = c
 		if err = e.commit(q); err != nil {
 			return err
 		}
@@ -696,7 +687,7 @@ func (e *editor) command(id, notification int) error {
 		if err != nil {
 			return err
 		}
-		q, err := e.p.Split(e.trackID(), c.ID, nextID("clip"), at)
+		q, err := e.model.Project().Split(e.trackID(), c.ID, nextID("clip"), at)
 		if err != nil {
 			return err
 		}
@@ -752,24 +743,12 @@ func (e *editor) command(id, notification int) error {
 			return nil
 		}
 		e.stopPreview()
-		*to = append(*to, e.p.Clone())
-		ids := e.selectionIDs()
-		primary := ""
-		if c, ok := e.selected(); ok {
-			primary = c.ID
-		}
-		e.p = (*from)[len(*from)-1]
-		if e.p.TrackIndex(e.activeTrack) < 0 {
-			e.activeTrack = "V1"
-			ids = nil
-			primary = ""
-		}
-		e.setSelection(ids, primary)
-		e.anchor = primary
+		*to = append(*to, e.model.Project().Clone())
+		e.model.Adopt((*from)[len(*from)-1])
 		*from = (*from)[:len(*from)-1]
 		e.dirty = true
 		e.refresh()
-		if _, ok := e.selected(); ok && len(e.group) <= 1 && !e.audioTrack() {
+		if _, ok := e.selected(); ok && e.model.Count() <= 1 && !e.audioTrack() {
 			if err := e.startPreview(true); err != nil {
 				e.tell("History restored; preview unavailable: " + err.Error())
 				return nil
@@ -803,7 +782,7 @@ func (e *editor) command(id, notification int) error {
 		if !ok {
 			return fmt.Errorf("select a clip")
 		}
-		a, ed, err := e.p.MediaEdit(c)
+		a, ed, err := e.model.Project().MediaEdit(c)
 		if err != nil {
 			return err
 		}
@@ -952,7 +931,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	ui = &editor{p: project.New(), controls: map[int]uintptr{}, asset: -1, clip: -1, results: make(chan result, 1), previewResults: make(chan previewResult, 16), engine: media.Default()}
+	ui = &editor{model: editorstate.New(project.New()), controls: map[int]uintptr{}, results: make(chan result, 1), previewResults: make(chan previewResult, 16), engine: media.Default()}
 	if err := ui.openRecovery(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		user.NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(u(err.Error()))), uintptr(unsafe.Pointer(u("PixelCut recovery"))), 0x10)
@@ -1056,11 +1035,11 @@ func main() {
 }
 
 func (e *editor) removeAsset() error {
-	if e.asset < 0 || e.asset >= len(e.p.Assets) {
+	if e.model.AssetIndex() < 0 || e.model.AssetIndex() >= len(e.model.Project().Assets) {
 		return fmt.Errorf("select a media asset")
 	}
-	a := e.p.Assets[e.asset]
-	count := e.p.AssetReferences(a.ID)
+	a := e.model.Project().Assets[e.model.AssetIndex()]
+	count := e.model.Project().AssetReferences(a.ID)
 	if count > 0 {
 		message := fmt.Sprintf("Remove %s and its %d timeline clip(s)? The source file will remain untouched.", filepath.Base(a.Path), count)
 		r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(message))), uintptr(unsafe.Pointer(u("Remove media asset"))), 0x134)
@@ -1068,26 +1047,14 @@ func (e *editor) removeAsset() error {
 			return nil
 		}
 	}
-	q, err := e.p.RemoveAsset(a.ID, count > 0)
+	q, err := e.model.Project().RemoveAsset(a.ID, count > 0)
 	if err != nil {
 		return err
 	}
-	selectedID := ""
-	if c, ok := e.selected(); ok {
-		selectedID = c.ID
-	}
 	e.stopPreview()
-	e.asset = min(e.asset, len(q.Assets)-1)
-	e.clip = -1
-	var end int64
-	for i, c := range q.Tracks[e.trackIndex()].Clips {
-		if c.ID == selectedID {
-			e.clip = i
-		}
-	}
-	end = q.EndTime()
-	e.playhead = min(e.playhead, end)
-	if err = e.commit(q); err != nil {
+	assetIndex := min(e.model.AssetIndex(), len(q.Assets)-1)
+	e.playhead = min(e.playhead, q.EndTime())
+	if err = e.commitWithSelection(q, func() { e.model.SetAssetIndex(assetIndex) }); err != nil {
 		return err
 	}
 	e.tell("Asset removed from project; source file unchanged. Ctrl+Z to undo.")
@@ -1105,8 +1072,8 @@ func (e *editor) updateSnapButton() {
 }
 
 func (e *editor) selectExistingAsset(index int) {
-	e.asset = index
+	e.model.SetAssetIndex(index)
 	send.Call(e.controls[idAssets], lbSet, uintptr(index), 0)
 	e.checkpoint()
-	e.tell("Already imported: " + filepath.Base(e.p.Assets[index].Path))
+	e.tell("Already imported: " + filepath.Base(e.model.Project().Assets[index].Path))
 }
