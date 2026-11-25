@@ -91,6 +91,7 @@ type ClipGeometry struct {
 	Span
 	RawLeft, RawRight int32
 	LinkedAudio       bool
+	OffsetY           int32
 }
 
 func (v View) Clip(c project.Clip, linkedAudio bool) (ClipGeometry, bool) {
@@ -103,6 +104,7 @@ func (v View) Clip(c project.Clip, linkedAudio bool) (ClipGeometry, bool) {
 }
 
 func (g ClipGeometry) MainHit(x, y int32) string {
+	y -= g.OffsetY
 	if x < g.Left || x >= g.Right || y < LaneTop || y >= LaneBottom {
 		return ""
 	}
@@ -118,6 +120,7 @@ func (g ClipGeometry) MainHit(x, y int32) string {
 }
 
 func (g ClipGeometry) AudioHit(x, y int32) bool {
+	y -= g.OffsetY
 	return g.LinkedAudio && x >= g.Left && x < g.Right && y >= AudioTop && y < AudioBottom
 }
 
@@ -126,6 +129,7 @@ func (g ClipGeometry) Hit(x, y int32) bool {
 }
 
 func (g ClipGeometry) Intersects(left, top, right, bottom int32) bool {
+	top, bottom = top-g.OffsetY, bottom-g.OffsetY
 	if g.Left > right || g.Right <= left {
 		return false
 	}
