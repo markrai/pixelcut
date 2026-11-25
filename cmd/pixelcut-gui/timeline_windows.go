@@ -31,6 +31,8 @@ type timelineDrag struct {
 	moved,valid bool
 	wasPlaying bool
 	clickTime int64
+	snapped bool
+	snapTarget int64
 }
 
 func registerTimeline() {
@@ -139,6 +141,13 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if e.drag!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
 	}
 	if e.waveforms!=nil {e.waveforms.request(audioDemand)}
+	if d:=e.drag;d!=nil && d.snapped && d.valid {
+		x:=e.xAt(d.snapTarget,w)
+		if x>=trackHeader && x<w {
+			fill(dc,rect{x,28,x+2,145},rgb(112,220,241))
+			textAt(dc,rect{max(trackHeader,x-40),0,min(w,x+80),27},"SNAP",rgb(112,220,241),4)
+		}
+	}
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
 		fill(dc,rect{x,19,x+2,h},palette.accent)
@@ -196,8 +205,11 @@ func (e *editor) moveTimeline(x int32) {
 	raw:=float64(x-d.x)/d.scale*float64(project.TicksPerSecond)
 	raw=math.Max(-1e15,math.Min(1e15,raw))
 	delta:=int64(math.Round(raw/10000))*10000
-	c,err:=e.p.DragClip("V1",d.original.ID,d.mode,delta)
-	d.candidate=c;d.valid=err==nil
+	tolerance:=int64(0)
+	if !e.snapDisabled && !keyPressed(0x10) {tolerance=int64(math.Min(2000000,math.Round(8/d.scale*float64(project.TicksPerSecond))))}
+	r,err:=e.p.SnapDrag("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
+	d.candidate=r.Clip;d.valid=err==nil
+	d.snapped=r.Snapped;d.snapTarget=r.Target
 	e.invalidateTimeline()
 }
 

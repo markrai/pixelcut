@@ -19,7 +19,7 @@ const (
 	keyFocusTimeline
 )
 
-const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save As (new file)\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nDelete           Remove selected timeline clip\nLeft / Right     Seek by 0.1s\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
+const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save As (new file)\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nDelete           Remove selected clip / media asset\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
 
 func (e *editor) showShortcuts() {
 	user.NewProc("MessageBoxW").Call(mainWindow,uintptr(unsafe.Pointer(u(shortcutsText))),uintptr(unsafe.Pointer(u("PixelCut keyboard shortcuts"))),0x40)
@@ -63,8 +63,12 @@ func shortcutFor(key uintptr,ctrl,shift,alt,editing,assetFocus bool) int {
 	case 0x1b:return keyEscape
 	case 'F':return idFit
 	}
-	if assetFocus {return keyNone}
+	if assetFocus {
+		if key==0x2e {return idRemoveAsset}
+		return keyNone
+	}
 	switch key {
+	case 'N':return idSnap
 	case 0x2e:return idDelete
 	case 'S':return idSplit
 	case 0x25:return keyMarkerBack

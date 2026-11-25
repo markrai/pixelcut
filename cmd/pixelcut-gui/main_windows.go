@@ -88,6 +88,8 @@ const (
 	idRotateRight
 	idFlipH
 	idFlipV
+	idRemoveAsset
+	idSnap
 )
 
 type windowClass struct {
@@ -174,6 +176,7 @@ type editor struct {
 	lastCheckpoint time.Time
 	savedView recoveryView
 	projectPath string
+	snapDisabled bool
 }
 
 func u(s string) *uint16 {
@@ -520,6 +523,12 @@ func (e *editor) command(id, notification int) error {
 		if err!=nil { return err }
 		if err=e.commit(q);err!=nil { return err }
 		e.tell("Clip split at timeline position.")
+	case idRemoveAsset:
+		return e.removeAsset()
+	case idSnap:
+		e.snapDisabled=!e.snapDisabled
+		e.updateSnapButton()
+		e.invalidateTimeline()
 	case idDelete:
 		if _,ok:=e.selected(); !ok { return fmt.Errorf("select a clip") }
 		q:=e.p.Clone()
@@ -600,7 +609,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idFlipV && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idSnap && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -676,6 +685,7 @@ func main() {
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,75,245,270,idAssets)
 	button("Import video",12,350,118,idImport)
 	button("Add to V1",136,350,121,idAdd)
+	button("Remove asset",12,384,245,idRemoveAsset)
 	label("Source preview / SDR",270,50,570)
 	ui.host=control("STATIC","",0x02000000|0x04000000|4,270,75,540,303,0)
 	button("Play  (Space)",270,384,124,idPlay)
@@ -702,6 +712,7 @@ func main() {
 	button("-",832,419,48,idZoomOut)
 	button("+",886,419,48,idZoomIn)
 	button("Fit",940,419,70,idFit)
+	button("Snap: on",1016,419,80,idSnap)
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,448,1084,180,idClips)
 	user.NewProc("ShowWindow").Call(ui.controls[idClips],0)
 	ui.timeline=control("PixelCutTimeline","",wsTab|0x04000000,12,452,1084,176,0)
@@ -723,4 +734,39 @@ func main() {
 		user.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&m)))
 	}
 	freeTheme()
+}
+
+func (e *editor) removeAsset() error {
+	if e.asset<0 || e.asset>=len(e.p.Assets) {return fmt.Errorf("select a media asset")}
+	a:=e.p.Assets[e.asset]
+	count:=e.p.AssetReferences(a.ID)
+	if count>0 {
+		message:=fmt.Sprintf("Remove %s and its %d timeline clip(s)? The source file will remain untouched.",filepath.Base(a.Path),count)
+		r,_,_:=user.NewProc("MessageBoxW").Call(mainWindow,uintptr(unsafe.Pointer(u(message))),uintptr(unsafe.Pointer(u("Remove media asset"))),0x134)
+		if r!=6 {return nil}
+	}
+	q,err:=e.p.RemoveAsset(a.ID,count>0)
+	if err!=nil {return err}
+	selectedID:=""
+	if c,ok:=e.selected();ok {selectedID=c.ID}
+	e.stopPreview()
+	e.asset=min(e.asset,len(q.Assets)-1)
+	e.clip=-1
+	var end int64
+	for i,c:=range q.Tracks[0].Clips {
+		if c.ID==selectedID {e.clip=i}
+		end=max(end,c.Start+(c.Out-c.In))
+	}
+	e.playhead=min(e.playhead,end)
+	if err=e.commit(q);err!=nil {return err}
+	e.tell("Asset removed from project; source file unchanged. Ctrl+Z to undo.")
+	return nil
+}
+
+func (e *editor) updateSnapButton() {
+	label:="Snap: on"
+	if e.snapDisabled {label="Snap: off"}
+	h:=e.controls[idSnap]
+	change(h,label)
+	user.NewProc("InvalidateRect").Call(h,0,1)
 }
