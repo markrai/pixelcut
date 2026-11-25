@@ -108,6 +108,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if t>math.MaxInt64-step {break}
 	}
 	var demand []thumbnailKey
+	var audioDemand []waveformKey
 	for i,c:=range e.track().Clips {
 		valid:=true
 		if e.drag!=nil && e.drag.index==i && e.drag.moved {c=e.drag.candidate;valid=e.drag.valid}
@@ -130,10 +131,11 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		}
 		if a.HasAudio {
 			fill(dc,rect{left,104,right,140},palette.audio)
-			if right-left>35 {textAt(dc,rect{left+8,104,right-5,140},"Audio",palette.muted,4)}
+			if valid {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
 		}
 	}
 	if e.thumbnails!=nil {e.thumbnails.request(demand)}
+	if e.waveforms!=nil {e.waveforms.request(audioDemand)}
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
 		fill(dc,rect{x,19,x+2,h},palette.accent)

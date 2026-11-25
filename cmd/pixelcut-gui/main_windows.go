@@ -165,6 +165,8 @@ type editor struct {
 	inspectorControls []uintptr
 	thumbnails *thumbnailCache
 	thumbnailRevision uint64
+	waveforms *waveformCache
+	waveformRevision uint64
 }
 
 func u(s string) *uint16 {
@@ -590,7 +592,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x0113:
-		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();return 0}
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();return 0}
 	case wmDone:
 		ui.finished()
 		return 0
@@ -613,7 +615,10 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case 0x0002:
 		user.NewProc("KillTimer").Call(hwnd,playbackTimer)
 		ui.stopPreview()
-		if ui.thumbnails!=nil {ui.thumbnails.cancel();<-ui.thumbnails.done}
+		if ui.thumbnails!=nil {ui.thumbnails.cancel()}
+		if ui.waveforms!=nil {ui.waveforms.cancel()}
+		if ui.thumbnails!=nil {<-ui.thumbnails.done}
+		if ui.waveforms!=nil {<-ui.waveforms.done}
 		if ui.cancel!=nil { ui.cancel() }
 		user.NewProc("PostQuitMessage").Call(0)
 		return 0
@@ -682,6 +687,7 @@ func main() {
 	ui.timeline=control("PixelCutTimeline","",wsTab|0x04000000,12,452,1084,176,0)
 	ui.status=label("Import a supported HLG video to get started.",12,640,1084)
 	ui.thumbnails=newThumbnailCache(ui.engine)
+	ui.waveforms=newWaveformCache(ui.engine)
 	ui.refresh()
 	ui.resize()
 	if timer,_,_:=user.NewProc("SetTimer").Call(mainWindow,playbackTimer,33,0);timer==0 {fmt.Fprintln(os.Stderr,"unable to start playback UI timer")}
