@@ -46,7 +46,7 @@ The next slice cannot be accepted until its predecessor's verification is record
 | 2C.R.6 | Deterministic composition evaluator | Video/audio contribution and time mapping tests independent of selection | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45712233364) |
 | 2C.R.7 | Project playback controller, separate mpv backend | Simulated backend state/seek/boundary/stale event tests | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45713898037) |
 | 2C.R.8 | Jobs, source monitoring, recovery and resource ownership | Canceled/stale results rejected, bounded shutdown, no periodic slow UI I/O | Implemented; verification pending; explicit lifecycle I/O remains |
-| 2C.R.9 | Regression and performance qualification | Baseline comparison, real Windows and media fidelity acceptance | Pending |
+| 2C.R.9 | Regression and performance qualification | Baseline comparison, real Windows and media fidelity acceptance | Evidence collection started; [qualification procedure](docs/refactor-qualification.md); CI and native acceptance pending |
 
 Keep snapshot undo until measurements justify a replacement. Preserve the current
 preview capabilities during extraction; a project clock alone is not a compositor.
