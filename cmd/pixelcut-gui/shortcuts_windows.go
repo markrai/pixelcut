@@ -19,7 +19,7 @@ const (
 	keyFocusTimeline
 )
 
-const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save project\nCtrl+Shift+S     Save As (new file)\nCtrl+W           Close project\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nCtrl+A           Select all timeline clips\nCtrl+C           Copy selected clips\nCtrl+X           Cut selected clips\nCtrl+V           Paste at playhead\nCtrl+D           Duplicate selected clips\nCtrl+click       Toggle clip selection\nShift+click      Select clip range\nDrag empty lane  Marquee selection\nDelete           Remove selected clips / media asset\nShift+Delete     Ripple delete selected clips\nG                Remove gap at playhead\nR                Toggle ripple trimming\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\n, / .            Previous / next decoded frame\nCtrl+Left/Right  Previous / next edit boundary\nI / O            Set source In / Out at playhead\n[ / ]            Slower / faster preview\nB                Toggle source-frame trim snapping\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nMenu / Shift+F10 Context menu\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
+const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save project\nCtrl+Shift+S     Save As (new file)\nCtrl+W           Close project\nCtrl+,           Application settings\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nCtrl+A           Select all timeline clips\nCtrl+C           Copy selected clips\nCtrl+X           Cut selected clips\nCtrl+V           Paste at playhead\nCtrl+D           Duplicate selected clips\nCtrl+click       Toggle clip selection\nShift+click      Select clip range\nDrag empty lane  Marquee selection\nDelete           Remove selected clips / media asset\nShift+Delete     Ripple delete selected clips\nG                Remove gap at playhead\nR                Toggle ripple trimming\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\n, / .            Previous / next decoded frame\nCtrl+Left/Right  Previous / next edit boundary\nI / O            Set source In / Out at playhead\n[ / ]            Slower / faster preview\nB                Toggle source-frame trim snapping\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nMenu / Shift+F10 Context menu\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
 
 func (e *editor) showShortcuts() {
 	user.NewProc("MessageBoxW").Call(mainWindow,uintptr(unsafe.Pointer(u(shortcutsText))),uintptr(unsafe.Pointer(u("PixelCut keyboard shortcuts"))),0x40)
@@ -51,6 +51,7 @@ func shortcutFor(key uintptr,ctrl,shift,alt,editing,assetFocus bool) int {
 		case 'X':if !assetFocus {return idCut}
 		case 'V':if !assetFocus {return idPaste}
 		case 'D':if !assetFocus {return idDuplicate}
+		case 0xbc:return idPreferences
 		case 0x25:if !assetFocus {return idPrevEdit}
 		case 0x27:if !assetFocus {return idNextEdit}
 		case 'N':return idNew
@@ -114,21 +115,36 @@ func (e *editor) previewActive() bool {
 
 func (e *editor) togglePreview() error {
 	if e.playing() {return e.pausePreview()}
-	if c,ok:=e.selected();ok {
-		if a,ok:=e.p.Asset(c.AssetID);!ok || !project.SourceAvailable(a.Path) {e.stopPreview();e.tell("Source offline; use Relink.");return nil}
-	}
-	if e.clock!=nil && e.previewActive() {
-		c:=e.clock.clip
-		if e.playhead>=c.Start+(c.Out-c.In) {
-			e.seekTimeline(c.Start,true)
-		} else {
-			e.clock.queue(e.playhead,false,false)
-			e.updatePlayButton(false)
-			e.tell("Preview playing.")
-		}
+	e.updatePlaybackClock()
+	index,at,ok:=project.PlaybackTarget(e.track().Clips,e.playhead)
+	if !ok {
+		marker:=e.playhead
+		e.stopPreview()
+		e.playhead=marker
+		e.refreshPlaybackMarker()
+		e.checkpoint()
+		e.tell("No footage ahead of the playhead.")
 		return nil
 	}
-	return e.play()
+	c:=e.track().Clips[index]
+	if a,ok:=e.p.Asset(c.AssetID);!ok || !project.SourceAvailable(a.Path) {
+		e.stopPreview()
+		e.playhead=at
+		e.selectClip(index)
+		e.refreshPlaybackMarker()
+		e.checkpoint()
+		e.tell("Source offline; use Relink.")
+		return nil
+	}
+	if e.clock!=nil && e.previewActive() && e.clock.clip.ID==c.ID && at==e.playhead {
+		if e.clip!=index || len(e.group)>1 {e.selectClip(index)}
+		e.clock.queue(at,false,false)
+		e.updatePlayButton(false)
+		e.tell("Preview playing.")
+		return nil
+	}
+	e.seekTimeline(at,true)
+	return nil
 }
 
 func (e *editor) setMarker(t int64) {

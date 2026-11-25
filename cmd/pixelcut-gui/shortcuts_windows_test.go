@@ -10,6 +10,9 @@ func TestShortcutMapping(t *testing.T) {
 	}{
 		{0x20,false,false,false,false,false,idPlay},
 		{0xbc,false,false,false,false,false,idFrameBack},
+		{0xbc,true,false,false,false,false,idPreferences},
+		{0xbc,true,false,false,false,true,idPreferences},
+		{0xbc,true,false,false,true,false,keyNone},
 		{0xbe,false,false,false,false,false,idFrameForward},
 		{0x25,true,false,false,false,false,idPrevEdit},
 		{0x27,true,false,false,false,false,idNextEdit},

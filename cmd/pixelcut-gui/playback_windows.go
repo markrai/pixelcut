@@ -286,7 +286,10 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		e.stopPreview();e.playhead=t;e.selectClip(index);e.refreshPlaybackMarker()
 		e.tell("Source offline; use Relink. Timeline edits retained.");return
 	}
-	if t==c.Start+(c.Out-c.In) {playing=false}
+	if t==end {
+		e.stopPreview();e.playhead=t;e.selectClip(index);e.refreshPlaybackMarker()
+		e.tell("End of timeline.");return
+	}
 	if e.clock!=nil && e.previewActive() && e.clock.clip.ID==c.ID {
 		e.playhead=t
 		if e.clip!=index {e.selectClip(index)}
@@ -298,6 +301,5 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 	e.stopPreview()
 	e.playhead=t
 	e.selectClip(index)
-	if t==c.Start+(c.Out-c.In) {e.playhead=t-1;playing=false}
 	if err:=e.startPreview(!playing);err!=nil {e.tell(err.Error())}
 }

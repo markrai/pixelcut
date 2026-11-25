@@ -1,0 +1,18 @@
+package project
+
+func PlaybackTarget(clips []Clip, at int64) (int, int64, bool) {
+	index := -1
+	for i, c := range clips {
+		end := c.Start + (c.Out - c.In)
+		if at >= c.Start && at < end {
+			return i, at, true
+		}
+		if c.Start > at && (index < 0 || c.Start < clips[index].Start) {
+			index = i
+		}
+	}
+	if index >= 0 {
+		return index, clips[index].Start, true
+	}
+	return -1, at, false
+}

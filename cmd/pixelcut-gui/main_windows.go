@@ -117,6 +117,7 @@ const (
 	idRelinkAsset
 	idReplaceAsset
 	idRelinkFolder
+	idPreferences
 )
 
 type windowClass struct {
@@ -162,6 +163,7 @@ type result struct {
 	frames *frameJobResult
 	cacheCleared bool
 	relink *relinkPlan
+	preferences *session.Preferences
 	err error
 	message string
 }
@@ -225,6 +227,9 @@ type editor struct {
 	sourceVersions map[string]mediacache.Source
 	lastSourceCheck time.Time
 	mediaListDirty bool
+	prefs session.Preferences
+	preferencesWarning string
+	previewLabel uintptr
 }
 
 func u(s string) *uint16 {
@@ -380,6 +385,7 @@ func (e *editor) finished() {
 	if r.batch!=nil {e.finishImport(r.batch,r.placement);return}
 	if r.frames!=nil {e.finishFrames(r.frames);return}
 	if r.relink!=nil {e.finishRelink(r.relink);return}
+	if r.preferences!=nil {if err:=e.applyPreferences(*r.preferences);err!=nil {e.tell(err.Error())};return}
 	e.tell(r.message)
 }
 
@@ -424,7 +430,7 @@ func (e *editor) startPreview(paused bool) error {
 	pipe:=previewPipeName(name)
 	script,err:=writeCropScript()
 	if err!=nil {os.Remove(name);cancel();return err}
-	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe,paused,script)
+	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,e.prefs.HDR,name,pipe,paused,script)
 	if err != nil {os.Remove(script);os.Remove(name); cancel(); return err }
 	if err = cmd.Start(); err != nil {os.Remove(script);os.Remove(name); cancel(); return err }
 	e.previewCancel = cancel
@@ -489,6 +495,8 @@ func (e *editor) command(id, notification int) error {
 		return e.relinkOne(e.selectedAssetID(),id==idReplaceAsset)
 	case idRelinkFolder:
 		return e.relinkFolder()
+	case idPreferences:
+		return e.showPreferences()
 	case idImport:
 		paths,err:=pickImportFiles()
 		if err!=nil || len(paths)==0 {return err}
@@ -557,6 +565,7 @@ func (e *editor) command(id, notification int) error {
 		e.snapDisabled=!e.snapDisabled
 		e.updateSnapButton()
 		e.invalidateTimeline()
+		e.tell("Magnetic snapping updated."+e.rememberPreferences())
 	case idSelectAll:
 		e.selectAllClips()
 	case idCopy:
@@ -586,6 +595,7 @@ func (e *editor) command(id, notification int) error {
 	case idRippleTrim:
 		e.rippleTrim=!e.rippleTrim
 		e.updateRippleButton()
+		e.tell("Ripple trimming updated."+e.rememberPreferences())
 	case idUndo,idRedo:
 		from,to:=&e.undo,&e.redo
 		if id==idRedo { from,to=to,from }
@@ -665,7 +675,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idRelinkFolder && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idPreferences && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -732,6 +742,7 @@ func main() {
 		return
 	}
 	defer ui.closeRecovery()
+	ui.loadPreferences()
 	registerTimeline()
 	mainWindow,_,_=createWindow.Call(0,uintptr(unsafe.Pointer(className)),uintptr(unsafe.Pointer(u("PixelCut - Editor preview"))),0x00cf0000,100,70,1200,790,0,0,instance,0)
 	if mainWindow==0 { fmt.Fprintln(os.Stderr,"unable to create PixelCut window");os.Exit(1) }
@@ -753,7 +764,7 @@ func main() {
 	button("Import video",12,350,118,idImport)
 	button("Add to V1",136,350,121,idAdd)
 	button("Remove asset",12,384,245,idRemoveAsset)
-	label("Source preview / SDR",270,50,570)
+	ui.previewLabel=label("Source preview / SDR",270,50,570)
 	ui.host=control("STATIC","",0x02000000|0x04000000|4,270,75,540,303,0)
 	button("Play  (Space)",270,384,124,idPlay)
 	button("Stop",400,384,80,idStop)
@@ -783,6 +794,7 @@ func main() {
 	button("Ripple delete",330,419,125,idRippleDelete)
 	button("Remove gap",461,419,105,idRemoveGap)
 	button("Ripple: off",572,419,120,idRippleTrim)
+	button("Settings",698,419,84,idPreferences)
 	button("-",832,419,48,idZoomOut)
 	button("+",886,419,48,idZoomIn)
 	button("Fit",940,419,70,idFit)
@@ -795,11 +807,13 @@ func main() {
 	ui.restartMediaWorkers()
 	ui.enableFileDrops()
 	ui.refresh()
+	ui.syncPreferencesUI()
 	ui.resize()
 	if timer,_,_:=user.NewProc("SetTimer").Call(mainWindow,playbackTimer,33,0);timer==0 {fmt.Fprintln(os.Stderr,"unable to start playback UI timer")}
 	user.NewProc("ShowWindow").Call(mainWindow,5)
 	user.NewProc("UpdateWindow").Call(mainWindow)
 	ui.finishRecovery()
+	if ui.preferencesWarning!="" {ui.tell(ui.preferencesWarning)}
 	var m message
 	for {
 		r,_,_:=user.NewProc("GetMessageW").Call(uintptr(unsafe.Pointer(&m)),0,0,0)

@@ -91,7 +91,7 @@ func (e *editor) checkpoint() bool {
 }
 
 func (e *editor) checkpointView() {
-	if e.recovery==nil || e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Second {return}
+	if e.recovery==nil || e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Duration(max(1,e.prefs.ViewSeconds))*time.Second {return}
 	if e.savedView!=e.view() || e.recoveryError!="" {e.checkpoint()}
 }
 
@@ -115,7 +115,7 @@ func (e *editor) finishRecovery() {
 		e.tell(fmt.Sprintf("Restored session; %d source file(s) offline. References retained; use Relink.",missing))
 		return
 	}
-	if c,ok:=e.selected();ok && e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {
+	if c,ok:=e.selected();e.prefs.RestorePreview && ok && e.playhead>=c.Start && e.playhead<c.Start+(c.Out-c.In) {
 		if err:=e.startPreview(true);err!=nil {
 			e.tell("Restored session; preview unavailable: "+err.Error())
 			return

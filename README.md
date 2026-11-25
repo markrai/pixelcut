@@ -153,3 +153,7 @@ The Cache toolbar menu shows disk usage, lets you choose 256 MiB, 1 GiB (default
 ### Missing media and relinking
 
 Offline assets retain every timeline edit. The Relink toolbar menu and asset/clip context menus locate moved recordings, search a folder for compatible filename matches, or explicitly replace a source. Candidates are freshly inspected and confirmed before updating references; original media is never modified. Relinking is undoable and integrates with session recovery.
+
+### Application preferences
+
+Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or experimental HDR output, startup preview restoration, recovery view checkpoint timing and tool executable paths. Settings persist independently of projects. Space/Play starts from the marker, skips leading/interior gaps to the next clip, and does not restart playback at the final timeline end.

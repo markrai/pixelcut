@@ -178,7 +178,7 @@ func (e *editor) changeSpeed(direction int,cycle bool) {
 	h:=e.controls[idSpeed]
 	change(h,fmt.Sprintf("Speed: %gx",e.speed()))
 	user.NewProc("InvalidateRect").Call(h,0,1)
-	e.tell(fmt.Sprintf("Preview speed: %gx. Export speed unchanged.",e.speed()))
+	e.tell(fmt.Sprintf("Preview speed: %gx. Export speed unchanged.",e.speed())+e.rememberPreferences())
 }
 
 func (e *editor) toggleFrameSnap() {
@@ -188,7 +188,7 @@ func (e *editor) toggleFrameSnap() {
 	h:=e.controls[idFrameSnap]
 	change(h,label)
 	user.NewProc("InvalidateRect").Call(h,0,1)
-	e.tell("Source-frame trim snapping "+label[8:]+". Shift during drag bypasses snapping.")
+	e.tell("Source-frame trim snapping "+label[8:]+". Shift during drag bypasses snapping."+e.rememberPreferences())
 }
 
 func precisionStamp(t int64) string {
