@@ -239,3 +239,54 @@ No new timeline interaction feature is introduced. Portable tests exercise
 viewport bounds, clipping, hit testing, drop zones, snapping, group movement,
 ripple trimming and frame-snap precedence. Native physical interaction and
 performance qualification remain outstanding.
+
+## 2C.R.6 deterministic composition evaluation
+
+`internal/composition.Compile` validates a project once and constructs an
+immutable indexed snapshot with detached clip geometry and asset metadata.
+It sorts clips within each track by start time and indexes distinct clip
+starts and exclusive ends. Compile does not mutate the supplied project,
+probe files, launch processes, or depend on native selection. Recompile on
+committed project changes; do not compile for every playback tick. An
+Evaluator supports concurrent read-only At calls, each returning detached
+crop and transform properties. Callers must not mutate the input concurrently
+with compilation.
+
+At(t) evaluates integer project microseconds in [0, Duration()]. Negative or
+past-end timestamps return ErrOutsideTimeline. At the exact end, including
+an empty project, there are no contributions and NextBoundary equals End.
+Before the end, NextBoundary is the earliest strictly subsequent clip start
+or end across all tracks; the active contribution set is constant until that
+boundary, although its source timestamps advance. Leading and interior gaps
+have empty contribution sets. An audio-only interval has no video layers.
+The evaluator does not skip gaps or decide whether transport should advance.
+
+Each contribution identifies its clip and track, asset metadata, half-open
+project and source intervals, and exact source timestamp (from Clip.SourceAt).
+Video layers include the existing crop and transform values without copying
+or reimplementing the media placement algorithm. Video order is bottom to top
+in stored project track order, not lexical or numeric track ID order. Audio
+contributions follow stored track order. A video clip with HasAudio contributes
+linked audio regardless of video occlusion. An independent audio clip contributes
+its referenced audio; equal source assets are not deduplicated because distinct
+clips are distinct contributions. A silent video contributes no audio. The
+model records HasAudio rather than individual stream identity; actual stream
+selection and mix policy remain backend work. Offline media is still a logical
+contribution and must be handled explicitly by the eventual backend.
+
+Evaluation uses binary search in sorted nonoverlapping track clips and the
+boundary index, without file I/O or full-project validation per timestamp.
+It produces a logical contribution description, not decoded frames, PCM or a
+render graph. There is no new canvas/color-conversion policy, opacity, gain,
+visibility, mute, solo, transitions or speed mapping. Source range (including
+unknown legacy range) is preserved as recorded, not inferred or converted.
+No project or recovery schema change is required. Existing single-clip preview
+and export remain unchanged in this slice; the playback controller in 2C.R.7
+will consume this contract, and whole-project rendering follows later.
+
+Portable tests cover unsorted clips and assets, layer order, linked and
+independent audio, adjacency, gaps, exact final boundaries, maximum timestamp,
+legacy compatibility, invalid-project rejection, snapshot isolation and
+concurrent evaluation. CI also records compilation and evaluation benchmarks
+for a 12-track, 2400-clip metadata-only workload. Physical playback and HDR
+qualification are explicitly outside this phase.
