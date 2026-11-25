@@ -127,6 +127,11 @@ func (e *editor) handleShortcut(m message) bool {
 	action:=shortcutFor(m.WParam,keyPressed(0x11),keyPressed(0x10),keyPressed(0x12),editing,m.Window==e.controls[idAssets])
 	if action==keyNone {return false}
 	if e.busy {return true}
+	if e.cropSession!=nil {
+		if action==keyEscape || action==keyFocusTimeline {e.cancelVisualCrop()}
+		if m.WParam==0x0d && !keyPressed(0x11) && !keyPressed(0x12) {if err:=e.applyVisualCrop();err!=nil {e.tell(err.Error())}}
+		return true
+	}
 	if m.LParam&(1<<30)!=0 && action!=keyMarkerBack && action!=keyMarkerForward {return true}
 	if (e.drag!=nil || e.scrubbing) && action!=keyEscape {return true}
 	switch action {

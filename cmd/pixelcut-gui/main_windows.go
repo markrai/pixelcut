@@ -72,6 +72,8 @@ const (
 	idZoomIn
 	idFit
 	idKeys
+	idCropVisual
+	idCropReset
 )
 
 type windowClass struct {
@@ -144,6 +146,7 @@ type editor struct {
 	drag *timelineDrag
 	clock *previewClock
 	scrubbing, scrubPlaying bool
+	cropSession *cropSession
 }
 
 func u(s string) *uint16 {
@@ -312,6 +315,7 @@ func (e *editor) finished() {
 }
 
 func (e *editor) stopPreview() {
+	if e.cropSession!=nil {e.endVisualCropUI()}
 	e.updatePlaybackClock()
 	e.clock=nil
 	e.generation++
@@ -347,14 +351,17 @@ func (e *editor) startPreview(paused bool) error {
 	if err==nil {err=closeErr}
 	if err!=nil {os.Remove(name);cancel();return err}
 	pipe:=previewPipeName(name)
-	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe,paused)
-	if err != nil {os.Remove(name); cancel(); return err }
-	if err = cmd.Start(); err != nil {os.Remove(name); cancel(); return err }
+	script,err:=writeCropScript()
+	if err!=nil {os.Remove(name);cancel();return err}
+	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name,pipe,paused,script)
+	if err != nil {os.Remove(script);os.Remove(name); cancel(); return err }
+	if err = cmd.Start(); err != nil {os.Remove(script);os.Remove(name); cancel(); return err }
 	e.previewCancel = cancel
 	done := make(chan struct{})
 	e.previewDone = done
 	generation := e.generation
 	clock:=newPreviewClock(c,e.playhead,paused)
+	clock.setCrop(a,c.Crop,false)
 	e.clock=clock
 	processDone:=make(chan struct{})
 	clockDone:=make(chan struct{})
@@ -364,6 +371,7 @@ func (e *editor) startPreview(paused bool) error {
 		close(processDone)
 		select {case <-clockDone:case <-time.After(150*time.Millisecond):}
 		os.Remove(name)
+		os.Remove(script)
 		close(done)
 		if ctx.Err() == nil {
 			select {
@@ -376,12 +384,13 @@ func (e *editor) startPreview(paused bool) error {
 	e.updatePlayButton(paused)
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.refreshPlaybackMarker()
-	if paused {e.tell("Preview paused.")} else {e.tell("Playing source interval. Space or Esc pauses; crop applied at export.")}
+	if paused {e.tell("Preview paused.")} else {e.tell("Playing source interval. Space or Esc pauses.")}
 	return nil
 }
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
+	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
 	case idNew,idOpen:
 		if !e.confirmDiscard() { return nil }
@@ -466,7 +475,7 @@ func (e *editor) command(id, notification int) error {
 		q:=e.p.Clone()
 		q.Tracks[0].Clips[e.clip]=c
 		if err=e.commit(q); err!=nil { return err }
-		e.tell("Clip properties applied.")
+		if err:=e.startPreview(true);err!=nil {e.tell("Edits applied; preview unavailable: "+err.Error())} else {e.tell("Clip properties applied.")}
 	case idSplit:
 		c,ok:=e.selected()
 		if !ok { return fmt.Errorf("select a clip") }
@@ -493,9 +502,16 @@ func (e *editor) command(id, notification int) error {
 		*from=(*from)[:len(*from)-1]
 		e.dirty=true
 		e.refresh()
+		if _,ok:=e.selected();ok {
+			if err:=e.startPreview(true);err!=nil {e.tell("History restored; preview unavailable: "+err.Error());return nil}
+		}
 		e.tell("History restored.")
 	case idZoomOut,idZoomIn,idFit:
 		e.zoomTimeline(id)
+	case idCropVisual:
+		return e.beginOrApplyCrop()
+	case idCropReset:
+		return e.resetVisualCrop()
 	case idKeys:
 		e.showShortcuts()
 	case idPlay:
@@ -539,12 +555,12 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idKeys && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idCropReset && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
 	case 0x0113:
-		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();return 0}
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();return 0}
 	case wmDone:
 		ui.finished()
 		return 0
@@ -559,6 +575,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x0010:
+		if ui.cropSession!=nil {ui.cancelVisualCrop()}
 		if ui.busy { ui.tell("Wait for the current media operation to finish."); return 0 }
 		if ui.confirmDiscard() { destroy.Call(hwnd) }
 		return 0
@@ -616,6 +633,8 @@ func main() {
 	label("Crop: x,y,width,height (blank = full)",825,176,270)
 	edit("",825,199,271,idCrop)
 	button("Apply edits",825,234,130,idApply)
+	button("Visual crop",825,370,130,idCropVisual)
+	button("Reset crop",961,370,135,idCropReset)
 	label("Split at timeline time",825,273,270)
 	edit("",825,297,155,idAt)
 	button("Split",986,296,110,idSplit)

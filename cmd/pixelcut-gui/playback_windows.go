@@ -35,6 +35,9 @@ type previewClock struct {
 	unavailable atomic.Bool
 	sample atomic.Pointer[clockSample]
 	request atomic.Pointer[previewRequest]
+	cropRequest atomic.Pointer[cropRequest]
+	cropSample atomic.Pointer[cropSample]
+	cropError atomic.Bool
 }
 
 func newPreviewClock(c project.Clip, marker int64, paused bool) *previewClock {
@@ -137,7 +140,7 @@ func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-c
 	}
 	defer f.Close()
 	p:=previewIPC{file:f,reader:bufio.NewScanner(f)}
-	var applied, appliedSeek uint64
+	var applied, appliedSeek, appliedCrop uint64
 	var seekUntil time.Time
 	var failures int
 	for {
@@ -153,6 +156,16 @@ func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-c
 			continue
 		}
 		failures=0
+		if req:=c.cropRequest.Load();req!=nil && req.serial!=appliedCrop {
+			var ready bool
+			if p.property("user-data/pixelcut/crop-ready",&ready) && ready {
+				if _,err:=p.call("script-message","pixelcut-crop",req.payload());err!=nil {c.cropError.Store(true)} else {appliedCrop=req.serial}
+			}
+		}
+		if appliedCrop!=0 {
+			var state cropSample
+			if p.property("user-data/pixelcut/crop",&state) && state.Serial==appliedCrop {c.cropSample.Store(&state)}
+		}
 		r:=c.request.Load()
 		if r.serial!=applied {
 			if r.paused {

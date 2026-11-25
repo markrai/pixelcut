@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string, paused bool) (*exec.Cmd, error) {
+func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string, paused bool, script string) (*exec.Cmd, error) {
 	if window == 0 || start < 0 || duration <= 0 {
 		return nil, errors.New("preview requires a host window and positive source interval")
 	}
@@ -22,7 +22,10 @@ func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr
 	if err != nil {
 		return nil, err
 	}
-	args := []string{"--no-config", "--vo=gpu-next", "--hwdec=no", "--wid=" + strconv.FormatUint(uint64(uint32(window)), 10), "--start=" + seconds(start), "--end=" + seconds(start+duration), "--keep-open=yes", "--osc=no", "--input-terminal=no", "--input-default-bindings=no", "--input-builtin-bindings=no", "--input-builtin-drag-and-drop=no", "--hr-seek=yes"}
+	args := []string{"--no-config", "--vo=gpu-next", "--hwdec=no", "--wid=" + strconv.FormatUint(uint64(uint32(window)), 10), "--start=" + seconds(start), "--end=" + seconds(start+duration), "--keep-open=yes", "--osc=no", "--input-terminal=no", "--input-default-bindings=no", "--input-builtin-bindings=no", "--input-builtin-drag-and-drop=no", "--hr-seek=yes", "--window-dragging=no", "--cursor-autohide=no"}
+	if script != "" {
+		args = append(args, "--script="+script)
+	}
 	if paused {
 		args = append(args, "--pause=yes")
 	}

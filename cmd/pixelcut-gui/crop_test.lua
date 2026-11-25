@@ -1,0 +1,49 @@
+local handlers,bindings,props={},{},{}
+local timer
+local payload
+local mp={}
+function mp.create_osd_overlay() return {update=function() end,remove=function() end} end
+function mp.set_property_native(k,v) props[k]=v;return true end
+function mp.set_property(k,v) props[k]=v;return true end
+function mp.set_property_bool(k,v) props[k]=v;return true end
+function mp.get_property_native(k) return props[k] end
+function mp.get_property_number(k,default) return props[k] or default end
+function mp.register_script_message(k,v) handlers[k]=v end
+function mp.add_forced_key_binding(k,n,f) bindings[n]=f end
+function mp.remove_key_binding(n) bindings[n]=nil end
+function mp.add_periodic_timer(_,f) timer=f end
+package.preload["mp"]=function() return mp end
+package.preload["mp.utils"]=function() return {parse_json=function() return payload end} end
+dofile("cmd/pixelcut-gui/crop.lua")
+local function request(rotation,edit)
+    props["video-params/rotate"]=rotation
+    payload={serial=1,width=1080,height=1920,crop={x=40,y=80,width=1000,height=1760},edit=edit}
+    handlers["pixelcut-crop"]("fixture")
+end
+request(0,false)
+assert(props["video-crop"]=="1000x1760+40+80")
+request(90,false)
+assert(props["video-crop"]=="1760x1000+80+40")
+payload.crop={x=20,y=60,width=800,height=1500}
+handlers["pixelcut-crop"]("fixture")
+assert(props["video-crop"]=="1500x800+60+260")
+request(180,false)
+assert(props["video-crop"]=="1000x1760+40+80")
+request(270,false)
+payload.crop={x=20,y=60,width=800,height=1500}
+handlers["pixelcut-crop"]("fixture")
+assert(props["video-crop"]=="1500x800+360+20")
+props["osd-dimensions"]={w=1080,h=1920,ml=0,mr=0,mt=0,mb=0}
+request(0,true)
+assert(props["video-crop"]=="")
+props["mouse-pos"]={x=40,y=80}
+bindings["pc-crop-mouse"]({event="down"})
+props["mouse-pos"]={x=80,y=120}
+timer()
+bindings["pc-crop-mouse"]({event="up"})
+local state=props["user-data/pixelcut/crop"]
+assert(state.crop.x==80 and state.crop.y==120 and state.crop.width==960 and state.crop.height==1720)
+assert(not state.dragging and state.ready)
+bindings["pc-crop-enter"]()
+assert(props["user-data/pixelcut/crop"].action=="apply")
+print("Visual crop script tests passed")
