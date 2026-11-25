@@ -192,6 +192,7 @@ type editor struct {
 	marquee *marqueeDrag
 	rippleTrim bool
 	clipboard project.ClipClipboard
+	menuOpen bool
 }
 
 func u(s string) *uint16 {
@@ -432,6 +433,7 @@ func (e *editor) startPreview(paused bool) error {
 }
 
 func (e *editor) command(id, notification int) error {
+	if e.menuOpen {return fmt.Errorf("close the context menu first")}
 	if e.busy { return fmt.Errorf("media operation in progress") }
 	if e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing {return fmt.Errorf("finish the active drag first")}
 	if len(e.group)>1 {
@@ -663,6 +665,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x0010:
+		if ui.menuOpen {user.NewProc("EndMenu").Call();return 0}
 		ui.cancelAssetDrag()
 		ui.endMarquee(true)
 		if ui.cropSession!=nil {ui.cancelVisualCrop()}

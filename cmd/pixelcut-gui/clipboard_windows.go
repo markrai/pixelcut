@@ -23,7 +23,9 @@ func (e *editor) copySelection(cut bool) error {
 	return nil
 }
 
-func (e *editor) pasteSelection(duplicate bool) error {
+func (e *editor) pasteSelection(duplicate bool) error {return e.pasteAt(duplicate,nil)}
+
+func (e *editor) pasteAt(duplicate bool,position *int64) error {
 	b:=e.clipboard
 	if duplicate {
 		var err error
@@ -40,7 +42,9 @@ func (e *editor) pasteSelection(duplicate bool) error {
 	if duplicate {
 		r,err=e.p.DuplicateClips("V1",b,ids)
 	} else {
-		r,err=e.p.PasteClips("V1",b,e.playhead,ids)
+		at:=e.playhead
+		if position!=nil {at=*position}
+		r,err=e.p.PasteClips("V1",b,at,ids)
 	}
 	if err!=nil {return fmt.Errorf("placement rejected: %w",err)}
 	if err=r.Project.Validate();err!=nil {return err}

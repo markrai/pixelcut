@@ -66,6 +66,14 @@ func mediaDropProc(hwnd uintptr,msg uint32,wp,lp,id,data uintptr) uintptr {
 	}
 	if ui!=nil {
 		switch msg {
+		case wmContextMenu:
+			ui.mediaContext(hwnd,lp);return 0
+		case 0x0204:
+			return 0
+		case 0x0205:
+			p:=point{int32(int16(lp&0xffff)),int32(int16(lp>>16))}
+			user.NewProc("ClientToScreen").Call(hwnd,uintptr(unsafe.Pointer(&p)))
+			ui.mediaContext(hwnd,uintptr(uint16(p.X))|uintptr(uint16(p.Y))<<16);return 0
 		case 0x0201:
 			if ui.beginAssetDrag(hwnd,lp) {return 0}
 		case 0x0200:
@@ -103,7 +111,7 @@ func (e *editor) enableFileDrops() {
 func (e *editor) importPaths(paths []string) error {return e.importAt(paths,nil)}
 
 func (e *editor) importAt(paths []string,placement *placementRequest) error {
-	if e.assetDrag!=nil || e.marquee!=nil || e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
+	if e.menuOpen || e.assetDrag!=nil || e.marquee!=nil || e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
 	if len(paths)==0 || len(paths)>project.MaxImportFiles {return fmt.Errorf("select between 1 and %d files",project.MaxImportFiles)}
 	snapshot:=e.p.Clone()
 	engine:=e.engine

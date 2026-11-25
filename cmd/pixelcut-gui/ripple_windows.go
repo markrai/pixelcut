@@ -25,8 +25,10 @@ func (e *editor) rippleDeleteSelection() error {
 	return nil
 }
 
-func (e *editor) removeGap() error {
-	q,duration,err:=e.p.RemoveGap("V1",e.playhead)
+func (e *editor) removeGap() error {return e.removeGapAt(e.playhead)}
+
+func (e *editor) removeGapAt(at int64) error {
+	q,duration,err:=e.p.RemoveGap("V1",at)
 	if err!=nil {return err}
 	if err=e.commitRipple(q,false);err!=nil {return err}
 	e.tell(fmt.Sprintf("Removed %.3fs gap.",project.Seconds(duration)))

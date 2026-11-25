@@ -183,7 +183,7 @@ func (e *editor) selectClip(i int) {
 }
 
 func (e *editor) beginTimeline(x,y,w int32) {
-	if e.busy || e.marquee!=nil || e.assetDrag!=nil || e.cropSession!=nil || e.transformSession!=nil || x<trackHeader {return}
+	if e.menuOpen || e.busy || e.marquee!=nil || e.assetDrag!=nil || e.cropSession!=nil || e.transformSession!=nil || x<trackHeader {return}
 	t:=e.timeAt(x,w)
 	if t>e.endTime() {t=e.endTime()}
 	playing:=e.playing()
@@ -265,6 +265,13 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 	if ui==nil {r,_,_:=defWindow.Call(hwnd,uintptr(msg),wp,lp);return r}
 	x,y:=int32(int16(lp&0xffff)),int32(int16((lp>>16)&0xffff))
 	switch msg {
+	case wmContextMenu:
+		ui.timelineContext(lp);return 0
+	case 0x0204:return 0
+	case 0x0205:
+		p:=point{x,y}
+		user.NewProc("ClientToScreen").Call(hwnd,uintptr(unsafe.Pointer(&p)))
+		ui.timelineContext(uintptr(uint16(p.X))|uintptr(uint16(p.Y))<<16);return 0
 	case wmDropFiles:
 		ui.handleDrop(hwnd,wp);return 0
 	case 0x000f:
@@ -327,7 +334,7 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		}
 		ui.invalidateTimeline();return 0
 	case 0x020a:
-		if ui.busy || ui.drag!=nil || ui.assetDrag!=nil || ui.marquee!=nil {return 0}
+		if ui.menuOpen || ui.busy || ui.drag!=nil || ui.assetDrag!=nil || ui.marquee!=nil {return 0}
 		d:=int16(wp>>16)
 		if wp&8!=0 {
 			if d>0 {ui.zoomTimeline(idZoomIn)} else {ui.zoomTimeline(idZoomOut)}
