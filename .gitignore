@@ -7,3 +7,5 @@
 *.mkv
 *.webm
 *.pixelcut-tmp.mp4
+/ci-reports/
+/coverage.out

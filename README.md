@@ -161,3 +161,7 @@ Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or exper
 ### Multitrack foundation (2C.1)
 
 The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lane rendering, audio mixing and compositing follow in later phases. New projects use format version 2; legacy V1 projects remain readable.
+
+## Development and architectural stabilization
+
+Feature work is paused for the 2C.R refactoring milestone. See [Architecture](ARCHITECTURE.md), [Roadmap](ROADMAP.md), and the [reproducible baseline](docs/refactor-baseline.md) for ownership boundaries, phase acceptance gates, test commands and measurements. Automated CI success is distinct from physical Windows and HDR qualification.
