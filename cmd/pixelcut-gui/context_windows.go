@@ -30,6 +30,7 @@ func separator() menuItem {return menuItem{}}
 
 type timelineMenuState struct {
 	count int
+	frameSnap bool
 	split,paste,pasteHere,gap,hasClips,undo,redo,snap,ripple bool
 }
 
@@ -40,6 +41,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 		items=append(items,item(idSplit,"Split at playhead\tS",single&&s.split),separator(),
 			item(idCopy,"Copy\tCtrl+C",true),item(idCut,"Cut\tCtrl+X",true),
 			item(idPaste,"Paste at playhead\tCtrl+V",s.paste),item(idDuplicate,"Duplicate\tCtrl+D",true),separator(),
+			item(idSetIn,"Set source In at playhead\tI",single&&s.split),item(idSetOut,"Set source Out at playhead\tO",single&&s.split),separator(),
 			item(idCropVisual,"Visual crop",single),item(idTransform,"Transform",single),item(idExport,"Export clip\tCtrl+E",single),separator(),
 			item(idDelete,"Delete\tDel",true),item(idRippleDelete,"Ripple delete\tShift+Del",true),separator(),
 			item(menuSelectAsset,"Select source in media bin",single),item(menuRevealClip,"Show source in Explorer",single))
@@ -50,7 +52,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(idUndo,"Undo\tCtrl+Z",s.undo),item(idRedo,"Redo\tCtrl+Y",s.redo))
 	}
 	return append(items,separator(),menuItem{id:idSnap,label:"Snapping\tN",enabled:true,checked:s.snap},
-		menuItem{id:idRippleTrim,label:"Ripple trimming\tR",enabled:true,checked:s.ripple},item(idFit,"Fit timeline\tF",true))
+		menuItem{id:idRippleTrim,label:"Ripple trimming\tR",enabled:true,checked:s.ripple},menuItem{id:idFrameSnap,label:"Source-frame trim snapping\tB",enabled:true,checked:s.frameSnap},item(idFit,"Fit timeline\tF",true))
 }
 
 func assetMenuItems(selected bool) []menuItem {
@@ -139,7 +141,7 @@ func (e *editor) timelineContext(lp uintptr) {
 	}
 	at:=e.timeAt(local.X,w)
 	if keyboard {at=e.playhead}
-	s:=timelineMenuState{paste:e.pastePossible(e.playhead),hasClips:len(e.track().Clips)>0,undo:len(e.undo)>0,redo:len(e.redo)>0,snap:!e.snapDisabled,ripple:e.rippleTrim}
+	s:=timelineMenuState{paste:e.pastePossible(e.playhead),hasClips:len(e.track().Clips)>0,undo:len(e.undo)>0,redo:len(e.redo)>0,snap:!e.snapDisabled,ripple:e.rippleTrim,frameSnap:e.frameSnap}
 	if hit>=0 {
 		if !e.clipSelected(hit,e.track().Clips[hit]) {e.selectClip(hit)}
 		s.count=len(e.selectionIDs())

@@ -28,6 +28,7 @@ type previewRequest struct {
 	serial, seekSerial uint64
 	tick int64
 	paused bool
+	speed float64
 }
 
 type previewClock struct {
@@ -42,7 +43,7 @@ type previewClock struct {
 
 func newPreviewClock(c project.Clip, marker int64, paused bool) *previewClock {
 	clock:=&previewClock{clip:c}
-	clock.request.Store(&previewRequest{tick:marker,paused:paused})
+	clock.request.Store(&previewRequest{tick:marker,paused:paused,speed:1})
 	return clock
 }
 
@@ -81,6 +82,15 @@ func (c *previewClock) queue(tick int64, seek, paused bool) {
 	r.serial++
 	if seek {r.seekSerial++;r.tick=tick}
 	r.paused=paused
+	c.request.Store(&r)
+}
+
+func (c *previewClock) setSpeed(speed float64) {
+	r:=*c.request.Load()
+	if r.speed==speed {return}
+	r.paused=c.paused()
+	r.speed=speed
+	r.serial++
 	c.request.Store(&r)
 }
 
@@ -141,6 +151,7 @@ func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-c
 	defer f.Close()
 	p:=previewIPC{file:f,reader:bufio.NewScanner(f)}
 	var applied, appliedSeek, appliedCrop uint64
+	appliedSpeed:=1.0
 	var seekUntil time.Time
 	var failures int
 	for {
@@ -168,6 +179,10 @@ func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-c
 		}
 		r:=c.request.Load()
 		if r.serial!=applied {
+			if r.speed!=appliedSpeed {
+				if _,err:=p.call("set_property","speed",r.speed);err!=nil {c.unavailable.Store(true);return}
+				appliedSpeed=r.speed
+			}
 			if r.paused {
 				if _,err:=p.call("set_property","pause",true);err!=nil {c.unavailable.Store(true);return}
 			}

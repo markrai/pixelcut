@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/media"
 )
 
 const trackHeader int32=92
@@ -37,6 +38,8 @@ type timelineDrag struct {
 	groupProject project.Project
 	ripple bool
 	rippleDelta int64
+	frames *media.FrameIndex
+	sourceDuration int64
 }
 
 func registerTimeline() {
@@ -102,17 +105,19 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	textAt(dc,rect{10,0,trackHeader-4,32},"TIME",palette.muted,4)
 	textAt(dc,rect{12,laneTop,trackHeader-4,laneBottom},"V1  Video",palette.text,4)
 	textAt(dc,rect{12,99,trackHeader-4,145},"A1  Linked",palette.muted,4)
-	step:=int64(project.TicksPerSecond)
-	for float64(step)/float64(project.TicksPerSecond)*e.scale(w)<72 && step<math.MaxInt64/2 {step*=2}
-	start:=e.origin/step*step
-	for t:=start;t>=0;t+=step {
+	step:=rulerStep(e.scale(w))
+	minor:=max(int64(1),step/5)
+	start:=e.origin/minor*minor
+	for t:=start;t>=0;t+=minor {
 		x:=e.xAt(t,w)
 		if x>=w {break}
 		if x>=trackHeader {
-			fill(dc,rect{x,28,x+1,h},palette.line)
-			textAt(dc,rect{x+4,0,x+70,28},stamp(t),palette.muted,4)
+			if t%step==0 {
+				fill(dc,rect{x,28,x+1,h},palette.line)
+				textAt(dc,rect{x+4,0,x+82,28},rulerLabel(t,step),palette.muted,4)
+			} else {fill(dc,rect{x,24,x+1,32},palette.muted)}
 		}
-		if t>math.MaxInt64-step {break}
+		if t>math.MaxInt64-minor {break}
 	}
 	var demand []thumbnailKey
 	var audioDemand []waveformKey
@@ -152,7 +157,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		x:=e.xAt(d.snapTarget,w)
 		if x>=trackHeader && x<w {
 			fill(dc,rect{x,28,x+2,145},rgb(112,220,241))
-			textAt(dc,rect{max(trackHeader,x-40),0,min(w,x+80),27},"SNAP",rgb(112,220,241),4)
+			textAt(dc,rect{max(trackHeader,x-40),0,min(w,x+80),27},func() string {if d.frames!=nil && !keyPressed(0x10) {return "FRAME"};return "SNAP"}(),rgb(112,220,241),4)
 		}
 	}
 	if d:=e.drag;d!=nil && d.ripple && d.moved && d.mode=="left" && d.valid {
@@ -172,7 +177,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 			fill(dc,rect{left,12+i,right,13+i},palette.accent)
 		}
 	}
-	if h>150 {textAt(dc,rect{trackHeader+8,150,w-8,h},fmt.Sprintf("%s.%03d  |  Space: play/stop   Wheel: scroll   Ctrl+wheel: zoom",stamp(e.playhead),(e.playhead/1000)%1000),palette.muted,4)}
+	if h>150 {textAt(dc,rect{trackHeader+8,150,w-8,h},fmt.Sprintf("%s  |  , / .: frame step   Ctrl+arrows: edit boundaries   %.2gx",precisionStamp(e.playhead),e.speed()),palette.muted,4)}
 }
 
 func (e *editor) selectClip(i int) {
@@ -200,7 +205,19 @@ func (e *editor) beginTimeline(x,y,w int32) {
 			if keyPressed(0x11) || keyPressed(0x10) {e.modifySelection(i,keyPressed(0x11),keyPressed(0x10));return}
 			if !e.clipSelected(i,c) || len(e.group)<=1 {e.selectClip(i)} else {e.clip=i;e.syncSelectionUI();mode="move"}
 			ids:=e.selectionIDs()
-			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t,groupIDs:ids,groupProject:e.p,ripple:e.rippleTrim && mode!="move" && len(ids)==1}
+			var frames *media.FrameIndex
+			var duration int64
+			if e.frameSnap && mode!="move" && len(ids)==1 {
+				a,ok:=e.p.Asset(c.AssetID)
+				if !ok {return}
+				duration=a.Duration
+				frames=e.cachedFrames(a)
+				if frames==nil {
+					if err:=e.loadFrames(a,c.ID,0);err!=nil {e.tell(err.Error())}
+					return
+				}
+			}
+			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t,groupIDs:ids,groupProject:e.p,ripple:e.rippleTrim && mode!="move" && len(ids)==1,frames:frames,sourceDuration:duration}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x,y,w)
 			return
@@ -226,7 +243,31 @@ func (e *editor) moveTimeline(x int32) {
 	delta:=int64(math.Round(raw/10000))*10000
 	tolerance:=int64(0)
 	if !e.snapDisabled && !keyPressed(0x10) {tolerance=int64(math.Min(2000000,math.Round(8/d.scale*float64(project.TicksPerSecond))))}
-	if d.ripple {
+	if d.frames!=nil && !keyPressed(0x10) {
+		base:=d.original.In
+		if d.mode=="right" {base=d.original.Out}
+		offset:=int64(math.Round(raw))
+		wanted:=base+max(-base,min(d.sourceDuration-base,offset))
+		frameDelta,_,ok:=frameTrimDelta(d.frames,d.original,d.sourceDuration,d.mode,wanted,d.ripple)
+		d.valid=false;d.snapped=false;d.candidate=d.original;d.groupProject=e.p;d.rippleDelta=0
+		if ok {
+			if d.ripple {
+				r,err:=e.p.RippleTrim("V1",d.original.ID,d.mode,frameDelta,-1,0)
+				d.groupProject=r.Project;d.rippleDelta=r.Delta;d.valid=err==nil && r.Delta==frameDelta
+			} else {
+				c,err:=e.p.DragClip("V1",d.original.ID,d.mode,frameDelta)
+				d.candidate=c
+				d.valid=err==nil && ((d.mode=="left" && c.In==d.original.In+frameDelta) || (d.mode=="right" && c.Out==d.original.Out+frameDelta))
+			}
+			if d.valid {
+				d.snapped=true
+				if d.mode=="right" {d.snapTarget=d.original.Start+(d.original.Out-d.original.In)+frameDelta} else {
+					d.snapTarget=d.original.Start
+					if frameDelta>=-d.original.Start && frameDelta<=math.MaxInt64-d.original.Start {d.snapTarget+=frameDelta}
+				}
+			}
+		}
+	} else if d.ripple {
 		r,err:=e.p.RippleTrim("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
 		d.groupProject=r.Project;d.rippleDelta=r.Delta;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
 	} else if len(d.groupIDs)>1 {

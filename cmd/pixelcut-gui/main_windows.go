@@ -98,6 +98,16 @@ const (
 	idCut
 	idPaste
 	idDuplicate
+	idFrameBack
+	idFrameForward
+	idSetIn
+	idSetOut
+	idPrevEdit
+	idNextEdit
+	idSpeed
+	idSpeedDown
+	idSpeedUp
+	idFrameSnap
 )
 
 type windowClass struct {
@@ -140,6 +150,7 @@ type openFileName struct {
 type result struct {
 	batch *project.ImportBatch
 	placement *placementRequest
+	frames *frameJobResult
 	err error
 	message string
 }
@@ -193,6 +204,9 @@ type editor struct {
 	rippleTrim bool
 	clipboard project.ClipClipboard
 	menuOpen bool
+	frameCache map[string]frameCacheEntry
+	frameSnap bool
+	playbackSpeed float64
 }
 
 func u(s string) *uint16 {
@@ -354,6 +368,7 @@ func (e *editor) finished() {
 	for _, h := range e.controls { user.NewProc("EnableWindow").Call(h, 1) }
 	if r.err != nil { e.tell(r.err.Error()); return }
 	if r.batch!=nil {e.finishImport(r.batch,r.placement);return}
+	if r.frames!=nil {e.finishFrames(r.frames);return}
 	e.tell(r.message)
 }
 
@@ -405,6 +420,7 @@ func (e *editor) startPreview(paused bool) error {
 	e.previewDone = done
 	generation := e.generation
 	clock:=newPreviewClock(c,e.playhead,paused)
+	clock.setSpeed(e.speed())
 	clock.setComposition(a,c.Crop,c.Transform,false)
 	e.clock=clock
 	processDone:=make(chan struct{})
@@ -437,7 +453,7 @@ func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
 	if e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing {return fmt.Errorf("finish the active drag first")}
 	if len(e.group)>1 {
-		switch id {case idApply,idSplit,idCropVisual,idCropReset,idTransform,idExport:return fmt.Errorf("select a single clip for this operation")}
+		switch id {case idApply,idSplit,idCropVisual,idCropReset,idTransform,idExport,idFrameBack,idFrameForward,idSetIn,idSetOut:return fmt.Errorf("select a single clip for this operation")}
 	}
 	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
@@ -555,6 +571,16 @@ func (e *editor) command(id, notification int) error {
 		return e.pasteSelection(false)
 	case idDuplicate:
 		return e.pasteSelection(true)
+	case idFrameBack,idFrameForward,idSetIn,idSetOut:
+		return e.precisionAction(id)
+	case idPrevEdit,idNextEdit:
+		e.jumpEdit(id==idNextEdit)
+	case idSpeed,idSpeedDown,idSpeedUp:
+		direction:=1
+		if id==idSpeedDown {direction=-1}
+		e.changeSpeed(direction,id==idSpeed)
+	case idFrameSnap:
+		e.toggleFrameSnap()
 	case idDelete:
 		return e.deleteSelection()
 	case idRippleDelete:
@@ -642,7 +668,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idDuplicate && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idFrameSnap && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -729,6 +755,10 @@ func main() {
 	ui.host=control("STATIC","",0x02000000|0x04000000|4,270,75,540,303,0)
 	button("Play  (Space)",270,384,124,idPlay)
 	button("Stop",400,384,80,idStop)
+	button("< Frame",486,384,70,idFrameBack)
+	button("Frame >",562,384,70,idFrameForward)
+	button("Speed: 1x",638,384,85,idSpeed)
+	button("Frames: off",729,384,81,idFrameSnap)
 	label("Clip properties (seconds)",825,50,270)
 	label("Timeline start",825,80,145)
 	edit("",975,77,121,idStart)

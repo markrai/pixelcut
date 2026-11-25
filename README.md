@@ -91,6 +91,10 @@ The desktop shell includes a dark theme, resizable layout, a graphical V1 lane a
 
 Drop one or more supported video files from Windows Explorer onto the media bin or timeline, or select multiple files through Import video. Files are inspected in the background, duplicates select existing entries, and unsupported files are reported without discarding valid imports. Drag a media-bin item into V1 to place it at a chosen timestamp with snapping and a placement ghost. Explorer drops onto the V1 lane import and place successful assets contiguously; other drops import only. Overlapping placements are rejected without losing successfully imported assets. Each successful batch is undoable and automatically recovered.
 
+## Precision playback and editing
+
+Use comma/period to step through decoded frame timestamps, Ctrl+Left/Right to jump edit boundaries, I/O to set source In/Out, B to toggle source-frame trim snapping, and brackets to adjust preview speed. Frame indices are generated on demand from actual presentation timestamps rather than average FPS.
+
 ## Context menus
 
 Right-click a clip, empty timeline space or media-bin asset for relevant editing commands. Clip menus respect multi-selection; empty timeline menus offer paste and gap removal at the clicked position. The Menu key or Shift+F10 also opens the focused panel's menu.
