@@ -10,6 +10,8 @@ import (
 	"strconv"
 )
 
+func (e Engine) MPVPath() (string, error) { return findMPV(e.MPV) }
+
 func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string, paused bool, script string) (*exec.Cmd, error) {
 	if window == 0 || start < 0 || duration <= 0 {
 		return nil, errors.New("preview requires a host window and positive source interval")
@@ -18,7 +20,7 @@ func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr
 	if err != nil {
 		return nil, err
 	}
-	player, err := findMPV(e.MPV)
+	player, err := e.MPVPath()
 	if err != nil {
 		return nil, err
 	}
