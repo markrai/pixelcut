@@ -94,6 +94,7 @@ func (e *editor) laneClipGeometry(v timeline.View, c project.Clip, l timeline.La
 
 func (e *editor) selectTimelineLane(id string) {
 	if id != e.trackID() {
+		e.visibleTrack = id
 		e.switchTrack(id)
 	}
 }
@@ -476,7 +477,7 @@ func (e *editor) finishTimeline() {
 				}
 			}
 		} else {
-			e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")
+			e.tell("Edit rejected: choose a compatible track, avoid overlaps and stay within source bounds.")
 		}
 	} else if d != nil {
 		e.selectClip(d.index)
@@ -582,7 +583,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.invalidateTimeline()
 		return 0
 	case 0x020a:
-		if ui.menuOpen || ui.busy || ui.drag != nil || ui.assetDrag != nil || ui.marquee != nil {
+		if ui.menuOpen || ui.busy || ui.assetDrag != nil || ui.marquee != nil || ui.scrubbing || (ui.drag != nil && (wp&4 == 0 || wp&8 != 0 || ui.drag.mode != "move")) {
 			return 0
 		}
 		d := int16(wp >> 16)
@@ -599,6 +600,12 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 				step = -step
 			}
 			ui.laneScroll = max(0, min(stack.MaxScroll, stack.Scroll+step))
+			if ui.drag != nil {
+				p := point{x, y}
+				user.NewProc("ScreenToClient").Call(hwnd, uintptr(unsafe.Pointer(&p)))
+				ui.moveTimeline(p.X, p.Y)
+				ui.setTimelineCursor(p.X, p.Y, clientRect(hwnd).Right)
+			}
 			ui.invalidateTimeline()
 		} else {
 			w := clientRect(hwnd).Right
