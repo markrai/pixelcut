@@ -10,12 +10,14 @@ import (
 	"unsafe"
 
 	"github.com/markrai/pixelcut/internal/media"
+	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/thumbnail"
 )
 
 type thumbnailKey struct {
 	path,asset string
+	source mediacache.Source
 	tick int64
 	width int
 }
@@ -38,10 +40,10 @@ type thumbnailCache struct {
 	sequence uint64
 }
 
-func newThumbnailCache(engine media.Engine) *thumbnailCache {
+func newThumbnailCache(engine media.Engine,disk *mediacache.Cache) *thumbnailCache {
 	ctx,cancel:=context.WithCancel(context.Background())
 	c:=&thumbnailCache{entries:make(map[thumbnailKey]thumbnailEntry),wake:make(chan struct{},1),cancel:cancel,done:make(chan struct{})}
-	go c.run(ctx,engine)
+	go c.run(ctx,engine,disk)
 	return c
 }
 
@@ -91,7 +93,7 @@ func (c *thumbnailCache) fallback(key thumbnailKey,start,end int64) []byte {
 	distance:=int64(0)
 	found:=false
 	for k,v:=range c.entries {
-		if k.path!=key.path || k.asset!=key.asset || k.width!=key.width || v.pixels==nil || k.tick<start || k.tick>=end {continue}
+		if k.path!=key.path || k.asset!=key.asset || k.source!=key.source || k.width!=key.width || v.pixels==nil || k.tick<start || k.tick>=end {continue}
 		d:=k.tick-key.tick
 		if d<0 {d=-d}
 		if !found || d<distance || d==distance && k.tick<best.tick {best,distance,found=k,d,true}
@@ -118,7 +120,7 @@ func (c *thumbnailCache) store(key thumbnailKey,pixels []byte) {
 	c.revision.Add(1)
 }
 
-func (c *thumbnailCache) run(ctx context.Context,engine media.Engine) {
+func (c *thumbnailCache) run(ctx context.Context,engine media.Engine,disk *mediacache.Cache) {
 	defer close(c.done)
 	for {
 		if ctx.Err()!=nil {return}
@@ -132,10 +134,10 @@ func (c *thumbnailCache) run(ctx context.Context,engine media.Engine) {
 			continue
 		}
 		job,cancel:=context.WithTimeout(ctx,8*time.Second)
-		pixels,err:=engine.Thumbnail(job,k.path,project.Seconds(k.tick),k.width,thumbnail.Height)
+		pixels,err:=engine.CachedThumbnail(job,disk,k.path,k.tick,k.width,thumbnail.Height)
 		cancel()
 		if ctx.Err()!=nil {return}
-		if err!=nil {pixels=nil}
+		if err!=nil || !sourceMatches(k.path,k.source) {pixels=nil}
 		c.store(k,pixels)
 	}
 }
@@ -159,6 +161,8 @@ func drawThumbnail(dc uintptr,r rect,pixels []byte,width int) {
 
 func (e *editor) paintThumbnails(dc uintptr,left,right,w int32,c project.Clip,a project.Asset,demand *[]thumbnailKey) {
 	if e.thumbnails==nil || right-left<12 {return}
+	source,ok:=e.sourceVersions[a.Path]
+	if !ok {return}
 	width:=thumbnail.Width(a.Width,a.Height)
 	scale:=e.scale(w)
 	saved,_,_:=gdi.NewProc("SaveDC").Call(dc)
@@ -167,7 +171,7 @@ func (e *editor) paintThumbnails(dc uintptr,left,right,w int32,c project.Clip,a 
 	gdi.NewProc("IntersectClipRect").Call(dc,uintptr(left),uintptr(laneTop+19),uintptr(right),uintptr(laneBottom-1))
 	clipLeft:=float64(trackHeader)+project.Seconds(c.Start-e.origin)*scale
 	for _,tile:=range thumbnail.Tiles(int(left),int(right),clipLeft,scale,c.In,c.Out,width) {
-		key:=thumbnailKey{path:a.Path,asset:a.ID,tick:tile.Source,width:width}
+		key:=thumbnailKey{path:a.Path,asset:a.ID,source:source,tick:tile.Source,width:width}
 		r:=rect{int32(tile.FullLeft),laneTop+19,int32(tile.FullRight),laneBottom-1}
 		if len(*demand)<96 {*demand=append(*demand,key)}
 		pixels:=e.thumbnails.lookup(key)

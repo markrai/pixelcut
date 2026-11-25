@@ -115,6 +115,7 @@ func (e *editor) importAt(paths []string,placement *placementRequest) error {
 	if len(paths)==0 || len(paths)>project.MaxImportFiles {return fmt.Errorf("select between 1 and %d files",project.MaxImportFiles)}
 	snapshot:=e.p.Clone()
 	engine:=e.engine
+	disk:=e.mediaDisk
 	e.tell(fmt.Sprintf("Inspecting %d file(s)...",len(paths)))
 	e.startJob(func(ctx context.Context) result {
 		batch,err:=snapshot.ImportPaths(ctx,paths,func(ctx context.Context,path string)(project.Asset,error){
@@ -123,7 +124,7 @@ func (e *editor) importAt(paths []string,placement *placementRequest) error {
 			if !info.Mode().IsRegular() {return project.Asset{},fmt.Errorf("not a regular media file")}
 			job,cancel:=context.WithTimeout(ctx,20*time.Second)
 			defer cancel()
-			report,err:=engine.Inspect(job,path)
+			report,err:=engine.CachedImportReport(job,disk,path)
 			if err!=nil {return project.Asset{},err}
 			return project.FromReport(nextID("asset"),path,report)
 		})

@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/markrai/pixelcut/internal/media"
+	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/session"
 )
@@ -111,6 +112,7 @@ const (
 	idSaveAs
 	idRecent
 	idCloseProject
+	idMediaCache
 )
 
 type windowClass struct {
@@ -154,6 +156,7 @@ type result struct {
 	batch *project.ImportBatch
 	placement *placementRequest
 	frames *frameJobResult
+	cacheCleared bool
 	err error
 	message string
 }
@@ -213,6 +216,9 @@ type editor struct {
 	projectRevision,savedFingerprint string
 	recentDir string
 	recent []string
+	mediaDisk *mediacache.Cache
+	sourceVersions map[string]mediacache.Source
+	lastSourceCheck time.Time
 }
 
 func u(s string) *uint16 {
@@ -298,6 +304,7 @@ func fmtTime(t int64) string { return strconv.FormatFloat(project.Seconds(t), 'f
 func listAdd(h uintptr, s string) { send.Call(h, lbAdd, 0, uintptr(unsafe.Pointer(u(s)))) }
 
 func (e *editor) refresh() {
+	e.checkSourceVersions(true)
 	a, c := e.controls[idAssets], e.controls[idClips]
 	send.Call(a, lbReset, 0, 0)
 	send.Call(c, lbReset, 0, 0)
@@ -365,6 +372,7 @@ func (e *editor) finished() {
 	e.cancel = nil
 	e.busy = false
 	for _, h := range e.controls { user.NewProc("EnableWindow").Call(h, 1) }
+	if r.cacheCleared {e.restartMediaWorkers()}
 	if r.err != nil { e.tell(r.err.Error()); return }
 	if r.batch!=nil {e.finishImport(r.batch,r.placement);return}
 	if r.frames!=nil {e.finishFrames(r.frames);return}
@@ -468,6 +476,8 @@ func (e *editor) command(id, notification int) error {
 		return err
 	case idRecent:
 		return e.showRecent()
+	case idMediaCache:
+		return e.showMediaCache()
 	case idImport:
 		paths,err:=pickImportFiles()
 		if err!=nil || len(paths)==0 {return err}
@@ -643,12 +653,12 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idCloseProject && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idMediaCache && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
 	case 0x0113:
-		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();ui.checkpointView();return 0}
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();ui.checkSourceVersions(false);ui.checkpointView();return 0}
 	case wmDropFiles:
 		ui.handleDrop(hwnd,wp)
 		return 0
@@ -722,6 +732,7 @@ func main() {
 	button("Undo",486,10,65,idUndo)
 	button("Redo",557,10,65,idRedo)
 	button("Shortcuts",628,10,110,idKeys)
+	button("Cache",744,10,75,idMediaCache)
 	button("Export clip",970,10,126,idExport)
 	applyDarkTitle(mainWindow)
 	label("Media bin / Drop files",12,50,245)
@@ -767,8 +778,8 @@ func main() {
 	user.NewProc("ShowWindow").Call(ui.controls[idClips],0)
 	ui.timeline=control("PixelCutTimeline","",wsTab|0x04000000,12,452,1084,176,0)
 	ui.status=label("Drop supported HLG videos here, or choose Import video.",12,640,1084)
-	ui.thumbnails=newThumbnailCache(ui.engine)
-	ui.waveforms=newWaveformCache(ui.engine)
+	ui.openMediaCache()
+	ui.restartMediaWorkers()
 	ui.enableFileDrops()
 	ui.refresh()
 	ui.resize()

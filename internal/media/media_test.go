@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	"github.com/markrai/pixelcut/internal/mediacache"
 )
 
 func sampleStream() Stream {
@@ -84,6 +86,32 @@ func TestHLGMediaPipeline(t *testing.T) {
 	thumb,err:=e.Thumbnail(ctx,src,0.5,48,32)
 	if err!=nil || len(thumb)!=48*32*4 {t.Fatalf("thumbnail: %d bytes: %v",len(thumb),err)}
 	if _,err:=e.Thumbnail(ctx,src,0.5,47,32);err==nil {t.Fatal("accepted odd thumbnail width")}
+	cacheDir:=filepath.Join(dir,"cache")
+	cache,err:=mediacache.Open(cacheDir)
+	if err!=nil {t.Fatal(err)}
+	pixels,err:=e.CachedThumbnail(ctx,cache,src,500000,48,32)
+	if err!=nil || !bytes.Equal(pixels,thumb) {t.Fatal("cached thumbnail differs")}
+	peaks,err:=e.CachedWaveform(ctx,cache,src,2000000)
+	if err!=nil || peaks.Peak(0,2000000)==0 {t.Fatalf("cached waveform: %v",err)}
+	frames,err:=e.CachedFrames(ctx,cache,src)
+	if err!=nil || frames.Count()!=48 {t.Fatalf("cached frames: %v",err)}
+	metadata,err:=e.CachedImportReport(ctx,cache,src)
+	if err!=nil || metadata.Format!=nil || len(metadata.Streams)!=len(report.Streams) {t.Fatalf("cached metadata: %v",err)}
+	if cache.Stats().Entries!=4 {t.Fatalf("cache population: %+v",cache.Stats())}
+	cache,err=mediacache.Open(cacheDir)
+	if err!=nil {t.Fatal(err)}
+	pixels,err=e.CachedThumbnail(ctx,cache,src,500000,48,32)
+	if err!=nil || !bytes.Equal(pixels,thumb) {t.Fatal("reopened thumbnail differs")}
+	again,err:=e.CachedWaveform(ctx,cache,src,2000000)
+	if err!=nil || again.Peak(0,2000000)!=peaks.Peak(0,2000000) {t.Fatal("reopened waveform differs")}
+	index,err:=e.CachedFrames(ctx,cache,src)
+	if err!=nil || index.Count()!=frames.Count() {t.Fatal("reopened frame index differs")}
+	metadata,err=e.CachedImportReport(ctx,cache,src)
+	if err!=nil {t.Fatal(err)}
+	mv,err:=metadata.Video()
+	if err!=nil || mv.ValidateHLG()!=nil {t.Fatal("reopened metadata invalid")}
+	if cache.Stats().Entries!=4 {t.Fatal("cache keys changed across reopening")}
+
 	copied := filepath.Join(dir, "copy.mp4")
 	if err = e.Remux(ctx, src, copied); err != nil {
 		t.Fatal(err)

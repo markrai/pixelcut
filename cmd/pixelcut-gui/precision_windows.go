@@ -38,12 +38,13 @@ func (e *editor) loadFrames(a project.Asset,clipID string,action int) error {
 	if !info.Mode().IsRegular() {return fmt.Errorf("source is not a regular file")}
 	e.stopPreview()
 	engine:=e.engine
+	disk:=e.mediaDisk
 	size,modified:=info.Size(),info.ModTime()
 	e.tell("Indexing actual video frame timestamps...")
 	e.startJob(func(ctx context.Context) result {
 		job,cancel:=context.WithTimeout(ctx,90*time.Second)
 		defer cancel()
-		index,err:=engine.Frames(job,a.Path)
+		index,err:=engine.CachedFrames(job,disk,a.Path)
 		if err!=nil {return result{err:fmt.Errorf("frame indexing: %w",err)}}
 		after,err:=os.Stat(a.Path)
 		if err!=nil || after.Size()!=size || !after.ModTime().Equal(modified) {return result{err:fmt.Errorf("source changed during frame indexing")}}

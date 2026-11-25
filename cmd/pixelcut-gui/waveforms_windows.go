@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/markrai/pixelcut/internal/media"
+	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/waveform"
 )
 
 type waveformKey struct {
 	path,asset string
+	source mediacache.Source
 	duration int64
 }
 
@@ -34,10 +36,10 @@ type waveformCache struct {
 	sequence uint64
 }
 
-func newWaveformCache(engine media.Engine) *waveformCache {
+func newWaveformCache(engine media.Engine,disk *mediacache.Cache) *waveformCache {
 	ctx,cancel:=context.WithCancel(context.Background())
 	c:=&waveformCache{entries:make(map[waveformKey]waveformEntry),wake:make(chan struct{},1),cancel:cancel,done:make(chan struct{})}
-	go c.run(ctx,engine)
+	go c.run(ctx,engine,disk)
 	return c
 }
 
@@ -85,7 +87,7 @@ func (c *waveformCache) store(key waveformKey,peaks *waveform.Peaks) {
 	c.revision.Add(1)
 }
 
-func (c *waveformCache) run(ctx context.Context,engine media.Engine) {
+func (c *waveformCache) run(ctx context.Context,engine media.Engine,disk *mediacache.Cache) {
 	defer close(c.done)
 	for {
 		if ctx.Err()!=nil {return}
@@ -94,10 +96,10 @@ func (c *waveformCache) run(ctx context.Context,engine media.Engine) {
 			select {case <-ctx.Done():return;case <-c.wake:continue}
 		}
 		job,cancel:=context.WithTimeout(ctx,90*time.Second)
-		peaks,err:=engine.Waveform(job,k.path,k.duration)
+		peaks,err:=engine.CachedWaveform(job,disk,k.path,k.duration)
 		cancel()
 		if ctx.Err()!=nil {return}
-		if err!=nil {peaks=nil}
+		if err!=nil || !sourceMatches(k.path,k.source) {peaks=nil}
 		c.store(k,peaks)
 	}
 }
@@ -117,7 +119,9 @@ func waveformInterval(in,out int64,clipLeft,scale float64,x,right int32) (int64,
 
 func (e *editor) paintWaveform(dc uintptr,left,right,w int32,c project.Clip,a project.Asset,demand *[]waveformKey) {
 	if e.waveforms==nil || right<=left {return}
-	key:=waveformKey{path:a.Path,asset:a.ID,duration:a.Duration}
+	source,ok:=e.sourceVersions[a.Path]
+	if !ok {return}
+	key:=waveformKey{path:a.Path,asset:a.ID,source:source,duration:a.Duration}
 	p:=e.waveforms.lookup(key)
 	if p==nil {
 		if len(*demand)<32 {
