@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,6 +30,7 @@ type thumbnailCache struct {
 	mu sync.Mutex
 	entries map[thumbnailKey]thumbnailEntry
 	demand []thumbnailKey
+	settled time.Time
 	wake chan struct{}
 	cancel context.CancelFunc
 	done chan struct{}
@@ -56,27 +58,56 @@ func (c *thumbnailCache) lookup(key thumbnailKey) []byte {
 
 func (c *thumbnailCache) request(keys []thumbnailKey) {
 	c.mu.Lock()
+	if slices.Equal(c.demand,keys) {c.mu.Unlock();return}
 	c.demand=append(c.demand[:0],keys...)
+	c.settled=time.Now().Add(180*time.Millisecond)
 	c.mu.Unlock()
 	select {case c.wake<-struct{}{}:default:}
 }
 
-func (c *thumbnailCache) next() (thumbnailKey,bool) {
+func (c *thumbnailCache) next() (thumbnailKey,bool,time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for len(c.demand)>0 {
-		k:=c.demand[0]
-		c.demand=c.demand[1:]
-		if v,ok:=c.entries[k];ok && (v.pixels!=nil || time.Now().Before(v.retry)) {continue}
-		return k,true
+	if len(c.demand)==0 {return thumbnailKey{},false,0}
+	if wait:=time.Until(c.settled);wait>0 {return thumbnailKey{},false,wait}
+	var retry time.Duration
+	for _,k:=range c.demand {
+		if v,ok:=c.entries[k];ok {
+			if v.pixels!=nil {continue}
+			if wait:=time.Until(v.retry);wait>0 {
+				if retry==0 || wait<retry {retry=wait}
+				continue
+			}
+		}
+		return k,true,0
 	}
-	return thumbnailKey{},false
+	return thumbnailKey{},false,retry
+}
+
+func (c *thumbnailCache) fallback(key thumbnailKey,start,end int64) []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var best thumbnailKey
+	distance:=int64(0)
+	found:=false
+	for k,v:=range c.entries {
+		if k.path!=key.path || k.asset!=key.asset || k.width!=key.width || v.pixels==nil || k.tick<start || k.tick>=end {continue}
+		d:=k.tick-key.tick
+		if d<0 {d=-d}
+		if !found || d<distance || d==distance && k.tick<best.tick {best,distance,found=k,d,true}
+	}
+	if !found {return nil}
+	v:=c.entries[best]
+	c.sequence++
+	v.used=c.sequence
+	c.entries[best]=v
+	return v.pixels
 }
 
 func (c *thumbnailCache) store(key thumbnailKey,pixels []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.entries)>=256 {
+	if _,exists:=c.entries[key];!exists && len(c.entries)>=256 {
 		var oldest thumbnailKey
 		age:=uint64(0)
 		for k,v:=range c.entries {if age==0 || v.used<age {oldest,age=k,v.used}}
@@ -91,9 +122,14 @@ func (c *thumbnailCache) run(ctx context.Context,engine media.Engine) {
 	defer close(c.done)
 	for {
 		if ctx.Err()!=nil {return}
-		k,ok:=c.next()
+		k,ok,wait:=c.next()
 		if !ok {
-			select {case <-ctx.Done():return;case <-c.wake:continue}
+			if wait<=0 {
+				select {case <-ctx.Done():return;case <-c.wake:continue}
+			}
+			timer:=time.NewTimer(wait)
+			select {case <-ctx.Done():timer.Stop();return;case <-c.wake:timer.Stop();case <-timer.C:}
+			continue
 		}
 		job,cancel:=context.WithTimeout(ctx,8*time.Second)
 		pixels,err:=engine.Thumbnail(job,k.path,project.Seconds(k.tick),k.width,thumbnail.Height)
@@ -132,12 +168,20 @@ func (e *editor) paintThumbnails(dc uintptr,left,right,w int32,c project.Clip,a 
 	clipLeft:=float64(trackHeader)+project.Seconds(c.Start-e.origin)*scale
 	for _,tile:=range thumbnail.Tiles(int(left),int(right),clipLeft,scale,c.In,c.Out,width) {
 		key:=thumbnailKey{path:a.Path,asset:a.ID,tick:tile.Source,width:width}
-		r:=rect{int32(tile.FullLeft),laneTop+19,int32(tile.FullLeft+width),laneBottom-1}
-		if pixels:=e.thumbnails.lookup(key);pixels!=nil {
-			drawThumbnail(dc,r,pixels,width)
-		} else if len(*demand)<96 {
-			*demand=append(*demand,key)
+		r:=rect{int32(tile.FullLeft),laneTop+19,int32(tile.FullRight),laneBottom-1}
+		if len(*demand)<96 {*demand=append(*demand,key)}
+		pixels:=e.thumbnails.lookup(key)
+		if pixels==nil {
+			pixels=e.thumbnails.fallback(key,tile.Start,tile.End)
+			if pixels==nil {
+				radius:=max(int64(2000000),min(int64(60000000),tile.End-tile.Start)*2)
+				start:=max(c.In,key.tick-radius)
+				end:=c.Out
+				if radius<c.Out-key.tick {end=key.tick+radius}
+				pixels=e.thumbnails.fallback(key,start,end)
+			}
 		}
+		if pixels!=nil {drawThumbnail(dc,r,pixels,width)}
 	}
 }
 

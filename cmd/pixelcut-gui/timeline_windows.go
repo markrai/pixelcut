@@ -134,7 +134,9 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 			if valid {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
 		}
 	}
-	if e.thumbnails!=nil {e.thumbnails.request(demand)}
+	if e.thumbnails!=nil {
+		if e.drag!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
+	}
 	if e.waveforms!=nil {e.waveforms.request(audioDemand)}
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
