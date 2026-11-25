@@ -152,12 +152,11 @@ func (e *editor) beginTimeline(x,y,w int32) {
 	e.playhead=e.timeAt(x,w)
 	for i,c:=range e.track().Clips {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
-		if x>=l && x<r && y>=laneTop && y<laneBottom {
+		if mode:=videoHitMode(x,y,l,r);mode!="" {
 			e.selectClip(i)
-			mode:="move"
-			if r-l>=18 && x-l<7 {mode="left"} else if r-l>=18 && r-x<=7 {mode="right"}
 			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true}
 			user.NewProc("SetCapture").Call(e.timeline)
+			e.setTimelineCursor(x,y,w)
 			return
 		}
 		if x>=l && x<r && y>=104 && y<140 {
@@ -217,13 +216,27 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		user.NewProc("EndPaint").Call(hwnd,uintptr(unsafe.Pointer(&ps)))
 		return 0
 	case 0x0014:return 1
+	case 0x0020:
+		if lp&0xffff==1 {
+			var p point
+			ok,_,_:=user.NewProc("GetCursorPos").Call(uintptr(unsafe.Pointer(&p)))
+			if ok!=0 {
+				user.NewProc("ScreenToClient").Call(hwnd,uintptr(unsafe.Pointer(&p)))
+				ui.setTimelineCursor(p.X,p.Y,clientRect(hwnd).Right)
+				return 1
+			}
+		}
 	case 0x0201:
 		user.NewProc("SetFocus").Call(hwnd)
 		ui.beginTimeline(x,y,clientRect(hwnd).Right);return 0
 	case 0x0200:
-		ui.moveTimeline(x);return 0
+		ui.moveTimeline(x)
+		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
+		return 0
 	case 0x0202:
-		ui.moveTimeline(x);ui.finishTimeline();return 0
+		ui.moveTimeline(x);ui.finishTimeline()
+		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
+		return 0
 	case 0x0215:
 		ui.drag=nil;ui.invalidateTimeline();return 0
 	case 0x020a:
@@ -240,4 +253,51 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		return 0
 	}
 	r,_,_:=defWindow.Call(hwnd,uintptr(msg),wp,lp);return r
+}
+
+const (
+	cursorArrow uintptr=32512
+	cursorCross uintptr=32515
+	cursorSizeWE uintptr=32644
+	cursorSizeAll uintptr=32646
+	cursorNo uintptr=32648
+	cursorHand uintptr=32649
+)
+
+func videoHitMode(x,y,left,right int32) string {
+	if x<trackHeader || x<left || x>=right || y<laneTop || y>=laneBottom {return ""}
+	if right-left>=18 {
+		if x-left<7 {return "left"}
+		if right-x<=7 {return "right"}
+	}
+	return "move"
+}
+
+func cursorForMode(mode string,invalid bool) uintptr {
+	if invalid {return cursorNo}
+	switch mode {
+	case "move":return cursorSizeAll
+	case "left","right":return cursorSizeWE
+	default:return cursorArrow
+	}
+}
+
+func (e *editor) timelineCursor(x,y,w int32) uintptr {
+	if e.busy {return cursorArrow}
+	if e.drag!=nil {return cursorForMode(e.drag.mode,e.drag.moved && !e.drag.valid)}
+	if x<trackHeader || x>=w {return cursorArrow}
+	for _,c:=range e.track().Clips {
+		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
+		if mode:=videoHitMode(x,y,l,r);mode!="" {return cursorForMode(mode,false)}
+		if x>=l && x<r && y>=104 && y<140 {
+			if a,ok:=e.p.Asset(c.AssetID);ok && a.HasAudio {return cursorHand}
+		}
+	}
+	if y>=0 && y<32 {return cursorCross}
+	return cursorArrow
+}
+
+func (e *editor) setTimelineCursor(x,y,w int32) {
+	cursor,_,_:=user.NewProc("LoadCursorW").Call(0,e.timelineCursor(x,y,w))
+	if cursor!=0 {user.NewProc("SetCursor").Call(cursor)}
 }

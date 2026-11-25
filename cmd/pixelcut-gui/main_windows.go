@@ -71,6 +71,7 @@ const (
 	idZoomOut
 	idZoomIn
 	idFit
+	idKeys
 )
 
 type windowClass struct {
@@ -316,6 +317,7 @@ func (e *editor) stopPreview() {
 		e.previewCancel = nil
 		e.previewDone = nil
 	}
+	if h:=e.controls[idPlay];h!=0 {change(h,"Play  (Space)");user.NewProc("InvalidateRect").Call(h,0,1)}
 }
 
 func (e *editor) play() error {
@@ -330,15 +332,23 @@ func (e *editor) play() error {
 		ed.Start += delta
 		ed.Duration -= delta
 	}
-	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false)
-	if err != nil { cancel(); return err }
-	if err = cmd.Start(); err != nil { cancel(); return err }
+	bindings,err:=os.CreateTemp("","pixelcut-input-*.conf")
+	if err!=nil {cancel();return err}
+	name:=bindings.Name()
+	_,err=bindings.WriteString("SPACE quit\nESC quit\n")
+	closeErr:=bindings.Close()
+	if err==nil {err=closeErr}
+	if err!=nil {os.Remove(name);cancel();return err}
+	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false,name)
+	if err != nil {os.Remove(name); cancel(); return err }
+	if err = cmd.Start(); err != nil {os.Remove(name); cancel(); return err }
 	e.previewCancel = cancel
 	done := make(chan struct{})
 	e.previewDone = done
 	generation := e.generation
 	go func() {
 		err := cmd.Wait()
+		os.Remove(name)
 		close(done)
 		if ctx.Err() == nil {
 			select {
@@ -348,7 +358,10 @@ func (e *editor) play() error {
 			}
 		}
 	}()
-	e.tell("Playing from the timeline marker (crop applied at export). Space pauses in preview.")
+	change(e.controls[idPlay],"Stop  (Space)")
+	user.NewProc("InvalidateRect").Call(e.controls[idPlay],0,1)
+	user.NewProc("SetFocus").Call(e.timeline)
+	e.tell("Playing source interval. Space or Esc stops; crop applied at export.")
 	return nil
 }
 
@@ -468,8 +481,10 @@ func (e *editor) command(id, notification int) error {
 		e.tell("History restored.")
 	case idZoomOut,idZoomIn,idFit:
 		e.zoomTimeline(id)
+	case idKeys:
+		e.showShortcuts()
 	case idPlay:
-		return e.play()
+		return e.togglePreview()
 	case idStop:
 		e.stopPreview()
 		e.tell("Preview stopped.")
@@ -510,7 +525,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idFit && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idKeys && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -520,6 +535,10 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case wmPreviewDone:
 		r:=<-ui.previewResults
 		if r.generation==ui.generation {
+			ui.stopPreview()
+			fg,_,_:=user.NewProc("GetForegroundWindow").Call()
+			focus,_,_:=user.NewProc("GetFocus").Call()
+			if fg==mainWindow && (focus==0 || focus==ui.host) {user.NewProc("SetFocus").Call(ui.timeline)}
 			if r.err!=nil { ui.tell("Preview failed: "+r.err.Error()) } else { ui.tell("Preview finished.") }
 		}
 		return 0
@@ -559,6 +578,7 @@ func main() {
 	button("Save As",164,10,80,idSave)
 	button("Undo",250,10,65,idUndo)
 	button("Redo",321,10,65,idRedo)
+	button("Shortcuts",392,10,110,idKeys)
 	button("Export clip",970,10,126,idExport)
 	applyDarkTitle(mainWindow)
 	label("Media bin",12,50,230)
@@ -567,8 +587,8 @@ func main() {
 	button("Add to V1",136,350,121,idAdd)
 	label("Source preview / SDR",270,50,570)
 	ui.host=control("STATIC","",0x02000000|0x04000000|4,270,75,540,303,0)
-	button("Play clip",270,384,100,idPlay)
-	button("Stop",376,384,80,idStop)
+	button("Play  (Space)",270,384,124,idPlay)
+	button("Stop",400,384,80,idStop)
 	label("Clip properties (seconds)",825,50,270)
 	label("Timeline start",825,80,145)
 	edit("",975,77,121,idStart)
@@ -599,6 +619,7 @@ func main() {
 	for {
 		r,_,_:=user.NewProc("GetMessageW").Call(uintptr(unsafe.Pointer(&m)),0,0,0)
 		if int32(r)<=0 { break }
+		if ui.handleShortcut(m) {continue}
 		user.NewProc("TranslateMessage").Call(uintptr(unsafe.Pointer(&m)))
 		user.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&m)))
 	}
