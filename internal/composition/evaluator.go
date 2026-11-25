@@ -126,3 +126,37 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 	}
 	return f, nil
 }
+
+func (e *Evaluator) VideoTarget(trackID string, at int64, advance bool) (VideoLayer, int64, bool) {
+	if at < 0 || at >= e.duration {
+		return VideoLayer{}, at, false
+	}
+	for _, t := range e.tracks {
+		if t.id != trackID || t.kind != project.VideoTrack {
+			continue
+		}
+		i := sort.Search(len(t.clips), func(i int) bool { return t.clips[i].clip.End() > at })
+		if i == len(t.clips) {
+			break
+		}
+		item := t.clips[i]
+		c := item.clip
+		if at < c.Start {
+			if !advance {
+				break
+			}
+			at = c.Start
+		}
+		f, err := e.At(at)
+		if err != nil {
+			break
+		}
+		for _, layer := range f.Video {
+			if layer.Ref.TrackID == trackID {
+				return layer, at, true
+			}
+		}
+		break
+	}
+	return VideoLayer{}, at, false
+}

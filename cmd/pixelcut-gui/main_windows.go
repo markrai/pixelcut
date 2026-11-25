@@ -13,6 +13,7 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/markrai/pixelcut/internal/composition"
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/mediacache"
@@ -228,6 +229,8 @@ type editor struct {
 	preferencesWarning      string
 	previewLabel            uintptr
 	timelineLabel           uintptr
+	composition             *composition.Evaluator
+	compositionFingerprint  string
 }
 
 func u(s string) *uint16 {
@@ -431,6 +434,9 @@ func (e *editor) stopPreview() {
 		e.endTransformUI()
 	}
 	e.updatePlaybackClock()
+	if e.clock != nil {
+		e.clock.transport.Stop()
+	}
 	e.clock = nil
 	e.generation++
 	if e.previewCancel != nil {
@@ -455,7 +461,7 @@ func (e *editor) startPreview(paused bool) error {
 	if !ok {
 		return fmt.Errorf("select a timeline clip")
 	}
-	a, ed, err := e.model.Project().MediaEdit(c)
+	a, _, err := e.model.Project().MediaEdit(c)
 	if err != nil {
 		return err
 	}
@@ -464,78 +470,21 @@ func (e *editor) startPreview(paused bool) error {
 		return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 	}
 	e.stopPreview()
-	ctx, cancel := context.WithCancel(context.Background())
-	if e.playhead < c.Start || e.playhead >= c.Start+(c.Out-c.In) {
+	if !c.Contains(e.playhead) {
 		e.playhead = c.Start
 	}
-	delta := e.playhead - c.Start
-	ed.Start = project.Seconds(c.In + delta)
-	ed.Duration = project.Seconds(c.Out - c.In - delta)
-	bindings, err := os.CreateTemp("", "pixelcut-input-*.conf")
-	if err != nil {
-		cancel()
-		return err
-	}
-	name := bindings.Name()
-	_, err = bindings.WriteString("SPACE cycle pause\nESC set pause yes\n")
-	closeErr := bindings.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		os.Remove(name)
-		cancel()
-		return err
-	}
-	pipe := previewPipeName(name)
-	script, err := writeCropScript()
-	if err != nil {
-		os.Remove(name)
-		cancel()
-		return err
-	}
-	cmd, err := e.engine.EmbeddedPreview(ctx, a.Path, e.host, ed.Start, ed.Duration, e.prefs.HDR, name, pipe, paused, script)
-	if err != nil {
-		os.Remove(script)
-		os.Remove(name)
-		cancel()
-		return err
-	}
-	if err = cmd.Start(); err != nil {
-		os.Remove(script)
-		os.Remove(name)
-		cancel()
-		return err
-	}
-	e.previewCancel = cancel
-	done := make(chan struct{})
-	e.previewDone = done
 	generation := e.generation
-	clock := newPreviewClock(c, e.playhead, paused)
-	clock.setSpeed(e.speed())
-	clock.setComposition(a, c.Crop, c.Transform, false)
-	e.clock = clock
-	processDone := make(chan struct{})
-	clockDone := make(chan struct{})
-	go func() { defer close(clockDone); clock.observe(ctx, pipe, processDone) }()
-	go func() {
-		err := cmd.Wait()
-		close(processDone)
+	preview, err := launchNativePreview(e.engine, e.host, a, c, e.playhead, e.speed(), e.prefs.HDR, paused, func(err error) {
 		select {
-		case <-clockDone:
-		case <-time.After(150 * time.Millisecond):
+		case e.previewResults <- previewResult{generation, err}:
+			post.Call(mainWindow, wmPreviewDone, 0, 0)
+		default:
 		}
-		os.Remove(name)
-		os.Remove(script)
-		close(done)
-		if ctx.Err() == nil {
-			select {
-			case e.previewResults <- previewResult{generation, err}:
-				post.Call(mainWindow, wmPreviewDone, 0, 0)
-			default:
-			}
-		}
-	}()
+	})
+	if err != nil {
+		return err
+	}
+	e.clock, e.previewCancel, e.previewDone = preview.clock, preview.cancel, preview.done
 	e.updatePlayButton(paused)
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.refreshPlaybackMarker()

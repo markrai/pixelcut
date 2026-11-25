@@ -1,291 +1,32 @@
 package main
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"io"
 	"math"
-	"os"
-	"path/filepath"
-	"sync/atomic"
-	"time"
 
+	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/project"
 )
 
 const playbackTimer uintptr = 1
 
-type clockSample struct {
-	tick             int64
-	paused, finished bool
-	serial           uint64
-}
-
-type previewRequest struct {
-	serial, seekSerial uint64
-	tick               int64
-	paused             bool
-	speed              float64
-}
-
-type previewClock struct {
-	clip        project.Clip
-	unavailable atomic.Bool
-	sample      atomic.Pointer[clockSample]
-	request     atomic.Pointer[previewRequest]
-	cropRequest atomic.Pointer[cropRequest]
-	cropSample  atomic.Pointer[cropSample]
-	cropError   atomic.Bool
-}
-
-func newPreviewClock(c project.Clip, marker int64, paused bool) *previewClock {
-	clock := &previewClock{clip: c}
-	clock.request.Store(&previewRequest{tick: marker, paused: paused, speed: 1})
-	return clock
-}
-
-func previewPipeName(configPath string) string {
-	return "\\\\.\\pipe\\pixelcut-" + filepath.Base(configPath)
-}
-
-func sourceToTimeline(c project.Clip, seconds float64) (int64, bool) {
-	if math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-		return 0, false
-	}
-	if seconds <= project.Seconds(c.In) {
-		return c.Start, true
-	}
-	if seconds >= project.Seconds(c.Out) {
-		return c.Start + (c.Out - c.In), true
-	}
-	t := int64(math.Round(seconds * float64(project.TicksPerSecond)))
-	if t < c.In {
-		t = c.In
-	}
-	if t > c.Out {
-		t = c.Out
-	}
-	return c.Start + (t - c.In), true
-}
-
-func timelineToSource(c project.Clip, tick int64) float64 {
-	if tick < c.Start {
-		tick = c.Start
-	}
-	end := c.Start + (c.Out - c.In)
-	if tick >= end {
-		tick = end - 1
-	}
-	return project.Seconds(c.In + (tick - c.Start))
-}
-
-func (c *previewClock) paused() bool {
-	r := c.request.Load()
-	if s := c.sample.Load(); s != nil && s.serial == r.serial {
-		return s.paused
-	}
-	return r.paused
-}
-
-func (c *previewClock) queue(tick int64, seek, paused bool) {
-	r := *c.request.Load()
-	if seek && r.seekSerial != 0 && r.tick == tick {
-		if s := c.sample.Load(); s == nil || s.serial != r.serial {
-			seek = false
+func (e *editor) previewTarget(at int64, advance bool) (int, int64, bool, error) {
+	fingerprint := e.model.Fingerprint()
+	if e.composition == nil || e.compositionFingerprint != fingerprint {
+		compiled, err := composition.Compile(e.model.Project())
+		if err != nil {
+			return -1, at, false, err
 		}
+		e.composition, e.compositionFingerprint = compiled, fingerprint
 	}
-	r.serial++
-	if seek {
-		r.seekSerial++
-		r.tick = tick
+	layer, target, ok := e.composition.VideoTarget(e.trackID(), at, advance)
+	if !ok {
+		return -1, at, false, nil
 	}
-	r.paused = paused
-	c.request.Store(&r)
-}
-
-func (c *previewClock) setSpeed(speed float64) {
-	r := *c.request.Load()
-	if r.speed == speed {
-		return
+	_, index, ok := e.model.Project().ClipIndex(layer.Ref)
+	if !ok {
+		return -1, at, false, project.ErrClipNotFound
 	}
-	r.paused = c.paused()
-	r.speed = speed
-	r.serial++
-	c.request.Store(&r)
-}
-
-type ipcReply struct {
-	RequestID uint64          `json:"request_id"`
-	Error     string          `json:"error"`
-	Data      json.RawMessage `json:"data"`
-}
-
-type previewIPC struct {
-	file   io.Writer
-	reader *bufio.Scanner
-	id     uint64
-}
-
-func (p *previewIPC) call(command ...any) (json.RawMessage, error) {
-	p.id++
-	b, err := json.Marshal(map[string]any{"command": command, "request_id": p.id})
-	if err != nil {
-		return nil, err
-	}
-	if _, err = p.file.Write(append(b, '\n')); err != nil {
-		return nil, err
-	}
-	for p.reader.Scan() {
-		var r ipcReply
-		if json.Unmarshal(p.reader.Bytes(), &r) != nil || r.RequestID != p.id {
-			continue
-		}
-		if r.Error != "success" {
-			return nil, fmt.Errorf("mpv: %s", r.Error)
-		}
-		return r.Data, nil
-	}
-	if err = p.reader.Err(); err != nil {
-		return nil, err
-	}
-	return nil, errors.New("mpv IPC closed")
-}
-
-func (p *previewIPC) property(name string, value any) bool {
-	b, err := p.call("get_property", name)
-	return err == nil && len(b) > 0 && string(b) != "null" && json.Unmarshal(b, value) == nil
-}
-
-func (c *previewClock) observe(ctx context.Context, pipe string, processDone <-chan struct{}) {
-	deadline := time.NewTimer(5 * time.Second)
-	defer deadline.Stop()
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
-	var f *os.File
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-processDone:
-			return
-		default:
-		}
-		var err error
-		f, err = os.OpenFile(pipe, os.O_RDWR, 0)
-		if err == nil {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-processDone:
-			return
-		case <-deadline.C:
-			c.unavailable.Store(true)
-			return
-		case <-ticker.C:
-		}
-	}
-	defer f.Close()
-	p := previewIPC{file: f, reader: bufio.NewScanner(f)}
-	var applied, appliedSeek, appliedCrop uint64
-	appliedSpeed := 1.0
-	var seekUntil time.Time
-	var failures int
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-processDone:
-			return
-		case <-ticker.C:
-		}
-		var source float64
-		if !p.property("time-pos", &source) {
-			failures++
-			if failures >= 80 {
-				c.unavailable.Store(true)
-				return
-			}
-			continue
-		}
-		failures = 0
-		if req := c.cropRequest.Load(); req != nil && req.serial != appliedCrop {
-			var ready bool
-			if p.property("user-data/pixelcut/crop-ready", &ready) && ready {
-				if _, err := p.call("script-message", "pixelcut-crop", req.payload()); err != nil {
-					c.cropError.Store(true)
-				} else {
-					appliedCrop = req.serial
-				}
-			}
-		}
-		if appliedCrop != 0 {
-			var state cropSample
-			if p.property("user-data/pixelcut/crop", &state) && state.Serial == appliedCrop {
-				c.cropSample.Store(&state)
-			}
-		}
-		r := c.request.Load()
-		if r.serial != applied {
-			if r.speed != appliedSpeed {
-				if _, err := p.call("set_property", "speed", r.speed); err != nil {
-					c.unavailable.Store(true)
-					return
-				}
-				appliedSpeed = r.speed
-			}
-			if r.paused {
-				if _, err := p.call("set_property", "pause", true); err != nil {
-					c.unavailable.Store(true)
-					return
-				}
-			}
-			if r.seekSerial != appliedSeek {
-				if _, err := p.call("seek", timelineToSource(c.clip, r.tick), "absolute+exact"); err != nil {
-					c.unavailable.Store(true)
-					return
-				}
-				appliedSeek = r.seekSerial
-				seekUntil = time.Now().Add(2 * time.Second)
-			}
-			if !r.paused {
-				if _, err := p.call("set_property", "pause", false); err != nil {
-					c.unavailable.Store(true)
-					return
-				}
-			}
-			applied = r.serial
-			continue
-		}
-		var seeking, paused, eof bool
-		if !p.property("seeking", &seeking) || seeking {
-			continue
-		}
-		if !p.property("pause", &paused) {
-			continue
-		}
-		p.property("eof-reached", &eof)
-		tick, ok := sourceToTimeline(c.clip, source)
-		if !ok {
-			continue
-		}
-		if !seekUntil.IsZero() {
-			distance := math.Abs(float64(tick) - float64(r.tick))
-			if distance > 250000 && time.Now().Before(seekUntil) {
-				continue
-			}
-			seekUntil = time.Time{}
-		}
-		if eof {
-			tick = c.clip.Start + (c.clip.Out - c.clip.In)
-			paused = true
-		}
-		c.sample.Store(&clockSample{tick: tick, paused: paused, finished: eof, serial: applied})
-	}
+	return index, target, true, nil
 }
 
 func (e *editor) refreshPlaybackMarker() {
@@ -325,22 +66,26 @@ func (e *editor) updatePlaybackClock() {
 		return
 	}
 	if e.clock.unavailable.Swap(false) {
+		if e.previewCancel != nil {
+			e.previewCancel()
+		}
+		e.updatePlayButton(true)
 		e.tell("Playback IPC unavailable; reopen the preview to seek.")
 	}
 	if e.scrubbing || e.drag != nil {
 		return
 	}
-	if s := e.clock.sample.Load(); s != nil && s.serial == e.clock.request.Load().serial {
-		e.updatePlayButton(s.paused)
-		if s.tick != e.playhead {
-			e.playhead = s.tick
+	if s := e.clock.transport.Status(); s.Confirmed {
+		e.updatePlayButton(s.Paused)
+		if s.Tick != e.playhead {
+			e.playhead = s.Tick
 			e.refreshPlaybackMarker()
 		}
 	}
 }
 
 func (e *editor) pausePreview() error {
-	if e.clock != nil && e.previewActive() {
+	if e.clock != nil && e.previewActive() && e.clock.transport.Usable() {
 		e.clock.queue(e.playhead, false, true)
 		e.updatePlayButton(true)
 		e.tell("Preview paused.")
@@ -361,13 +106,19 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		t = end
 	}
 	index := -1
-	for i, c := range e.track().Clips {
-		if t >= c.Start && t < c.Start+(c.Out-c.In) {
-			index = i
-			break
+	if e.audioTrack() || t == end {
+		for i, c := range e.track().Clips {
+			if c.Contains(t) || (t == end && t == c.End()) {
+				index = i
+				break
+			}
 		}
-		if t == end && t == c.Start+(c.Out-c.In) {
-			index = i
+	} else {
+		var err error
+		index, _, _, err = e.previewTarget(t, false)
+		if err != nil {
+			e.tell(err.Error())
+			return
 		}
 	}
 	if index < 0 {
@@ -403,7 +154,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		e.tell("End of timeline.")
 		return
 	}
-	if e.clock != nil && e.previewActive() && e.clock.clip.ID == c.ID {
+	if e.clock != nil && e.previewActive() && e.clock.transport.Usable() && e.clock.clip.ID == c.ID {
 		e.playhead = t
 		if e.model.ClipIndex() != index {
 			e.selectClip(index)

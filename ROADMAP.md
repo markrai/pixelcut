@@ -43,8 +43,8 @@ The next slice cannot be accepted until its predecessor's verification is record
 | 2C.R.3 | Platform-independent editor and stable selection references | Selection, deletion and track switching tests without Win32 | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45704971859) |
 | 2C.R.4 | Unified transactions, typed commands and history | Atomic failure/no-op tests, one history entry per edit | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45706103738) |
 | 2C.R.5 | Pure timeline geometry, hit testing and gestures | Shared geometry for draw/input/drop, snapping regression tests | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45711670944) |
-| 2C.R.6 | Deterministic composition evaluator | Video/audio contribution and time mapping tests independent of selection | Implemented; verification pending |
-| 2C.R.7 | Project playback controller, separate mpv backend | Simulated backend state/seek/boundary/stale event tests | Pending |
+| 2C.R.6 | Deterministic composition evaluator | Video/audio contribution and time mapping tests independent of selection | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45712233364) |
+| 2C.R.7 | Project playback controller, separate mpv backend | Simulated backend state/seek/boundary/stale event tests | Implemented; verification pending |
 | 2C.R.8 | Jobs, source monitoring, recovery and resource ownership | Canceled/stale results rejected, bounded shutdown, no slow UI I/O | Pending |
 | 2C.R.9 | Regression and performance qualification | Baseline comparison, real Windows and media fidelity acceptance | Pending |
 

@@ -41,11 +41,11 @@ func TestPrecisionRuler(t *testing.T) {
 }
 
 func TestSpeedRequestPreservesSeek(t *testing.T) {
-	c := newPreviewClock(project.Clip{}, 0, true)
+	c := newPreviewClock(project.Clip{Out: 1000000}, 0, true)
 	c.queue(123456, true, true)
 	c.setSpeed(1.5)
-	r := c.request.Load()
-	if r.speed != 1.5 || !r.paused || r.tick != 123456 || r.seekSerial != 1 {
+	r := c.transport.Request()
+	if r.Speed != 1.5 || !r.Paused || r.Tick != 123456 || r.SeekSerial != 1 {
 		t.Fatalf("speed lost request: %+v", r)
 	}
 }

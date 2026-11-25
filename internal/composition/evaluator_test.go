@@ -245,3 +245,33 @@ func BenchmarkComposition(b *testing.B) {
 		}
 	})
 }
+
+func TestVideoTargetCompatibilityPolicy(t *testing.T) {
+	e, err := Compile(fixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		track   string
+		at      int64
+		advance bool
+		target  int64
+		clip    string
+	}{
+		{"V1", 0, false, 0, ""},
+		{"V1", 0, true, 10, "early"},
+		{"V1", 20, true, 20, "early"},
+		{"V1", 30, false, 30, "later"},
+		{"V1", 40, true, 40, ""},
+		{"V2", 0, true, 15, "overlay"},
+		{"V2", 25, true, 25, ""},
+		{"A1", 12, true, 12, ""},
+		{"unknown", 0, true, 0, ""},
+		{"V1", 55, true, 55, ""},
+	} {
+		layer, at, ok := e.VideoTarget(tc.track, tc.at, tc.advance)
+		if at != tc.target || ok != (tc.clip != "") || layer.Ref.ClipID != tc.clip {
+			t.Fatalf("%+v: %+v %d %t", tc, layer, at, ok)
+		}
+	}
+}

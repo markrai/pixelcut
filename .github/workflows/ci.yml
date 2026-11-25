@@ -85,7 +85,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force ci-reports | Out-Null
           go version | Tee-Object ci-reports/environment.txt
-          go test -count=1 -v "-coverprofile=ci-reports/coverage-windows.out" ./internal/project ./internal/editor ./internal/timeline ./internal/composition ./internal/session ./internal/mediacache ./internal/waveform ./internal/thumbnail ./cmd/pixelcut-gui | Tee-Object ci-reports/test-windows.txt
+          go test -count=1 -v "-coverprofile=ci-reports/coverage-windows.out" ./internal/project ./internal/editor ./internal/timeline ./internal/composition ./internal/playback ./internal/playback/mpv ./internal/session ./internal/mediacache ./internal/waveform ./internal/thumbnail ./cmd/pixelcut-gui | Tee-Object ci-reports/test-windows.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go tool cover "-func=ci-reports/coverage-windows.out" | Tee-Object ci-reports/coverage-windows.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

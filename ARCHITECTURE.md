@@ -290,3 +290,53 @@ legacy compatibility, invalid-project rejection, snapshot isolation and
 concurrent evaluation. CI also records compilation and evaluation benchmarks
 for a 12-track, 2400-clip metadata-only workload. Physical playback and HDR
 qualification are explicitly outside this phase.
+
+
+## 2C.R.7 portable transport and preview adapter
+
+The existing single-source preview is a compatibility backend, not the
+authority over timeline targeting. Play and ordinary video seeks resolve a
+stable clip reference using the compiled composition evaluator and project
+time. The adapter explicitly supplies its active video track because the
+current backend cannot composite multiple layers. The compatibility policy
+skips leading/interior gaps on Play, preserves exact seeks into gaps, and
+does not wrap at the final end. Independent audio editing and selected-clip
+crop/transform preview remain explicit special paths. Selection is not an
+input to normal transport target resolution. The GUI caches the evaluator
+by the controller's committed project fingerprint; edit, undo, redo and
+project replacement select a new snapshot when necessary.
+
+`internal/playback.Controller` owns the active preview segment's project-time
+position, transport state, requested pause/speed, seek serial and accepted
+backend observations. It is independent of Windows, process handles, crop
+drafts and source identity. Loading, Seeking, Playing, Paused, Finished,
+Failed and Stopped are explicit states. Status distinguishes confirmed
+backend observations from pending intent. The controller rejects stale
+serials, out-of-segment observations, exclusive-end seeks and events after
+failure or stop. A new session receives a distinct controller; native process
+completion retains its existing generation guard. Request and observation
+access are synchronized. The source-to-project mapping is shared and clamps
+source observations at interval boundaries, while seeks target the last
+representable source tick rather than the exclusive end.
+
+`internal/playback/mpv` implements the JSON IPC command/reply protocol
+independently of Win32. The Windows mpv adapter owns preview launch,
+temporary files, pipe polling, source-time conversion, crop/transform IPC
+and process cleanup. The native editor binds the transport status to
+controls and playhead, requests cancellation on IPC failure, and handles
+native focus and completion notifications. Existing HDR selection, preview
+speed, exact seeks, crop scripts and live transform behavior are retained.
+The portable controller is tested with simulated backend observations, and
+the IPC protocol is tested with in-memory streams.
+
+This is not yet a continuous project-wide render clock: the current
+transport is bounded to the backend's active source segment, and the GUI
+retains the inactive timeline marker and native gesture/view state.
+Transitions between sources still reopen the single-source backend, and
+completion does not automatically traverse later clips. Continuous mixed
+audio and video composition are future product features. The current
+backend still has synchronous cancellation waits and potentially blocking
+pipe I/O; bounded resource teardown, unified job lifecycle and asynchronous
+services are 2C.R.8 work. No project format, source color contract or
+external dependency changes. Physical native playback, VFR seeking and HDR
+display qualification remain outstanding.

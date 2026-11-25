@@ -202,7 +202,10 @@ func (e *editor) togglePreview() error {
 		return e.pausePreview()
 	}
 	e.updatePlaybackClock()
-	index, at, ok := project.PlaybackTarget(e.track().Clips, e.playhead)
+	index, at, ok, err := e.previewTarget(e.playhead, true)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		marker := e.playhead
 		e.stopPreview()
@@ -222,7 +225,7 @@ func (e *editor) togglePreview() error {
 		e.tell("Source offline; use Relink.")
 		return nil
 	}
-	if e.clock != nil && e.previewActive() && e.clock.clip.ID == c.ID && at == e.playhead {
+	if e.clock != nil && e.previewActive() && e.clock.transport.Usable() && e.clock.clip.ID == c.ID && at == e.playhead {
 		if e.model.ClipIndex() != index || e.model.Count() > 1 {
 			e.selectClip(index)
 		}

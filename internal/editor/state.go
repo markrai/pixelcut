@@ -22,6 +22,8 @@ func New(p project.Project) State {
 
 func (s *State) Project() project.Project { return s.p }
 
+func (s *State) Fingerprint() string { return s.fingerprint }
+
 func (s *State) TrackIndex() int {
 	i := s.p.TrackIndex(s.track)
 	if i < 0 {
