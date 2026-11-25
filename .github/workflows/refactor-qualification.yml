@@ -1,0 +1,73 @@
+name: Refactor performance qualification
+
+on:
+  pull_request:
+    paths:
+      - '**.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/refactor-qualification.yml'
+      - 'scripts/compare-refactor-benchmarks.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired-benchmarks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - name: Collect paired benchmark evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          baseline=eff81c55b65ffee528bd7ad636b3fb2937cbe642
+          candidate=$(git rev-parse HEAD)
+          reports="$PWD/qualification-reports"
+          mkdir -p "$reports"
+          work=$(mktemp -d)
+          rmdir "$work"
+          git worktree add --detach "$work" "$baseline"
+          trap 'git worktree remove --force "$work"' EXIT
+          git diff --exit-code "$baseline" "$candidate" -- internal/project/baseline_test.go
+          {
+            printf 'baseline=%s\ncandidate=%s\n' "$baseline" "$candidate"
+            go version
+            uname -a
+            lscpu
+          } > "$reports/environment.txt"
+          run_bench() {
+            local ref="$1" label="$2" round="$3"
+            git -C "$work" checkout --detach "$ref"
+            (
+              cd "$work"
+              GOMAXPROCS=2 go test ./internal/project -run '^$' -bench '^BenchmarkProjectBaseline$' -benchmem -benchtime=300ms -count=1 -cpu=2
+            ) | tee -a "$reports/$label.txt"
+          }
+          for round in 1 2 3 4 5; do
+            if (( round % 2 )); then
+              run_bench "$baseline" baseline "$round"
+              run_bench "$candidate" candidate "$round"
+            else
+              run_bench "$candidate" candidate "$round"
+              run_bench "$baseline" baseline "$round"
+            fi
+          done
+          python3 scripts/compare-refactor-benchmarks.py "$reports/baseline.txt" "$reports/candidate.txt" | tee "$reports/comparison.md"
+          cat "$reports/comparison.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload paired evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: refactor-performance-qualification
+          path: qualification-reports/
+          retention-days: 30
+          if-no-files-found: warn
