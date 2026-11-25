@@ -7,51 +7,25 @@ import (
 
 const MaxTracks = 32
 
-func (p Project) TrackIndex(id string) int {
-	for i, t := range p.Tracks {
-		if t.ID == id {
-			return i
-		}
-	}
-	return -1
-}
-
 func (p Project) EndTime() int64 {
 	var end int64
 	for _, t := range p.Tracks {
-		for _, c := range t.Clips {
-			if n, ok := clipEdge(c, true); ok {
-				end = max(end, n)
-			}
-		}
+		end = max(end, t.EndTime())
 	}
 	return end
 }
 
-func (p Project) ValidateEditorLayout() error {
-	if err := p.Validate(); err != nil {
-		return err
-	}
-	if len(p.Tracks) < 2 || len(p.Tracks) > MaxTracks || p.Tracks[0].ID != "V1" || p.Tracks[0].Kind != "video" || p.Tracks[1].ID != "A1" || p.Tracks[1].Kind != "audio" {
-		return errors.New("unsupported editor track layout")
-	}
-	if p.Version == LegacyVersion && (len(p.Tracks) != 2 || len(p.Tracks[1].Clips) != 0) {
-		return errors.New("legacy editor projects require V1 and empty A1")
-	}
-	return nil
-}
-
 func (p Project) AddTrack(kind string) (Project, string, error) {
-	if err := p.ValidateEditorLayout(); err != nil {
+	if err := p.Validate(); err != nil {
 		return p, "", err
 	}
 	if len(p.Tracks) >= MaxTracks {
 		return p, "", errors.New("track limit reached")
 	}
 	prefix := "V"
-	if kind == "audio" {
+	if kind == AudioTrack {
 		prefix = "A"
-	} else if kind != "video" {
+	} else if kind != VideoTrack {
 		return p, "", errors.New("invalid track kind")
 	}
 	id := ""
@@ -68,11 +42,11 @@ func (p Project) AddTrack(kind string) (Project, string, error) {
 	q := p.Clone()
 	q.Version = Version
 	q.Tracks = append(q.Tracks, Track{ID: id, Kind: kind, Clips: []Clip{}})
-	return q, id, q.ValidateEditorLayout()
+	return q, id, q.Validate()
 }
 
 func (p Project) RemoveTrack(id string) (Project, error) {
-	if err := p.ValidateEditorLayout(); err != nil {
+	if err := p.Validate(); err != nil {
 		return p, err
 	}
 	i := p.TrackIndex(id)
@@ -84,11 +58,11 @@ func (p Project) RemoveTrack(id string) (Project, error) {
 	}
 	q := p.Clone()
 	q.Tracks = append(q.Tracks[:i], q.Tracks[i+1:]...)
-	return q, q.ValidateEditorLayout()
+	return q, q.Validate()
 }
 
 func (p Project) TransferClips(from, to string, ids []string) (Project, error) {
-	if err := p.ValidateEditorLayout(); err != nil {
+	if err := p.Validate(); err != nil {
 		return p, err
 	}
 	src, selected, err := p.selectedTrack(from, ids)
@@ -110,7 +84,7 @@ func (p Project) TransferClips(from, to string, ids []string) (Project, error) {
 		}
 	}
 	q.Tracks[src].Clips = kept
-	if err = q.ValidateEditorLayout(); err != nil {
+	if err = q.Validate(); err != nil {
 		return p, err
 	}
 	return q, nil

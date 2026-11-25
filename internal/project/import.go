@@ -23,6 +23,9 @@ type ImportBatch struct {
 
 func (p Project) ImportPaths(ctx context.Context, paths []string, inspect func(context.Context, string) (Asset, error)) (ImportBatch, error) {
 	b := ImportBatch{Project: p, Selected: -1}
+	if err := p.Validate(); err != nil {
+		return b, err
+	}
 	seen := map[string]bool{}
 	remember := func(i int) {
 		id := b.Project.Assets[i].ID

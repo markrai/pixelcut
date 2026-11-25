@@ -33,7 +33,7 @@ type State struct {
 }
 
 func (s State) Validate() error {
-	if err := s.Project.ValidateEditorLayout(); err != nil {
+	if err := s.Project.Validate(); err != nil {
 		return err
 	}
 	id := s.ActiveTrack

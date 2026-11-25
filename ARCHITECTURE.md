@@ -105,3 +105,41 @@ CI success and physical acceptance are distinct gates. Native mpv embedding,
 HDR display output, real Pixel VFR footage and interaction responsiveness
 require recorded Windows runtime acceptance. See [ROADMAP.md](ROADMAP.md)
 and [baseline measurements](docs/refactor-baseline.md).
+
+## 2C.R.2 project contracts
+
+`Project.Validate` is the authoritative persisted-project contract, including
+schema version, base track layout, maximum track count, globally unique clip
+IDs, per-kind edit constraints, asset metadata and nonoverlap. The previous
+ValidateEditorLayout entry point delegates to it for compatibility. File load,
+save, recovery and model operations use the same validation. Version 1 remains
+readable without migration; adding additional tracks or independent audio
+upgrades the candidate to version 2. No JSON fields or recovery envelope versions
+changed. Files previously accepted by the low-level model but rejected by the
+editor (invalid layouts) are now consistently rejected, as are explicit color
+ranges other than tv or pc. Unknown legacy range (empty) remains valid.
+
+`ClipRef` carries a track ID and clip ID; `LocateClip` resolves the globally
+unique clip ID after a track transfer. `ClipIndex` derives transient indexes;
+`Clip` returns a detached copy. Stable references are available for 2C.R.3,
+but native selection state has not yet been migrated. Asset and track lookup
+remain linear until benchmarks justify an index. `Clip.Clone` is the shared
+nested-copy operation used by project snapshots, split, clipboard and drag.
+Project slices are still exported; callers must not mutate committed snapshots.
+
+`Interval` uses nonnegative half-open bounds. `TimelineInterval` validates
+source duration and overflow before adding timeline ticks; `End` returns zero
+for invalid intervals. `SourceAt` rejects the exclusive end. Decimal seconds
+input retains float64 parsing and microsecond rounding, rejecting rounded
+values outside int64; exact decimal parsing at extreme durations is not claimed.
+Model editing and playback-target calculations reuse these operations. Native
+geometry and preview time mapping will migrate in their own slices.
+
+Validation failures are classifiable with errors.Is for unsupported versions,
+invalid assets/tracks/clips, overlap and missing references in migrated paths.
+Existing operations may return detached invalid drag/group candidates with an
+error for red ghost rendering; an error result must never be committed. These
+are not mutations of the input project. Unified commit and history ownership
+remain 2C.R.4. The project-to-media geometry dependency remains intentional
+until composition requires a narrower shared contract; no duplicate geometry
+algorithm or new dependency is introduced.

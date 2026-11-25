@@ -2,7 +2,6 @@ package project
 
 import (
 	"errors"
-	"math"
 	"sort"
 )
 
@@ -13,17 +12,21 @@ type SnapResult struct {
 }
 
 func clipEdge(c Clip, right bool) (int64, bool) {
-	if c.Start < 0 || c.In < 0 || c.Out <= c.In || c.Start > math.MaxInt64-(c.Out-c.In) {
+	i, ok := c.TimelineInterval()
+	if !ok {
 		return 0, false
 	}
 	if right {
-		return c.Start + (c.Out - c.In), true
+		return i.End, true
 	}
-	return c.Start, true
+	return i.Start, true
 }
 
 func (p Project) SnapDrag(trackID, clipID, mode string, delta, marker, tolerance int64) (SnapResult, error) {
-	raw, rawErr := p.DragClip(trackID, clipID, mode, delta)
+	if err := p.Validate(); err != nil {
+		return SnapResult{}, err
+	}
+	raw, rawErr := p.dragClip(trackID, clipID, mode, delta)
 	result := SnapResult{Clip: raw}
 	if tolerance <= 0 {
 		return result, rawErr
@@ -88,7 +91,7 @@ func (p Project) SnapDrag(trackID, clipID, mode string, delta, marker, tolerance
 		return candidates[i].target < candidates[j].target
 	})
 	for _, candidate := range candidates {
-		c, err := p.DragClip(trackID, clipID, mode, candidate.delta)
+		c, err := p.dragClip(trackID, clipID, mode, candidate.delta)
 		if err != nil {
 			continue
 		}

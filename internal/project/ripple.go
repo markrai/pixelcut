@@ -28,7 +28,7 @@ func (p Project) RippleDelete(trackID string, ids []string) (Project, error) {
 	positions := map[string]int64{}
 	for _, c := range ordered {
 		if selected[c.ID] {
-			shift += c.Out - c.In
+			shift += c.Duration()
 		} else {
 			positions[c.ID] = c.Start - shift
 		}
@@ -62,8 +62,8 @@ func (p Project) RemoveGap(trackID string, at int64) (Project, int64, error) {
 		var left, right int64
 		found := false
 		for _, c := range t.Clips {
-			end := c.Start + (c.Out - c.In)
-			if at >= c.Start && at < end {
+			end := c.End()
+			if c.Contains(at) {
 				return p, 0, errors.New("place the playhead in a gap")
 			}
 			if end <= at {
@@ -89,7 +89,7 @@ func (p Project) RemoveGap(trackID string, at int64) (Project, int64, error) {
 		}
 		return q, right - left, nil
 	}
-	return p, 0, errors.New("track not found")
+	return p, 0, ErrTrackNotFound
 }
 
 func (p Project) RippleTrim(trackID, clipID, mode string, delta, marker, tolerance int64) (RippleEdit, error) {
@@ -112,11 +112,11 @@ func (p Project) RippleTrim(trackID, clipID, mode string, delta, marker, toleran
 		}
 	}
 	a, _ := p.Asset(original.AssetID)
-	duration := original.Out - original.In
-	oldEnd := original.Start + duration
+	duration := original.Duration()
+	oldEnd := original.End()
 	last := oldEnd
 	for _, c := range p.Tracks[ti].Clips {
-		last = max(last, c.Start+(c.Out-c.In))
+		last = max(last, c.End())
 	}
 	extension := int64(math.MaxInt64) - last
 	lo, hi := int64(0), int64(0)

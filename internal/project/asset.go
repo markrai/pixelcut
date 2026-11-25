@@ -23,7 +23,7 @@ func (p Project) RemoveAsset(id string, removeClips bool) (Project, error) {
 		return p, err
 	}
 	if _, ok := p.Asset(id); !ok {
-		return p, errors.New("asset not found")
+		return p, ErrAssetNotFound
 	}
 	if !removeClips && p.AssetReferences(id) > 0 {
 		return p, errors.New("asset is used by timeline clips")
@@ -76,6 +76,12 @@ func (p Project) FindAssetPath(path string) (int, bool) {
 }
 
 func (p Project) AddAsset(a Asset) (Project, int, bool, error) {
+	if err := p.Validate(); err != nil {
+		return p, -1, false, err
+	}
+	if err := validateAsset(a); err != nil {
+		return p, -1, false, err
+	}
 	if i, ok := p.FindAssetPath(a.Path); ok {
 		return p, i, false, nil
 	}

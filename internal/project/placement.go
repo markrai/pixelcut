@@ -16,24 +16,21 @@ type AssetPlacement struct {
 
 func (p Project) PlaceAssets(trackID string, assetIDs, clipIDs []string, start, marker, tolerance int64) (AssetPlacement, error) {
 	result := AssetPlacement{Project: p, Start: max(0, start), FirstClip: -1}
+	if err := p.Validate(); err != nil {
+		return result, err
+	}
 	if len(assetIDs) == 0 || len(assetIDs) != len(clipIDs) || len(assetIDs) > MaxImportFiles {
 		return result, errors.New("invalid asset placement batch")
 	}
-	ti := -1
-	for i, t := range p.Tracks {
-		if t.ID == trackID {
-			ti = i
-			break
-		}
-	}
+	ti := p.TrackIndex(trackID)
 	if ti < 0 {
-		return result, errors.New("track not found")
+		return result, ErrTrackNotFound
 	}
 	var duration int64
 	clips := make([]Clip, 0, len(assetIDs))
 	for i, id := range assetIDs {
 		a, ok := p.Asset(id)
-		if !ok || (p.Tracks[ti].Kind == "audio" && !a.HasAudio) || a.Duration <= 0 || a.Duration > math.MaxInt64-duration {
+		if !ok || (p.Tracks[ti].Kind == AudioTrack && !a.HasAudio) || a.Duration <= 0 || a.Duration > math.MaxInt64-duration {
 			return result, errors.New("invalid placement source or duration")
 		}
 		clips = append(clips, Clip{ID: clipIDs[i], AssetID: id, Start: duration, Out: a.Duration})

@@ -24,25 +24,26 @@ func (p Project) selectedTrack(trackID string, ids []string) (int, map[string]bo
 	if len(selected) == 0 {
 		return -1, nil, errors.New("select at least one clip")
 	}
-	for i, t := range p.Tracks {
-		if t.ID != trackID {
-			continue
-		}
-		n := 0
-		for _, c := range t.Clips {
-			if selected[c.ID] {
-				n++
-			}
-		}
-		if n != len(selected) {
-			return -1, nil, errors.New("selection contains unknown clips")
-		}
-		return i, selected, nil
+	i := p.TrackIndex(trackID)
+	if i < 0 {
+		return -1, nil, ErrTrackNotFound
 	}
-	return -1, nil, errors.New("track not found")
+	n := 0
+	for _, c := range p.Tracks[i].Clips {
+		if selected[c.ID] {
+			n++
+		}
+	}
+	if n != len(selected) {
+		return -1, nil, ErrClipNotFound
+	}
+	return i, selected, nil
 }
 
 func (p Project) DeleteClips(trackID string, ids []string) (Project, error) {
+	if err := p.Validate(); err != nil {
+		return p, err
+	}
 	i, selected, err := p.selectedTrack(trackID, ids)
 	if err != nil {
 		return p, err
@@ -77,7 +78,7 @@ func (p Project) MoveClips(trackID string, ids []string, delta, marker, toleranc
 	}
 	var edges []int64
 	for _, c := range p.Tracks[i].Clips {
-		end := c.Start + (c.Out - c.In)
+		end := c.End()
 		if selected[c.ID] {
 			lo = max(lo, -c.Start)
 			hi = min(hi, math.MaxInt64-end)

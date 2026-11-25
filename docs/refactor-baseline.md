@@ -51,7 +51,7 @@ These are separate runtime measurements for 2C.R.9.
 
 - Baseline automated build/test: passed at the reference revision.
 - Formatting, race, coverage and benchmark measurements for the new baseline:
-  produced by the 2C.R.1 CI run. Do not assume results until that run finishes.
+  [2C.R.1 CI passed](https://github.com/markrai/pixelcut/actions/runs/45691058409); coverage and benchmark artifacts are attached to that run.
 - Real Pixel footage, native embedded preview, physical HDR output and
   large-project UI latency: not measured in this phase.
 - Native preview equivalence is opt-in via qualify.bat, not a regular CI gate.

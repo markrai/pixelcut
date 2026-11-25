@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -210,5 +211,26 @@ func TestLegacyTrackRecovery(t *testing.T) {
 	_, got, err := Open(store.dir)
 	if err != nil || got == nil || !reflect.DeepEqual(*got, state) {
 		t.Fatal("legacy recovery was altered")
+	}
+}
+
+func TestRecoveryUsesProjectContract(t *testing.T) {
+	s, _, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := fixture(t)
+	if err = s.Save(state); err != nil {
+		t.Fatal(err)
+	}
+	bad := state
+	bad.Project = state.Project.Clone()
+	bad.Project.Assets[0].Range = "unknown"
+	if err = s.Save(bad); !errors.Is(err, project.ErrInvalidAsset) {
+		t.Fatalf("recovery validation: %v", err)
+	}
+	_, got, err := Open(s.dir)
+	if err != nil || got == nil || !reflect.DeepEqual(*got, state) {
+		t.Fatal("invalid recovery overwrote valid state")
 	}
 }

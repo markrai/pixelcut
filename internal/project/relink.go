@@ -34,7 +34,7 @@ func (p Project) RelinkAsset(id string, candidate Asset, replace bool) (Project,
 	}
 	old, ok := p.Asset(id)
 	if !ok {
-		return p, errors.New("asset not found")
+		return p, ErrAssetNotFound
 	}
 	if !replace && SourceAvailable(old.Path) {
 		return p, errors.New("original source is available; use Replace source instead")
