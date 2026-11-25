@@ -2,7 +2,7 @@
 
 A small, source-aware video editor for people who want to cut and crop footage without fighting color management.
 
-PixelCut starts with a command-line media engine. Its first goal is to qualify the original HDR recording, preview, and export path before building the desktop timeline.
+PixelCut includes a source-aware command-line media engine and an initial Windows desktop prototype. The project model stores source references and edits without modifying recordings.
 
 ## Quick start
 
@@ -64,6 +64,19 @@ The renderer accepts explicitly signaled, square-pixel, 10-bit 4:2:0 BT.2020 HLG
 
 Re-encoded output uses HEVC Main 10 through libx265 and CRF 16. It is not mathematically lossless. Global and stream metadata and chapters are intentionally omitted from exports. This is not a guarantee of comprehensive privacy sanitization. Per-frame dynamic HDR metadata is not yet qualified. Do not delete source recordings.
 
+## Windows desktop prototype
+
+```cmd
+go build -o pixelcut-gui.exe ./cmd/pixelcut-gui
+pixelcut-gui.exe
+```
+
+Import a supported HLG video, select it in the media bin and click **Add to V1**. Select the clip, enter source in/out and timeline start in seconds, optionally enter a display-relative crop as `x,y,width,height`, and click **Apply edits**. **Split** takes a timeline time strictly inside the selected clip. Play clip uses mpv embedded in a native Windows window and previews the selected source interval in SDR; cropping is applied at export, not in the preview yet. **Export clip** exports the selected clip, not the entire project. New projects have a V1 video track and an empty A1 audio track; audio follows the selected video.
+
+**Save As** creates a new versioned `.pixelcut.json` file without overwriting an existing project. **Open** restores edits and absolute source paths. Keep source files in place. Undo and redo cover committed project edits. Import, export, and preview use the existing FFmpeg and mpv installations.
+
+This is a feasibility prototype, not a finished timeline editor: no drag-and-drop, graphical tracks, audio mixing, composite playback, project-wide export or crop overlay yet. The embedded rendering path needs physical Windows acceptance testing. See [desktop prototype qualification](docs/desktop.md).
+
 ## Tests
 
 ```sh
@@ -77,7 +90,7 @@ Integration tests generate small synthetic HLG-tagged videos, including a rotate
 
 1. Qualify the integrated engine on actual Pixel footage on Windows. Direct FFmpeg experiments passed provisionally; Windows Media Player showed an abrupt contrast change in edited clips that was not observed in VLC.
 2. Establish an SDR export transform and evaluate it against the original phone and reference playback.
-3. Introduce a non-destructive project model, frame-accurate timeline, media bin and basic video/audio lanes.
+3. Qualify the initial non-destructive project model and native Windows preview prototype; build a graphical timeline and independent audio lanes.
 4. Add native desktop preview, transitions and overlays only after the baseline is stable.
 5. Add hardware-accelerated decode and encode with the same fidelity tests as the software path.
 
