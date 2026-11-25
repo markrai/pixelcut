@@ -83,7 +83,7 @@ func TestStackClipHitUsesLaneOffset(t *testing.T) {
 	if !g.Intersects(x, LaneTop+l.Offset(), x+1, LaneTop+l.Offset()+1) || g.Intersects(x, LaneTop, x+1, LaneTop+1) {
 		t.Fatal("marquee does not use offset")
 	}
-	if l.MainContains(AudioTop+l.Offset()) {
+	if l.MainContains(AudioTop + l.Offset()) {
 		t.Fatal("linked audio row accepted as an independent drop target")
 	}
 }
