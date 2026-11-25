@@ -26,9 +26,9 @@ The core is a dependency-free Go module. External processes are invoked with arg
 
 Both FFmpeg output options and x265 VUI options explicitly carry the color signal. After encoding, FFprobe verifies codec, color fields and geometry. The process fails closed if those fields change. Tag validation is necessary but insufficient for visual fidelity: it does not independently verify every sample, metadata layer or display transformation.
 
-The crop path operates on 10-bit YUV samples without an intentional transfer or gamut conversion. Trim uses output seeking and preserves variable frame cadence where possible. Exact timing, A/V synchronization and variable frame rate behavior require additional qualification. A fast keyframe-aware trim path is deferred until its boundary behavior is tested.
+The crop path operates on 10-bit YUV samples without an intentional transfer or gamut conversion. Pure cardinal display matrices are validated; FFmpeg autorotation normalizes the pixels before cropping in displayed coordinates. Chroma sample siting after rotation requires further objective qualification. Trim uses output seeking and preserves variable frame cadence where possible. Exact timing, A/V synchronization and variable frame rate behavior require additional qualification. A fast keyframe-aware trim path is deferred until its boundary behavior is tested.
 
-Remux preserves compressed streams without re-encoding. The current verification checks the video contract and stream count; it does not exhaustively compare all container or auxiliary metadata. The integration fixture also compares decoded video frame hashes and timestamps.
+Remux preserves compressed audiovisual streams without re-encoding and verifies cardinal display orientation, video signaling, geometry, stream count and audio codec. Recognized MetaHandle/mett data tracks are excluded with an explicit warning; unknown auxiliary streams fail closed. Both export paths strip global/stream metadata and chapters and check for unexpected global location/GPS tags. The rotated synthetic fixture compares decoded video and audio frame hashes and timestamps. Container-level metadata and arbitrary embedded private data are not comprehensively verified.
 
 ## Future timeline
 

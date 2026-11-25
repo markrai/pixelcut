@@ -19,7 +19,7 @@ Usage:
   pixelcut inspect INPUT
   pixelcut remux INPUT OUTPUT.mp4
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
-  pixelcut crop -x X -y Y -width W -height H INPUT OUTPUT.mp4
+  pixelcut crop [-start SECONDS -duration SECONDS] -x X -y Y -width W -height H INPUT OUTPUT.mp4
   pixelcut preview [-hdr] INPUT
 
 Trim and crop currently support only explicitly tagged 10-bit HLG footage.
@@ -64,6 +64,8 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 			fs.IntVar(&edit.Crop.Y, "y", 0, "top edge")
 			fs.IntVar(&edit.Crop.Width, "width", 0, "crop width")
 			fs.IntVar(&edit.Crop.Height, "height", 0, "crop height")
+			fs.Float64Var(&edit.Start, "start", 0, "optional trim start in seconds")
+			fs.Float64Var(&edit.Duration, "duration", 0, "optional trim duration in seconds")
 		case "preview":
 			fs.BoolVar(&hdr, "hdr", false, "request native HDR output on a compatible display")
 		}
@@ -72,6 +74,13 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 				return nil
 			}
 			return err
+		}
+		if args[0] == "crop" {
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "start" || f.Name == "duration" {
+					edit.Trim = true
+				}
+			})
 		}
 		if args[0] == "preview" {
 			if fs.NArg() != 1 {

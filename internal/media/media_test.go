@@ -122,3 +122,94 @@ func TestHLGMediaPipeline(t *testing.T) {
 		t.Fatal("invalid edit published output")
 	}
 }
+
+func TestPixelPortraitPipeline(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe unavailable")
+	}
+	ctx := context.Background()
+	e := Default()
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.mp4")
+	runFF(t, "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=24:duration=2", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-vf", "format=yuv420p10le,setsar=1", "-c:v", "libx265", "-x265-params", "pools=2:frame-threads=1:log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited:chromaloc=0", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv", "-chroma_sample_location", "left", "-c:a", "aac", "-tag:v", "hvc1", base)
+	sub := filepath.Join(dir, "metadata.srt")
+	if err := os.WriteFile(sub, []byte("1\n00:00:00,000 --> 00:00:01,900\nSynthetic metadata\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mux := filepath.Join(dir, "mux.mp4")
+	runFF(t, "-v", "error", "-display_rotation:v:0", "-90", "-i", base, "-i", sub, "-map", "0:v", "-map", "0:a", "-map", "1:s", "-c", "copy", "-c:s", "mov_text", "-metadata:s:s:0", "handler_name=MetaHandle", "-metadata", "location=+00.0000+000.0000/", mux)
+	b, err := os.ReadFile(mux)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]string{{"tx3g", "mett"}, {"sbtl", "meta"}} {
+		if bytes.Count(b, []byte(pair[0])) != 1 {
+			t.Fatalf("unexpected fixture sample entry or handler %q", pair[0])
+		}
+		b = bytes.Replace(b, []byte(pair[0]), []byte(pair[1]), 1)
+	}
+	src := filepath.Join(dir, "pixel.mp4")
+	if err = os.WriteFile(src, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := e.Inspect(ctx, src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := r.Video()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rotation, err := v.DisplayRotation()
+	if err != nil || rotation != -90 || len(r.Streams) != 3 || !r.Streams[2].pixelMetadata() {
+		t.Fatalf("invalid fixture rotation=%d err=%v streams=%+v", rotation, err, r.Streams)
+	}
+	if tags, ok := r.Format["tags"].(map[string]any); !ok || tags["location"] == nil {
+		t.Fatal("fixture missing location metadata")
+	}
+	copyPath := filepath.Join(dir, "copy.mp4")
+	if err = e.Remux(ctx, src, copyPath); err != nil {
+		t.Fatal(err)
+	}
+	hashes := func(p string) []byte {
+		return runFF(t, "-v", "error", "-i", p, "-map", "0:v:0", "-map", "0:a:0", "-f", "framehash", "-")
+	}
+	if !bytes.Equal(hashes(src), hashes(copyPath)) {
+		t.Fatal("remux changed decoded audio/video frames or timestamps")
+	}
+	for _, tc := range []struct {
+		name string
+		edit Edit
+		w, h int
+	}{{"trim", Edit{Trim: true, Start: 0.5, Duration: 1}, 240, 320}, {"crop", Edit{Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"combined", Edit{Trim: true, Start: 0.5, Duration: 1, Crop: &Crop{20, 20, 200, 280}}, 200, 280}} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := filepath.Join(dir, tc.name+".mp4")
+			if err := e.Render(ctx, src, out, tc.edit); err != nil {
+				t.Fatal(err)
+			}
+			r, err := e.Inspect(ctx, out)
+			if err != nil {
+				t.Fatal(err)
+			}
+			v, err := r.Video()
+			if err != nil || v.Width != tc.w || v.Height != tc.h || len(r.Streams) != 2 {
+				t.Fatalf("unexpected output: %+v %v", r, err)
+			}
+			if tc.edit.Trim {
+				d, err := strconv.ParseFloat(v.Duration, 64)
+				if err != nil || d < 0.95 || d > 1.05 {
+					t.Fatalf("unexpected trimmed duration %q", v.Duration)
+				}
+			}
+		})
+	}
+	if err = e.Render(ctx, src, filepath.Join(dir, "bad.mp4"), Edit{Crop: &Crop{0, 0, 300, 200}}); err == nil {
+		t.Fatal("accepted crop outside displayed width")
+	}
+	if err = e.Remux(ctx, mux, filepath.Join(dir, "unknown.mp4")); err == nil {
+		t.Fatal("silently discarded an unsupported subtitle stream")
+	}
+}

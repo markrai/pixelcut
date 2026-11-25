@@ -17,6 +17,7 @@ type Stream struct {
 	Index             int               `json:"index"`
 	CodecType         string            `json:"codec_type"`
 	CodecName         string            `json:"codec_name"`
+	CodecTag          string            `json:"codec_tag_string"`
 	PixelFormat       string            `json:"pix_fmt"`
 	Width             int               `json:"width"`
 	Height            int               `json:"height"`
@@ -103,10 +104,8 @@ func (v Stream) ValidateHLG() error {
 	if v.Width <= 0 || v.Height <= 0 || v.Width%2 != 0 || v.Height%2 != 0 {
 		return errors.New("invalid or odd input dimensions")
 	}
-	if len(v.SideData) != 0 || (v.Tags["rotate"] != "" && v.Tags["rotate"] != "0") {
-		return errors.New("video stream contains side data or rotation that this renderer cannot guarantee to preserve")
-	}
-	return nil
+	_, err := v.DisplayRotation()
+	return err
 }
 
 type Crop struct{ X, Y, Width, Height int }
@@ -163,27 +162,29 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 	if err = v.ValidateHLG(); err != nil {
 		return err
 	}
-	if err = edit.validate(v); err != nil {
+	display, err := v.DisplayGeometry()
+	if err != nil {
+		return err
+	}
+	if err = edit.validate(display); err != nil {
 		return err
 	}
 	if r.audioCount() > 1 {
 		return errors.New("multiple audio streams are not supported by the renderer")
 	}
-	for _, s := range r.Streams {
-		if s.CodecType != "video" && s.CodecType != "audio" {
-			return fmt.Errorf("unsupported input stream type %q; refusing to silently discard it", s.CodecType)
-		}
+	if err = r.validateExportStreams(); err != nil {
+		return err
 	}
 	in, err := filepath.Abs(input)
 	if err != nil {
 		return err
 	}
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-noautorotate", "-i", in}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in}
 	if edit.Trim {
 		args = append(args, "-ss", seconds(edit.Start), "-t", seconds(edit.Duration))
 	}
 	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
-	w, h := v.Width, v.Height
+	w, h := display.Width, display.Height
 	if edit.Crop != nil {
 		c := *edit.Crop
 		w, h = c.Width, c.Height
@@ -203,8 +204,8 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 	} else {
 		args = append(args, "-c:a", "copy")
 	}
-	args = append(args, "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart")
-	return e.publish(ctx, output, args, func(out Report) error {
+	args = append(args, "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart")
+	err = e.publish(ctx, output, args, func(out Report) error {
 		b, err := out.Video()
 		if err != nil {
 			return err
@@ -215,8 +216,19 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 		if err = b.ValidateHLG(); err != nil {
 			return err
 		}
+		rotation, err := b.DisplayRotation()
+		if err != nil || rotation != 0 {
+			return errors.New("rendered video must have normalized orientation")
+		}
+		if err = out.verifyExportStreams(r, !edit.Trim); err != nil {
+			return err
+		}
 		return verifyColor(v, b, w, h)
 	})
+	if err == nil {
+		r.reportExcluded()
+	}
+	return err
 }
 
 func (e Engine) Remux(ctx context.Context, input, output string) error {
@@ -232,17 +244,35 @@ func (e Engine) Remux(ctx context.Context, input, output string) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in, "-map", "0", "-c", "copy", "-copy_unknown", "-movflags", "+faststart"}
-	return e.publish(ctx, output, args, func(out Report) error {
+	if err = r.validateExportStreams(); err != nil {
+		return err
+	}
+	rotation, err := v.DisplayRotation()
+	if err != nil {
+		return err
+	}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in, "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart"}
+	err = e.publish(ctx, output, args, func(out Report) error {
 		b, err := out.Video()
 		if err != nil {
 			return err
 		}
-		if b.CodecName != v.CodecName || len(out.Streams) != len(r.Streams) {
-			return errors.New("remux changed codec or stream count")
+		if b.CodecName != v.CodecName {
+			return errors.New("remux changed video codec")
+		}
+		actual, err := b.DisplayRotation()
+		if err != nil || actual != rotation {
+			return errors.New("remux changed display orientation")
+		}
+		if err = out.verifyExportStreams(r, true); err != nil {
+			return err
 		}
 		return verifyColor(v, b, v.Width, v.Height)
 	})
+	if err == nil {
+		r.reportExcluded()
+	}
+	return err
 }
 
 func seconds(n float64) string { return strconv.FormatFloat(n, 'f', 6, 64) }
@@ -300,7 +330,11 @@ func (e Engine) Preview(ctx context.Context, path string, hdr bool) error {
 	} else {
 		args = append(args, "--target-prim=bt.709", "--target-trc=bt.1886", "--tone-mapping=auto")
 	}
-	cmd := exec.CommandContext(ctx, e.MPV, append(args, "--", p)...)
+	player, err := findMPV(e.MPV)
+	if err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, player, append(args, "--", p)...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }
