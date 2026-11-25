@@ -35,3 +35,28 @@ func TestTransformGraph(t *testing.T) {
 	}
 	if _,err:=PreviewFilters(graph,45);err==nil {t.Fatal("accepted arbitrary rotation")}
 }
+
+func TestOrientationGraph(t *testing.T) {
+	for _,tc:=range []struct{
+		rotation int
+		h,v bool
+		want string
+		w,height int
+	}{
+		{0,true,false,"hflip,setsar=1",320,240},
+		{0,false,true,"vflip,setsar=1",320,240},
+		{90,false,false,"transpose=clock,setsar=1",240,320},
+		{180,false,false,"hflip,vflip,setsar=1",320,240},
+		{270,false,false,"transpose=cclock,setsar=1",240,320},
+		{90,true,true,"transpose=clock,hflip,vflip,setsar=1",240,320},
+	} {
+		tr:=&Transform{CanvasWidth:tc.w,CanvasHeight:tc.height,Scale:100,Rotation:tc.rotation,FlipHorizontal:tc.h,FlipVertical:tc.v}
+		graph,w,h,err:=VideoFilters(320,240,nil,tr)
+		if err!=nil || graph!=tc.want || w!=tc.w || h!=tc.height {t.Fatalf("%+v: %q %dx%d %v",tr,graph,w,h,err)}
+	}
+	tr:=&Transform{CanvasWidth:160,CanvasHeight:200,Scale:100,Rotation:90,FlipHorizontal:true}
+	graph,w,h,err:=VideoFilters(320,240,&Crop{20,20,200,160},tr)
+	if err!=nil || graph!="crop=200:160:20:20,transpose=clock,hflip,setsar=1" || w!=160 || h!=200 {t.Fatalf("unexpected combined orientation: %q %dx%d %v",graph,w,h,err)}
+	tr.Rotation=45
+	if _,err:=tr.Placement(200,160);err==nil {t.Fatal("accepted non-cardinal rotation")}
+}

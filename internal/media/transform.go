@@ -13,6 +13,9 @@ type Transform struct {
 	Scale int `json:"scale_percent"`
 	X int `json:"x"`
 	Y int `json:"y"`
+	Rotation int `json:"rotation,omitempty"`
+	FlipHorizontal bool `json:"flip_horizontal,omitempty"`
+	FlipVertical bool `json:"flip_vertical,omitempty"`
 }
 
 type Placement struct {
@@ -23,6 +26,14 @@ type Placement struct {
 
 func evenRound(v float64) int { return int(math.Round(v/2))*2 }
 
+func (t Transform) OrientedSize(w,h int) (int,int,error) {
+	switch t.Rotation {
+	case 0,180: return w,h,nil
+	case 90,270: return h,w,nil
+	default: return 0,0,errors.New("rotation must be 0, 90, 180 or 270 degrees")
+	}
+}
+
 func (t Transform) Placement(w,h int) (Placement,error) {
 	var p Placement
 	if w<2 || h<2 || w>16384 || h>16384 || w%2!=0 || h%2!=0 ||
@@ -31,6 +42,8 @@ func (t Transform) Placement(w,h int) (Placement,error) {
 		t.X < -32768 || t.X>32768 || t.Y < -32768 || t.Y>32768 || t.X%2!=0 || t.Y%2!=0 {
 		return p,errors.New("transform requires even dimensions and position, canvas 2–8192 px, scale 10–400%, and bounded offsets")
 	}
+	w,h,err:=t.OrientedSize(w,h)
+	if err!=nil {return p,err}
 	fit:=math.Min(float64(t.CanvasWidth)/float64(w),float64(t.CanvasHeight)/float64(h))
 	factor:=fit*float64(t.Scale)/100
 	sw,sh:=max(2,evenRound(float64(w)*factor)),max(2,evenRound(float64(h)*factor))
@@ -54,6 +67,15 @@ func VideoFilters(width,height int,crop *Crop,t *Transform) (string,int,int,erro
 	}
 	if t!=nil {
 		p,err:=t.Placement(w,h)
+		if err!=nil {return "",0,0,err}
+		switch t.Rotation {
+		case 90: filters=append(filters,"transpose=clock")
+		case 180: filters=append(filters,"hflip","vflip")
+		case 270: filters=append(filters,"transpose=cclock")
+		}
+		if t.FlipHorizontal {filters=append(filters,"hflip")}
+		if t.FlipVertical {filters=append(filters,"vflip")}
+		w,h,err=t.OrientedSize(w,h)
 		if err!=nil {return "",0,0,err}
 		if p.ScaledWidth!=w || p.ScaledHeight!=h {
 			filters=append(filters,fmt.Sprintf("scale=%d:%d:flags=lanczos",p.ScaledWidth,p.ScaledHeight))

@@ -184,7 +184,7 @@ func TestPixelPortraitPipeline(t *testing.T) {
 		name string
 		edit Edit
 		w, h int
-	}{{"trim", Edit{Trim: true, Start: 0.5, Duration: 1}, 240, 320}, {"crop", Edit{Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"combined", Edit{Trim: true, Start: 0.5, Duration: 1, Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"canvas", Edit{Transform:&Transform{CanvasWidth:320,CanvasHeight:240,Scale:75,X:20,Y:-10},Crop:&Crop{20,20,200,280}},320,240}, {"zoom", Edit{Transform:&Transform{CanvasWidth:240,CanvasHeight:320,Scale:150,X:10,Y:20}},240,320}} {
+	}{{"trim", Edit{Trim: true, Start: 0.5, Duration: 1}, 240, 320}, {"crop", Edit{Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"combined", Edit{Trim: true, Start: 0.5, Duration: 1, Crop: &Crop{20, 20, 200, 280}}, 200, 280}, {"canvas", Edit{Transform:&Transform{CanvasWidth:320,CanvasHeight:240,Scale:75,X:20,Y:-10},Crop:&Crop{20,20,200,280}},320,240}, {"zoom", Edit{Transform:&Transform{CanvasWidth:240,CanvasHeight:320,Scale:150,X:10,Y:20}},240,320}, {"rotate", Edit{Transform:&Transform{CanvasWidth:320,CanvasHeight:240,Scale:100,Rotation:90}},320,240}, {"rotate-flip-crop", Edit{Transform:&Transform{CanvasWidth:280,CanvasHeight:200,Scale:100,Rotation:270,FlipHorizontal:true},Crop:&Crop{20,20,200,280}},280,200}} {
 		t.Run(tc.name, func(t *testing.T) {
 			out := filepath.Join(dir, tc.name+".mp4")
 			if err := e.Render(ctx, src, out, tc.edit); err != nil {

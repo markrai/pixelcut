@@ -83,6 +83,10 @@ const (
 	idTransformApply
 	idTransformReset
 	idTransformCancel
+	idRotateLeft
+	idRotateRight
+	idFlipH
+	idFlipV
 )
 
 type windowClass struct {
@@ -403,7 +407,7 @@ func (e *editor) startPreview(paused bool) error {
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
-	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset {return fmt.Errorf("Apply or cancel the active transform first")}
+	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
 	case idNew,idOpen:
@@ -530,6 +534,8 @@ func (e *editor) command(id, notification int) error {
 		e.resetTransformDraft()
 	case idTransformCancel:
 		e.cancelTransform()
+	case idRotateLeft,idRotateRight,idFlipH,idFlipV:
+		return e.changeOrientation(id)
 	case idCropVisual:
 		return e.beginOrApplyCrop()
 	case idCropReset:
@@ -577,7 +583,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idTransformCancel && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idFlipV && !(id>=idCanvasW && id<=idPositionY) && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0

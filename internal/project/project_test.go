@@ -69,7 +69,7 @@ func TestRejectInvalidProject(t *testing.T) {
 
 func TestTransformPersistence(t *testing.T) {
 	p:=fixture(t)
-	p.Tracks[0].Clips[0].Transform=&media.Transform{CanvasWidth:1080,CanvasHeight:1920,Scale:50,X:20,Y:-40}
+	p.Tracks[0].Clips[0].Transform=&media.Transform{CanvasWidth:1080,CanvasHeight:1920,Scale:50,X:20,Y:-40,Rotation:90,FlipVertical:true}
 	path:=filepath.Join(t.TempDir(),"transform.pixelcut.json")
 	if err:=p.SaveAs(path);err!=nil {t.Fatal(err)}
 	q,err:=Load(path)
@@ -79,7 +79,7 @@ func TestTransformPersistence(t *testing.T) {
 	r.Tracks[0].Clips[1].Transform.X=40
 	if q.Tracks[0].Clips[0].Transform.X!=20 || r.Tracks[0].Clips[0].Transform.X!=20 {t.Fatal("transform aliased after split")}
 	_,ed,err:=r.MediaEdit(r.Tracks[0].Clips[1])
-	if err!=nil || ed.Transform==nil || ed.Transform.X!=40 {t.Fatalf("missing media transform %v",err)}
+	if err!=nil || ed.Transform==nil || ed.Transform.X!=40 || ed.Transform.Rotation!=90 || !ed.Transform.FlipVertical {t.Fatalf("missing media transform %v",err)}
 	q.Assets[0].Range="pc"
 	if q.Validate()==nil {t.Fatal("full range transform accepted")}
 }

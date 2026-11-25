@@ -20,6 +20,8 @@ type transformSession struct {
 	lastInput string
 	lastChange time.Time
 	valid bool
+	rotation int
+	flipH,flipV bool
 }
 
 func defaultTransform(a project.Asset,c *project.Crop) media.Transform {
@@ -33,7 +35,7 @@ func (e *editor) initTransformInspector() {
 		if p.x>=825 && p.y>=50 && p.y<410 {e.inspectorControls=append(e.inspectorControls,p.h)}
 	}
 	start:=len(e.layout)
-	label("Position and scale",825,50,270)
+	label("Transform / orientation",825,50,270)
 	label("Canvas width (px)",825,83,145)
 	edit("",975,80,121,idCanvasW)
 	label("Canvas height (px)",825,115,145)
@@ -44,9 +46,11 @@ func (e *editor) initTransformInspector() {
 	edit("",975,176,121,idPositionX)
 	label("Position Y (px)",825,211,145)
 	edit("",975,208,121,idPositionY)
-	label("100% = fit canvas; 0,0 = centered",825,248,270)
-	label("Positive X = right; positive Y = down",825,272,270)
-	label("Use even canvas sizes and offsets.",825,296,270)
+	button("Rotate left",825,244,130,idRotateLeft)
+	button("Rotate right",961,244,135,idRotateRight)
+	button("Flip H: off",825,276,130,idFlipH)
+	button("Flip V: off",961,276,135,idFlipV)
+	label("100% fits canvas; offsets from center.",825,306,270)
 	button("Apply transform",825,330,130,idTransformApply)
 	button("Cancel",961,330,135,idTransformCancel)
 	button("Reset draft",825,370,130,idTransformReset)
@@ -70,6 +74,10 @@ func (e *editor) showTransformInspector(show bool) {
 }
 
 func (e *editor) writeTransform(t media.Transform) {
+	if s:=e.transformSession;s!=nil {
+		s.rotation,s.flipH,s.flipV=t.Rotation,t.FlipHorizontal,t.FlipVertical
+		e.updateOrientationButtons()
+	}
 	for i,id:=range []int{idCanvasW,idCanvasH,idScale,idPositionX,idPositionY} {
 		change(e.controls[id],strconv.Itoa([]int{t.CanvasWidth,t.CanvasHeight,t.Scale,t.X,t.Y}[i]))
 	}
@@ -119,13 +127,15 @@ func (e *editor) readTransform() (media.Transform,string,error) {
 	var values [5]int
 	var input []string
 	for _,id:=range []int{idCanvasW,idCanvasH,idScale,idPositionX,idPositionY} {input=append(input,strings.TrimSpace(read(e.controls[id])))}
-	key:=strings.Join(input,",")
+	s:=e.transformSession
+	if s==nil {return media.Transform{},"",errors.New("No transform session")}
+	key:=fmt.Sprintf("%s,%d,%t,%t",strings.Join(input,","),s.rotation,s.flipH,s.flipV)
 	for i,v:=range input {
 		n,err:=strconv.Atoi(v)
 		if err!=nil {return media.Transform{},key,errors.New("Enter whole numbers for all transform fields")}
 		values[i]=n
 	}
-	return media.Transform{CanvasWidth:values[0],CanvasHeight:values[1],Scale:values[2],X:values[3],Y:values[4]},key,nil
+	return media.Transform{CanvasWidth:values[0],CanvasHeight:values[1],Scale:values[2],X:values[3],Y:values[4],Rotation:s.rotation,FlipHorizontal:s.flipH,FlipVertical:s.flipV},key,nil
 }
 
 func (e *editor) updateTransformDraft() {
@@ -148,7 +158,7 @@ func (e *editor) updateTransformDraft() {
 	s.serial=e.clock.setComposition(s.asset,s.crop,draft,false)
 	s.draft=draft
 	s.valid=s.serial!=0
-	if s.valid {e.tell(fmt.Sprintf("Canvas %d × %d  |  Scale %d%%  |  Position %d, %d",t.CanvasWidth,t.CanvasHeight,t.Scale,t.X,t.Y))}
+	if s.valid {e.tell(fmt.Sprintf("Canvas %d × %d  |  Scale %d%%  |  Position %d, %d  |  Rotation %d°",t.CanvasWidth,t.CanvasHeight,t.Scale,t.X,t.Y,t.Rotation))}
 }
 
 func (e *editor) applyTransform() error {
@@ -176,5 +186,36 @@ func (e *editor) applyTransform() error {
 	e.refresh()
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.tell("Transform applied.")
+	return nil
+}
+
+func (e *editor) updateOrientationButtons() {
+	s:=e.transformSession
+	if s==nil {return}
+	for _,item:=range []struct{id int;name string;on bool}{{idFlipH,"Flip H",s.flipH},{idFlipV,"Flip V",s.flipV}} {
+		state:="off"
+		if item.on {state="on"}
+		change(e.controls[item.id],item.name+": "+state)
+		user.NewProc("InvalidateRect").Call(e.controls[item.id],0,1)
+	}
+}
+
+func (e *editor) changeOrientation(id int) error {
+	t,_,err:=e.readTransform()
+	if err!=nil {return err}
+	switch id {
+	case idRotateLeft:
+		t.Rotation=(t.Rotation+270)%360
+		t.CanvasWidth,t.CanvasHeight=t.CanvasHeight,t.CanvasWidth
+	case idRotateRight:
+		t.Rotation=(t.Rotation+90)%360
+		t.CanvasWidth,t.CanvasHeight=t.CanvasHeight,t.CanvasWidth
+	case idFlipH:
+		t.FlipHorizontal=!t.FlipHorizontal
+	case idFlipV:
+		t.FlipVertical=!t.FlipVertical
+	default:return errors.New("Unknown orientation control")
+	}
+	e.writeTransform(t)
 	return nil
 }

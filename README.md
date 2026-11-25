@@ -66,6 +66,10 @@ Re-encoded output uses HEVC Main 10 through libx265 and CRF 16. It is not mathem
 
 ## Windows desktop prototype
 
+Double-click `run.bat` in the repository root, or execute it from Command Prompt. It builds the current desktop executable and launches it only after a successful build. Go must be on PATH; FFmpeg, FFprobe and mpv are required for media operations. The launcher does not download dependencies or pull repository changes.
+
+Alternatively, build and launch manually:
+
 ```cmd
 go build -o pixelcut-gui.exe ./cmd/pixelcut-gui
 pixelcut-gui.exe
@@ -75,7 +79,7 @@ Import a supported HLG video, select it in the media bin and click **Add to V1**
 
 **Visual crop** pauses the selected clip and shows the full source with a shaded crop region, thirds guides and eight handles. Drag the center to move, the edges/corners to resize, or hold Shift when starting a drag to approximately preserve the aspect ratio with even pixel dimensions. Apply crop commits one undoable edit and shows the cropped result; Cancel crop restores the previous crop. Reset crop removes it. Enter/Esc inside the video apply/cancel. Coordinates match the displayed orientation, including portrait sources. Visual crop needs mpv 0.42 or a compatible version supporting video-crop and user-data. Export uses the existing validated FFmpeg crop path.
 
-**Transform** opens a live position/scale inspector. Set even canvas dimensions, scale (100% fits the cropped source within the canvas), and even X/Y offsets relative to center. Positive X moves right; positive Y moves down. Areas outside the canvas are clipped and uncovered areas are black. Apply saves one undoable edit, Cancel restores the original, and Reset draft restores the source or crop dimensions at 100% with zero offsets. Limited-range HLG is required for canvas transforms. Transformed export re-encodes once using the same geometry filter plan; unmodified clips remain eligible for remux.
+**Transform** opens a live position/scale inspector. Set even canvas dimensions, scale (100% fits the cropped source within the canvas), and even X/Y offsets relative to center. Positive X moves right; positive Y moves down. Rotate left/right turns the image by 90 degrees and swaps canvas dimensions. Flip H/V mirrors the rotated image along its displayed horizontal/vertical axes. Crop is applied before these operations, then scale, position, clipping and padding. Areas outside the canvas are clipped and uncovered areas are black. Apply saves one undoable edit, Cancel restores the original, and Reset draft restores the source or crop dimensions at 100% with zero offsets. Limited-range HLG is required for canvas transforms. Transformed export re-encodes once using the same geometry filter plan; unmodified clips remain eligible for remux.
 
 **Save As** creates a new versioned `.pixelcut.json` file without overwriting an existing project. **Open** restores edits and absolute source paths. Keep source files in place. Undo and redo cover committed project edits. Import, export, and preview use the existing FFmpeg and mpv installations.
 
