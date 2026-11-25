@@ -39,7 +39,7 @@ jobs:
           go-version: '1.23.x'
           cache: false
       - name: Project model and desktop input tests
-        run: go test -v ./internal/project ./cmd/pixelcut-gui
+        run: go test -v ./internal/project ./internal/session ./cmd/pixelcut-gui
       - name: Vet
         run: go vet ./cmd/pixelcut-gui ./internal/project
       - name: Build desktop prototype

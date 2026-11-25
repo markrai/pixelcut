@@ -30,6 +30,7 @@ type timelineDrag struct {
 	original,candidate project.Clip
 	moved,valid bool
 	wasPlaying bool
+	clickTime int64
 }
 
 func registerTimeline() {
@@ -171,9 +172,9 @@ func (e *editor) beginTimeline(x,y,w int32) {
 	for i,c:=range e.track().Clips {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if mode:=videoHitMode(x,y,l,r);mode!="" {
-			e.playhead=t
+			e.updatePlaybackClock()
 			e.selectClip(i)
-			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing}
+			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x,y,w)
 			return
@@ -206,11 +207,15 @@ func (e *editor) finishTimeline() {
 	if d!=nil && d.moved {
 		if d.valid {
 			q:=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate
-			e.playhead=d.candidate.Start
-			if err:=e.commit(q);err!=nil {e.tell(err.Error())} else {e.tell("Timeline edit applied.")}
+			if err:=q.Validate();err!=nil {e.tell(err.Error())} else {
+				var end int64
+				for _,clip:=range q.Tracks[0].Clips {end=max(end,clip.Start+(clip.Out-clip.In))}
+				e.playhead,e.zoom=timelineEditView(e.playhead,end,e.zoom,d.scale)
+				if err:=e.commit(q);err!=nil {e.tell(err.Error())} else {e.tell("Timeline edit applied.")}
+			}
 		} else {e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")}
 	} else if d!=nil {
-		e.seekTimeline(e.playhead,d.wasPlaying)
+		e.seekTimeline(d.clickTime,d.wasPlaying)
 	}
 	e.invalidateTimeline()
 }
@@ -331,4 +336,9 @@ func (e *editor) timelineCursor(x,y,w int32) uintptr {
 func (e *editor) setTimelineCursor(x,y,w int32) {
 	cursor,_,_:=user.NewProc("LoadCursorW").Call(0,e.timelineCursor(x,y,w))
 	if cursor!=0 {user.NewProc("SetCursor").Call(cursor)}
+}
+
+func timelineEditView(marker,end int64,zoom,dragScale float64) (int64,float64) {
+	if zoom==0 && dragScale>=.05 && dragScale<=1000 {zoom=dragScale}
+	return min(marker,end),zoom
 }

@@ -15,6 +15,7 @@ import (
 
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
+	"github.com/markrai/pixelcut/internal/session"
 )
 
 var (
@@ -167,6 +168,12 @@ type editor struct {
 	thumbnailRevision uint64
 	waveforms *waveformCache
 	waveformRevision uint64
+	recovery *session.Store
+	recoveryLock syscall.Handle
+	recoveryError string
+	lastCheckpoint time.Time
+	savedView recoveryView
+	projectPath string
 }
 
 func u(s string) *uint16 {
@@ -276,6 +283,7 @@ func (e *editor) refresh() {
 	send.Call(c, lbSet, uintptr(e.clip), 0)
 	e.fields()
 	e.invalidateTimeline()
+	e.checkpoint()
 }
 
 func (e *editor) fields() {
@@ -417,11 +425,13 @@ func (e *editor) command(id, notification int) error {
 	case idNew,idOpen:
 		if !e.confirmDiscard() { return nil }
 		q := project.New()
+		projectPath := ""
 		if id == idOpen {
 			path, err := pick(false,"PixelCut project (*.pixelcut.json)\x00*.pixelcut.json\x00","json","Open project")
 			if err != nil || path == "" { return err }
 			q, err = project.Load(path)
 			if err != nil { return err }
+			projectPath=path
 			if len(q.Tracks)!=2 || q.Tracks[0].ID!="V1" || q.Tracks[0].Kind!="video" || q.Tracks[1].ID!="A1" || q.Tracks[1].Kind!="audio" || len(q.Tracks[1].Clips)!=0 {
 				return fmt.Errorf("this prototype only opens V1 projects with an empty A1 track")
 			}
@@ -429,6 +439,7 @@ func (e *editor) command(id, notification int) error {
 		e.stopPreview()
 		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,false
 		e.origin,e.playhead,e.zoom=0,0,0
+		e.projectPath=projectPath
 		e.refresh()
 		e.tell("Project ready.")
 	case idSave:
@@ -439,6 +450,8 @@ func (e *editor) command(id, notification int) error {
 		}
 		if err = e.p.SaveAs(path); err != nil { return err }
 		e.dirty = false
+		e.projectPath=path
+		e.checkpoint()
 		e.tell("Project saved: "+path)
 	case idImport:
 		path, err := pick(false,"Video files (*.mp4;*.mov)\x00*.mp4;*.mov\x00All files\x00*.*\x00","mp4","Import video")
@@ -592,7 +605,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		}
 		return 0
 	case 0x0113:
-		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();return 0}
+		if wp==playbackTimer && ui!=nil {ui.updatePlaybackClock();ui.updateVisualCrop();ui.updateTransformDraft();ui.updateThumbnails();ui.updateWaveforms();ui.checkpointView();return 0}
 	case wmDone:
 		ui.finished()
 		return 0
@@ -610,7 +623,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		if ui.cropSession!=nil {ui.cancelVisualCrop()}
 		if ui.transformSession!=nil {ui.cancelTransform()}
 		if ui.busy { ui.tell("Wait for the current media operation to finish."); return 0 }
-		if ui.confirmDiscard() { destroy.Call(hwnd) }
+		if ui.checkpoint() || ui.warnRecoveryClose() { destroy.Call(hwnd) }
 		return 0
 	case 0x0002:
 		user.NewProc("KillTimer").Call(hwnd,playbackTimer)
@@ -641,6 +654,13 @@ func main() {
 		os.Exit(1)
 	}
 	ui=&editor{p:project.New(),controls:map[int]uintptr{},asset:-1,clip:-1,results:make(chan result,1),previewResults:make(chan previewResult,16),engine:media.Default()}
+	if err:=ui.openRecovery();err!=nil {
+		fmt.Fprintln(os.Stderr,err)
+		user.NewProc("MessageBoxW").Call(0,uintptr(unsafe.Pointer(u(err.Error()))),uintptr(unsafe.Pointer(u("PixelCut recovery"))),0x10)
+		freeTheme()
+		return
+	}
+	defer ui.closeRecovery()
 	registerTimeline()
 	mainWindow,_,_=createWindow.Call(0,uintptr(unsafe.Pointer(className)),uintptr(unsafe.Pointer(u("PixelCut - Editor preview"))),0x00cf0000,100,70,1200,790,0,0,instance,0)
 	if mainWindow==0 { fmt.Fprintln(os.Stderr,"unable to create PixelCut window");os.Exit(1) }
@@ -693,6 +713,7 @@ func main() {
 	if timer,_,_:=user.NewProc("SetTimer").Call(mainWindow,playbackTimer,33,0);timer==0 {fmt.Fprintln(os.Stderr,"unable to start playback UI timer")}
 	user.NewProc("ShowWindow").Call(mainWindow,5)
 	user.NewProc("UpdateWindow").Call(mainWindow)
+	ui.finishRecovery()
 	var m message
 	for {
 		r,_,_:=user.NewProc("GetMessageW").Call(uintptr(unsafe.Pointer(&m)),0,0,0)
