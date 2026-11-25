@@ -68,6 +68,9 @@ const (
 	idOut
 	idCrop
 	idAt
+	idZoomOut
+	idZoomIn
+	idFit
 )
 
 type windowClass struct {
@@ -133,6 +136,11 @@ type editor struct {
 	generation uint64
 	dirty bool
 	engine media.Engine
+	timeline uintptr
+	layout []placedControl
+	zoom float64
+	origin, playhead int64
+	drag *timelineDrag
 }
 
 func u(s string) *uint16 {
@@ -149,6 +157,7 @@ func control(class, text string, style uintptr, x, y, w, h, id int) uintptr {
 	if id != 0 {
 		ui.controls[id] = hwnd
 	}
+	ui.layout = append(ui.layout, placedControl{hwnd,x,y,w,h,id})
 	return hwnd
 }
 
@@ -157,7 +166,7 @@ func label(text string, x, y, w int) uintptr {
 }
 
 func button(text string, x, y, w, id int) {
-	control("BUTTON", text, wsTab, x, y, w, 28, id)
+	control("BUTTON", text, wsTab|0x0000000b, x, y, w, 28, id)
 }
 
 func edit(text string, x, y, w, id int) {
@@ -233,13 +242,14 @@ func (e *editor) refresh() {
 	}
 	for _, item := range e.track().Clips {
 		asset, _ := e.p.Asset(item.AssetID)
-		listAdd(c, fmt.Sprintf("%s  |  %ss - %ss", filepath.Base(asset.Path), fmtTime(item.Start), fmtTime(item.Start+item.Out-item.In)))
+		listAdd(c, fmt.Sprintf("%s  |  %ss - %ss", filepath.Base(asset.Path), fmtTime(item.Start), fmtTime(item.Start+(item.Out-item.In))))
 	}
 	if e.asset >= len(e.p.Assets) { e.asset = -1 }
 	if e.clip >= len(e.track().Clips) { e.clip = -1 }
 	send.Call(a, lbSet, uintptr(e.asset), 0)
 	send.Call(c, lbSet, uintptr(e.clip), 0)
 	e.fields()
+	e.invalidateTimeline()
 }
 
 func (e *editor) fields() {
@@ -251,6 +261,7 @@ func (e *editor) fields() {
 	change(e.controls[idStart], fmtTime(c.Start))
 	change(e.controls[idIn], fmtTime(c.In))
 	change(e.controls[idOut], fmtTime(c.Out))
+	change(e.controls[idAt], fmtTime(e.playhead))
 	if c.Crop != nil {
 		change(e.controls[idCrop], fmt.Sprintf("%d,%d,%d,%d", c.Crop.X,c.Crop.Y,c.Crop.Width,c.Crop.Height))
 	}
@@ -314,6 +325,11 @@ func (e *editor) play() error {
 	if err != nil { return err }
 	e.stopPreview()
 	ctx, cancel := context.WithCancel(context.Background())
+	if e.playhead >= c.Start && e.playhead < c.Start+(c.Out-c.In) {
+		delta := project.Seconds(e.playhead-c.Start)
+		ed.Start += delta
+		ed.Duration -= delta
+	}
 	cmd, err := e.engine.EmbeddedPreview(ctx,a.Path,e.host,ed.Start,ed.Duration,false)
 	if err != nil { cancel(); return err }
 	if err = cmd.Start(); err != nil { cancel(); return err }
@@ -332,7 +348,7 @@ func (e *editor) play() error {
 			}
 		}
 	}()
-	e.tell("Playing source interval (crop is applied at export only). Space pauses in the preview.")
+	e.tell("Playing from the timeline marker (crop applied at export). Space pauses in preview.")
 	return nil
 }
 
@@ -353,6 +369,7 @@ func (e *editor) command(id, notification int) error {
 		}
 		e.stopPreview()
 		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,false
+		e.origin,e.playhead,e.zoom=0,0,0
 		e.refresh()
 		e.tell("Project ready.")
 	case idSave:
@@ -386,6 +403,7 @@ func (e *editor) command(id, notification int) error {
 			e.clip = int(n)
 			e.stopPreview()
 			e.fields()
+			e.invalidateTimeline()
 		}
 	case idAdd:
 		if e.asset < 0 || e.asset >= len(e.p.Assets) { return fmt.Errorf("select a media asset") }
@@ -393,7 +411,7 @@ func (e *editor) command(id, notification int) error {
 		q := e.p.Clone()
 		var end int64
 		for _, c := range q.Tracks[0].Clips {
-			if n := c.Start+c.Out-c.In; n>end { end=n }
+			if n := c.Start+(c.Out-c.In); n>end { end=n }
 		}
 		q.Tracks[0].Clips = append(q.Tracks[0].Clips,project.Clip{ID:nextID("clip"),AssetID:a.ID,Start:end,Out:a.Duration})
 		e.clip = len(q.Tracks[0].Clips)-1
@@ -448,6 +466,8 @@ func (e *editor) command(id, notification int) error {
 		e.dirty=true
 		e.refresh()
 		e.tell("History restored.")
+	case idZoomOut,idZoomIn,idFit:
+		e.zoomTimeline(id)
 	case idPlay:
 		return e.play()
 	case idStop:
@@ -473,9 +493,24 @@ func (e *editor) command(id, notification int) error {
 
 func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	switch msg {
+	case 0x0005:
+		if ui != nil && ui.timeline != 0 { ui.resize() }
+		return 0
+	case 0x0024:
+		if lp==0 { break }
+		var m minMaxInfo
+		nativeCopy(uintptr(unsafe.Pointer(&m)),lp,unsafe.Sizeof(m))
+		m.MinTrack.X,m.MinTrack.Y=1080,710
+		nativeCopy(lp,uintptr(unsafe.Pointer(&m)),unsafe.Sizeof(m))
+		runtime.KeepAlive(&m)
+		return 0
+	case 0x002b:
+		if drawButton(lp) { return 1 }
+	case 0x0133,0x0134,0x0138:
+		return colorControl(msg,wp,lp)
 	case wmCommand:
 		id,notification:=int(wp&0xffff),int((wp>>16)&0xffff)
-		if id>=idNew && id<=idAt && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
+		if id>=idNew && id<=idFit && id!=idStart && id!=idIn && id!=idOut && id!=idCrop && id!=idAt {
 			if err:=ui.command(id,notification);err!=nil { ui.tell(err.Error()) }
 		}
 		return 0
@@ -506,16 +541,18 @@ func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	instance,_,_=kernel.NewProc("GetModuleHandleW").Call(0)
-	font,_,_=gdi.NewProc("GetStockObject").Call(17)
+	initTheme()
+	font = modernFont()
 	cursor,_,_:=user.NewProc("LoadCursorW").Call(0,32512)
 	className:=u("PixelCutEditor")
-	wc:=windowClass{Size:uint32(unsafe.Sizeof(windowClass{})),Proc:syscall.NewCallback(wndProc),Instance:instance,Cursor:cursor,Background:6,Name:className}
+	wc:=windowClass{Size:uint32(unsafe.Sizeof(windowClass{})),Proc:syscall.NewCallback(wndProc),Instance:instance,Cursor:cursor,Background:theme.background,Name:className}
 	if r,_,err:=user.NewProc("RegisterClassExW").Call(uintptr(unsafe.Pointer(&wc)));r==0 {
 		fmt.Fprintln(os.Stderr,err)
 		os.Exit(1)
 	}
 	ui=&editor{p:project.New(),controls:map[int]uintptr{},asset:-1,clip:-1,results:make(chan result,1),previewResults:make(chan previewResult,16),engine:media.Default()}
-	mainWindow,_,_=createWindow.Call(0,uintptr(unsafe.Pointer(className)),uintptr(unsafe.Pointer(u("PixelCut - Editor preview"))),0x00ca0000,100,70,1120,730,0,0,instance,0)
+	registerTimeline()
+	mainWindow,_,_=createWindow.Call(0,uintptr(unsafe.Pointer(className)),uintptr(unsafe.Pointer(u("PixelCut - Editor preview"))),0x00cf0000,100,70,1200,790,0,0,instance,0)
 	if mainWindow==0 { fmt.Fprintln(os.Stderr,"unable to create PixelCut window");os.Exit(1) }
 	button("New",12,10,70,idNew)
 	button("Open",88,10,70,idOpen)
@@ -523,6 +560,7 @@ func main() {
 	button("Undo",250,10,65,idUndo)
 	button("Redo",321,10,65,idRedo)
 	button("Export clip",970,10,126,idExport)
+	applyDarkTitle(mainWindow)
 	label("Media bin",12,50,230)
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,75,245,270,idAssets)
 	button("Import video",12,350,118,idImport)
@@ -545,10 +583,16 @@ func main() {
 	edit("",825,297,155,idAt)
 	button("Split",986,296,110,idSplit)
 	button("Remove clip",825,332,130,idDelete)
-	label("Timeline V1 (clip list; audio follows source)",12,423,700)
+	label("TIMELINE  /  V1 + linked audio",12,423,420)
+	button("-",832,419,48,idZoomOut)
+	button("+",886,419,48,idZoomIn)
+	button("Fit",940,419,70,idFit)
 	control("LISTBOX","",wsBorder|wsTab|0x00200000|1|0x100,12,448,1084,180,idClips)
+	user.NewProc("ShowWindow").Call(ui.controls[idClips],0)
+	ui.timeline=control("PixelCutTimeline","",wsTab|0x04000000,12,452,1084,176,0)
 	ui.status=label("Import a supported HLG video to get started.",12,640,1084)
 	ui.refresh()
+	ui.resize()
 	user.NewProc("ShowWindow").Call(mainWindow,5)
 	user.NewProc("UpdateWindow").Call(mainWindow)
 	var m message
@@ -558,4 +602,5 @@ func main() {
 		user.NewProc("TranslateMessage").Call(uintptr(unsafe.Pointer(&m)))
 		user.NewProc("DispatchMessageW").Call(uintptr(unsafe.Pointer(&m)))
 	}
+	freeTheme()
 }

@@ -25,7 +25,13 @@ The project model can be tested automatically; cross-compilation and a Windows b
 
 ## Next slices
 
-- Graphical time ruler, zoom, selection, drag and trim handles, and a continuous playhead.
+- Continuous playback-synchronized playhead and timeline scrubbing.
 - IPC-controlled source seeking and pause state; crop-aware preview and preview/export equivalence.
 - Project-wide render plan, track compositing, independent audio and mixing.
 - Controlled SDR export and further HDR qualification.
+
+## Graphical timeline and desktop styling
+
+The Windows shell uses a dark native GDI palette, owner-drawn buttons, Segoe UI, a resizable window and a double-buffered timeline. The video lane is editable; the audio lane is a representation of linked source audio, not an independent track. Clip body drag changes placement, edge drag changes source in/out and left edge placement. Changes are committed only on mouse release after project validation, with invalid overlap rejected. The model tests cover clamping, movement and overlap rejection. Undo restores committed edits. A ruler click sets a static playhead and split time; Play clip starts at that point when inside the selected clip. No live playback synchronization or continuous scrubbing yet. Zoom and horizontal scroll affect view state only.
+
+Acceptance: resize the window, import a clip, drag it, trim both edges, split at a clicked ruler position, undo, zoom and scroll, and confirm source preview and export remain consistent. Verify at the display's actual DPI. The media encoding path is unchanged.

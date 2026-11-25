@@ -75,7 +75,7 @@ Import a supported HLG video, select it in the media bin and click **Add to V1**
 
 **Save As** creates a new versioned `.pixelcut.json` file without overwriting an existing project. **Open** restores edits and absolute source paths. Keep source files in place. Undo and redo cover committed project edits. Import, export, and preview use the existing FFmpeg and mpv installations.
 
-This is a feasibility prototype, not a finished timeline editor: no drag-and-drop, graphical tracks, audio mixing, composite playback, project-wide export or crop overlay yet. The embedded rendering path needs physical Windows acceptance testing. See [desktop prototype qualification](docs/desktop.md).
+The desktop shell includes a dark theme, resizable layout, a graphical V1 lane and linked A1 audio representation. Click the ruler or clip to position the timeline marker; Play clip starts from that position when it falls inside the selected clip. Drag the body of a clip to move it, or drag its left/right edge to trim. Invalid overlapping edits are rejected. Use +/- or Ctrl+mouse wheel to zoom, mouse wheel to scroll, and Fit to show the project. The marker is not yet a live playback clock. No independent audio editing, composite playback, project-wide export or crop overlay yet. The embedded rendering path needs physical Windows acceptance testing. See [desktop prototype qualification](docs/desktop.md).
 
 ## Tests
 
