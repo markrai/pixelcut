@@ -15,10 +15,11 @@ type recoveryView struct {
 	asset,clip int
 	playhead,origin int64
 	zoom float64
+	selection string
 }
 
 func (e *editor) view() recoveryView {
-	return recoveryView{e.asset,e.clip,e.playhead,e.origin,e.zoom}
+	return recoveryView{e.asset,e.clip,e.playhead,e.origin,e.zoom,e.selectionKey()}
 }
 
 func (e *editor) openRecovery() error {
@@ -43,6 +44,10 @@ func (e *editor) openRecovery() error {
 		e.asset,e.clip=state.Asset,state.Clip
 		e.playhead,e.origin,e.zoom=state.Playhead,state.Origin,state.Zoom
 		e.dirty,e.projectPath=state.Dirty,state.ProjectPath
+		if len(state.SelectedClips)>1 {
+			e.group=map[string]bool{}
+			for _,id:=range state.SelectedClips {e.group[id]=true}
+		}
 		q,merged,err:=e.p.MergeDuplicateAssets()
 		if err==nil && len(merged)>0 {
 			selectedID:=""
@@ -66,6 +71,7 @@ func (e *editor) checkpoint() bool {
 	if e.recovery==nil {return false}
 	e.lastCheckpoint=time.Now()
 	s:=session.State{Project:e.p,Asset:e.asset,Clip:e.clip,Playhead:e.playhead,Origin:e.origin,Zoom:e.zoom,Dirty:e.dirty,ProjectPath:e.projectPath}
+	if len(e.group)>1 {s.SelectedClips=e.selectionIDs()}
 	if err:=e.recovery.Save(s);err!=nil {
 		if e.recoveryError!=err.Error() {
 			e.recoveryError=err.Error()
@@ -80,7 +86,7 @@ func (e *editor) checkpoint() bool {
 }
 
 func (e *editor) checkpointView() {
-	if e.recovery==nil || e.assetDrag!=nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Second {return}
+	if e.recovery==nil || e.assetDrag!=nil || e.marquee!=nil || e.drag!=nil || e.scrubbing || time.Since(e.lastCheckpoint)<time.Second {return}
 	if e.savedView!=e.view() || e.recoveryError!="" {e.checkpoint()}
 }
 

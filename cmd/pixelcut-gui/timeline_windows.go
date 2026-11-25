@@ -33,6 +33,8 @@ type timelineDrag struct {
 	clickTime int64
 	snapped bool
 	snapTarget int64
+	groupIDs []string
+	groupProject project.Project
 }
 
 func registerTimeline() {
@@ -114,18 +116,20 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 	var audioDemand []waveformKey
 	for i,c:=range e.track().Clips {
 		valid:=true
-		if e.drag!=nil && e.drag.index==i && e.drag.moved {c=e.drag.candidate;valid=e.drag.valid}
+		if d:=e.drag;d!=nil && d.moved {
+			if len(d.groupIDs)>1 && e.group[c.ID] {c=d.groupProject.Tracks[0].Clips[i];valid=d.valid} else if len(d.groupIDs)<=1 && d.index==i {c=d.candidate;valid=d.valid}
+		}
 		left,right:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if right<=trackHeader || left>=w {continue}
 		if left<trackHeader {left=trackHeader};if right>w {right=w}
 		if right<=left {right=left+1}
 		col:=palette.clip
-		if i==e.clip {col=palette.selected}
+		if e.clipSelected(i,c) {col=palette.selected}
 		if !valid {col=rgb(136,55,61)}
 		fill(dc,rect{left,laneTop,right,laneBottom},col)
 		a,_:=e.p.Asset(c.AssetID)
 		if valid {e.paintThumbnails(dc,left,right,w,c,a,&demand)}
-		if i==e.clip && right-left>12 {
+		if e.clipSelected(i,c) && right-left>12 {
 			fill(dc,rect{left,laneTop,left+3,laneBottom},palette.accent)
 			fill(dc,rect{right-3,laneTop,right,laneBottom},palette.accent)
 		}
@@ -135,10 +139,11 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		if a.HasAudio {
 			fill(dc,rect{left,104,right,140},palette.audio)
 			if valid {e.paintWaveform(dc,left,right,w,c,a,&audioDemand)}
+			if e.clipSelected(i,c) && len(e.group)>1 {fill(dc,rect{left,104,right,106},palette.accent)}
 		}
 	}
 	if e.thumbnails!=nil {
-		if e.drag!=nil || e.assetDrag!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
+		if e.drag!=nil || e.assetDrag!=nil || e.marquee!=nil {e.thumbnails.request(nil)} else {e.thumbnails.request(demand)}
 	}
 	if e.waveforms!=nil {e.waveforms.request(audioDemand)}
 	if d:=e.drag;d!=nil && d.snapped && d.valid {
@@ -149,6 +154,7 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 		}
 	}
 	e.paintAssetGhost(dc,w)
+	e.paintMarquee(dc,w,h)
 	x:=e.xAt(e.playhead,w)
 	if x>=trackHeader && x<w {
 		fill(dc,rect{x,19,x+2,h},palette.accent)
@@ -162,14 +168,14 @@ func (e *editor) paintTimeline(dc uintptr,r rect) {
 }
 
 func (e *editor) selectClip(i int) {
+	e.group=nil;e.anchor=""
 	e.clip=i
-	send.Call(e.controls[idClips],lbSet,uintptr(i),0)
-	e.fields()
-	e.invalidateTimeline()
+	if c,ok:=e.selected();ok {e.anchor=c.ID}
+	e.syncSelectionUI()
 }
 
 func (e *editor) beginTimeline(x,y,w int32) {
-	if e.busy || e.cropSession!=nil || e.transformSession!=nil || x<trackHeader {return}
+	if e.busy || e.marquee!=nil || e.assetDrag!=nil || e.cropSession!=nil || e.transformSession!=nil || x<trackHeader {return}
 	t:=e.timeAt(x,w)
 	if t>e.endTime() {t=e.endTime()}
 	playing:=e.playing()
@@ -183,17 +189,21 @@ func (e *editor) beginTimeline(x,y,w int32) {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
 		if mode:=videoHitMode(x,y,l,r);mode!="" {
 			e.updatePlaybackClock()
-			e.selectClip(i)
-			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t}
+			if keyPressed(0x11) || keyPressed(0x10) {e.modifySelection(i,keyPressed(0x11),keyPressed(0x10));return}
+			if !e.clipSelected(i,c) || len(e.group)<=1 {e.selectClip(i)} else {e.clip=i;e.syncSelectionUI();mode="move"}
+			ids:=e.selectionIDs()
+			e.drag=&timelineDrag{index:i,mode:mode,x:x,scale:e.scale(w),original:c,candidate:c,valid:true,wasPlaying:playing,clickTime:t,groupIDs:ids,groupProject:e.p}
 			user.NewProc("SetCapture").Call(e.timeline)
 			e.setTimelineCursor(x,y,w)
 			return
 		}
 		if x>=l && x<r && y>=104 && y<140 {
+			if a,ok:=e.p.Asset(c.AssetID);ok && a.HasAudio && (keyPressed(0x11) || keyPressed(0x10)) {e.modifySelection(i,keyPressed(0x11),keyPressed(0x10));return}
 			e.seekTimeline(t,playing)
 			return
 		}
 	}
+	if y>=33 && y<145 {e.beginMarquee(x,y,t,playing);return}
 	e.seekTimeline(t,playing)
 }
 
@@ -208,9 +218,13 @@ func (e *editor) moveTimeline(x int32) {
 	delta:=int64(math.Round(raw/10000))*10000
 	tolerance:=int64(0)
 	if !e.snapDisabled && !keyPressed(0x10) {tolerance=int64(math.Min(2000000,math.Round(8/d.scale*float64(project.TicksPerSecond))))}
-	r,err:=e.p.SnapDrag("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
-	d.candidate=r.Clip;d.valid=err==nil
-	d.snapped=r.Snapped;d.snapTarget=r.Target
+	if len(d.groupIDs)>1 {
+		r,err:=e.p.MoveClips("V1",d.groupIDs,delta,e.playhead,tolerance)
+		d.groupProject=r.Project;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
+	} else {
+		r,err:=e.p.SnapDrag("V1",d.original.ID,d.mode,delta,e.playhead,tolerance)
+		d.candidate=r.Clip;d.valid=err==nil;d.snapped=r.Snapped;d.snapTarget=r.Target
+	}
 	e.invalidateTimeline()
 }
 
@@ -219,7 +233,8 @@ func (e *editor) finishTimeline() {
 	user.NewProc("ReleaseCapture").Call()
 	if d!=nil && d.moved {
 		if d.valid {
-			q:=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate
+			q:=d.groupProject
+			if len(d.groupIDs)<=1 {q=e.p.Clone();q.Tracks[0].Clips[d.index]=d.candidate}
 			if err:=q.Validate();err!=nil {e.tell(err.Error())} else {
 				var end int64
 				for _,clip:=range q.Tracks[0].Clips {end=max(end,clip.Start+(clip.Out-clip.In))}
@@ -228,6 +243,7 @@ func (e *editor) finishTimeline() {
 			}
 		} else {e.tell("Edit rejected: clips cannot overlap or exceed source bounds.")}
 	} else if d!=nil {
+		e.selectClip(d.index)
 		e.seekTimeline(d.clickTime,d.wasPlaying)
 	}
 	e.invalidateTimeline()
@@ -272,11 +288,13 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		user.NewProc("SetFocus").Call(hwnd)
 		ui.beginTimeline(x,y,clientRect(hwnd).Right);return 0
 	case 0x0200:
-		if ui.scrubbing {ui.seekTimeline(ui.timeAt(x,clientRect(hwnd).Right),false)} else {ui.moveTimeline(x)}
+		if ui.marquee!=nil {ui.moveMarquee(x,y,clientRect(hwnd).Right)} else if ui.scrubbing {ui.seekTimeline(ui.timeAt(x,clientRect(hwnd).Right),false)} else {ui.moveTimeline(x)}
 		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
 		return 0
 	case 0x0202:
-		if ui.scrubbing {
+		if ui.marquee!=nil {
+			ui.moveMarquee(x,y,clientRect(hwnd).Right);ui.endMarquee(false)
+		} else if ui.scrubbing {
 			t:=ui.timeAt(x,clientRect(hwnd).Right)
 			playing:=ui.scrubPlaying
 			ui.scrubbing=false
@@ -288,9 +306,16 @@ func timelineProc(hwnd uintptr,msg uint32,wp,lp uintptr) uintptr {
 		ui.setTimelineCursor(x,y,clientRect(hwnd).Right)
 		return 0
 	case 0x0215:
-		ui.drag=nil;ui.scrubbing=false;ui.invalidateTimeline();return 0
+		ui.drag=nil;ui.scrubbing=false
+		if ui.marquee!=nil {
+			d:=ui.marquee;ui.marquee=nil
+			primary:=""
+			if d.primary>=0 && d.primary<len(ui.track().Clips) {primary=ui.track().Clips[d.primary].ID}
+			ui.setSelection(d.before,primary)
+		}
+		ui.invalidateTimeline();return 0
 	case 0x020a:
-		if ui.busy || ui.drag!=nil || ui.assetDrag!=nil {return 0}
+		if ui.busy || ui.drag!=nil || ui.assetDrag!=nil || ui.marquee!=nil {return 0}
 		d:=int16(wp>>16)
 		if wp&8!=0 {
 			if d>0 {ui.zoomTimeline(idZoomIn)} else {ui.zoomTimeline(idZoomOut)}
@@ -334,12 +359,15 @@ func cursorForMode(mode string,invalid bool) uintptr {
 
 func (e *editor) timelineCursor(x,y,w int32) uintptr {
 	if e.busy {return cursorArrow}
-	if e.scrubbing {return cursorCross}
+	if e.scrubbing || e.marquee!=nil {return cursorCross}
 	if e.drag!=nil {return cursorForMode(e.drag.mode,e.drag.moved && !e.drag.valid)}
 	if x<trackHeader || x>=w {return cursorArrow}
 	for _,c:=range e.track().Clips {
 		l,r:=e.xAt(c.Start,w),e.xAt(c.Start+(c.Out-c.In),w)
-		if mode:=videoHitMode(x,y,l,r);mode!="" {return cursorForMode(mode,false)}
+		if mode:=videoHitMode(x,y,l,r);mode!="" {
+			if len(e.group)>1 && e.group[c.ID] {mode="move"}
+			return cursorForMode(mode,false)
+		}
 		if x>=l && x<r && y>=104 && y<140 {
 			if a,ok:=e.p.Asset(c.AssetID);ok && a.HasAudio {return cursorHand}
 		}

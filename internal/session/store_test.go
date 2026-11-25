@@ -74,3 +74,16 @@ func TestRecoveryBothCorrupt(t *testing.T) {
 	for i:=0;i<2;i++ {if err:=os.WriteFile(slot(dir,i),[]byte("invalid"),0600);err!=nil {t.Fatal(err)}}
 	if s,state,err:=Open(dir);err==nil || s!=nil || state!=nil {t.Fatal("corrupt state silently accepted")}
 }
+
+func TestGroupSelectionRecovery(t *testing.T) {
+	s,_,err:=Open(t.TempDir())
+	if err!=nil {t.Fatal(err)}
+	state:=fixture(t)
+	state.Project.Tracks[0].Clips=append(state.Project.Tracks[0].Clips,project.Clip{ID:"second",AssetID:"a",Start:9000000,Out:1000000})
+	state.SelectedClips=[]string{"c","second"}
+	if err=s.Save(state);err!=nil {t.Fatal(err)}
+	_,got,err:=Open(s.dir)
+	if err!=nil || got==nil || !reflect.DeepEqual(*got,state) {t.Fatalf("group recovery: %+v %v",got,err)}
+	state.SelectedClips=[]string{"c","missing"}
+	if err=s.Save(state);err==nil {t.Fatal("invalid group saved")}
+}

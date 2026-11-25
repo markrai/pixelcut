@@ -32,7 +32,7 @@ func (e *editor) placementAt(x,y int32) (*placementRequest,bool) {
 }
 
 func (e *editor) beginAssetDrag(hwnd uintptr,lp uintptr) bool {
-	if e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return false}
+	if e.busy || e.marquee!=nil || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return false}
 	r,_,_:=send.Call(hwnd,0x01a9,0,lp)
 	index:=int(r&0xffff)
 	if (r>>16)&0xffff!=0 || index>=len(e.p.Assets) {return false}
@@ -96,6 +96,7 @@ func (e *editor) finishAssetDrag() {
 
 func (e *editor) commitPlacement(p project.AssetPlacement) error {
 	if err:=p.Project.Validate();err!=nil {return err}
+	e.group=nil;e.anchor=""
 	e.clip=p.FirstClip
 	return e.commit(p.Project)
 }

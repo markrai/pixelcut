@@ -21,6 +21,7 @@ type State struct {
 	Project project.Project `json:"project"`
 	Asset int `json:"selected_asset"`
 	Clip int `json:"selected_clip"`
+	SelectedClips []string `json:"selected_clips,omitempty"`
 	Playhead int64 `json:"playhead_us"`
 	Origin int64 `json:"origin_us"`
 	Zoom float64 `json:"zoom"`
@@ -33,6 +34,18 @@ func (s State) Validate() error {
 	t:=s.Project.Tracks
 	if len(t)!=2 || t[0].ID!="V1" || t[0].Kind!="video" || t[1].ID!="A1" || t[1].Kind!="audio" || len(t[1].Clips)!=0 {return errors.New("unsupported session tracks")}
 	if s.Asset< -1 || s.Asset>=len(s.Project.Assets) || s.Clip< -1 || s.Clip>=len(t[0].Clips) {return errors.New("invalid session selection")}
+	if len(s.SelectedClips)>0 {
+		if len(s.SelectedClips)<2 || s.Clip<0 {return errors.New("invalid group selection")}
+		ids:=map[string]bool{}
+		for _,id:=range s.SelectedClips {
+			if id=="" || ids[id] {return errors.New("invalid group selection IDs")}
+			ids[id]=true
+		}
+		if !ids[t[0].Clips[s.Clip].ID] {return errors.New("primary clip outside selection")}
+		count:=0
+		for _,c:=range t[0].Clips {if ids[c.ID] {count++}}
+		if count!=len(ids) {return errors.New("unknown group selection clip")}
+	}
 	if s.Playhead<0 || s.Origin<0 || math.IsNaN(s.Zoom) || math.IsInf(s.Zoom,0) || (s.Zoom!=0 && (s.Zoom<.05 || s.Zoom>1000)) {return errors.New("invalid session timeline view")}
 	if s.ProjectPath!="" && !filepath.IsAbs(s.ProjectPath) {return errors.New("invalid saved project path")}
 	return nil

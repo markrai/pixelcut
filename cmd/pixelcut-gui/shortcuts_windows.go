@@ -19,7 +19,7 @@ const (
 	keyFocusTimeline
 )
 
-const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save As (new file)\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nDelete           Remove selected clip / media asset\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
+const shortcutsText = "Space          Play / pause\nEsc              Cancel drag / pause\nCtrl+N           New project\nCtrl+O           Open project\nCtrl+S           Save As (new file)\nCtrl+I           Import video\nCtrl+E           Export selected clip\nCtrl+Z           Undo\nCtrl+Y / Ctrl+Shift+Z   Redo\nCtrl+K / S       Split at marker\nCtrl+A           Select all timeline clips\nCtrl+click       Toggle clip selection\nShift+click      Select clip range\nDrag empty lane  Marquee selection\nDelete           Remove selected clips / media asset\nN                Toggle snapping\nShift+drag       Temporarily bypass snapping\nLeft / Right     Seek by 0.1s\nHome / End       Project start / end\n+ / -            Zoom timeline\nF                Fit timeline\nTab / Shift+Tab  Focus navigation\nEnter            Apply clip properties\nF1               Show shortcuts\n\nText fields retain their normal text-editing shortcuts. Click the timeline for editing shortcuts when the embedded player has focus."
 
 func (e *editor) showShortcuts() {
 	user.NewProc("MessageBoxW").Call(mainWindow,uintptr(unsafe.Pointer(u(shortcutsText))),uintptr(unsafe.Pointer(u("PixelCut keyboard shortcuts"))),0x40)
@@ -46,6 +46,7 @@ func shortcutFor(key uintptr,ctrl,shift,alt,editing,assetFocus bool) int {
 		}
 		if shift {return keyNone}
 		switch key {
+		case 'A':if !assetFocus {return idSelectAll}
 		case 'N':return idNew
 		case 'O':return idOpen
 		case 'I':return idImport
@@ -153,7 +154,7 @@ func (e *editor) handleShortcut(m message) bool {
 		return true
 	}
 	if m.LParam&(1<<30)!=0 && action!=keyMarkerBack && action!=keyMarkerForward {return true}
-	if (e.drag!=nil || e.scrubbing) && action!=keyEscape {return true}
+	if (e.drag!=nil || e.scrubbing || e.marquee!=nil) && action!=keyEscape {return true}
 	switch action {
 	case keyNextFocus,keyPrevFocus:
 		prev:=uintptr(0)
@@ -165,7 +166,7 @@ func (e *editor) handleShortcut(m message) bool {
 	case keyFocusTimeline:
 		user.NewProc("SetFocus").Call(e.timeline)
 	case keyEscape:
-		if e.scrubbing {e.scrubbing=false;user.NewProc("ReleaseCapture").Call();e.pausePreview()} else if e.drag!=nil {e.cancelTimelineDrag();e.tell("Timeline edit canceled.")} else if e.previewActive() {e.pausePreview()}
+		if e.marquee!=nil {e.endMarquee(true)} else if e.scrubbing {e.scrubbing=false;user.NewProc("ReleaseCapture").Call();e.pausePreview()} else if e.drag!=nil {e.cancelTimelineDrag();e.tell("Timeline edit canceled.")} else if e.previewActive() {e.pausePreview()}
 	case keyMarkerBack:
 		e.setMarker(e.playhead-project.TicksPerSecond/10)
 	case keyMarkerForward:

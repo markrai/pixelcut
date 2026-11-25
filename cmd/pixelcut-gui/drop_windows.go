@@ -103,7 +103,7 @@ func (e *editor) enableFileDrops() {
 func (e *editor) importPaths(paths []string) error {return e.importAt(paths,nil)}
 
 func (e *editor) importAt(paths []string,placement *placementRequest) error {
-	if e.assetDrag!=nil || e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
+	if e.assetDrag!=nil || e.marquee!=nil || e.busy || e.drag!=nil || e.scrubbing || e.cropSession!=nil || e.transformSession!=nil {return fmt.Errorf("finish the current operation before importing files")}
 	if len(paths)==0 || len(paths)>project.MaxImportFiles {return fmt.Errorf("select between 1 and %d files",project.MaxImportFiles)}
 	snapshot:=e.p.Clone()
 	engine:=e.engine

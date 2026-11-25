@@ -9,6 +9,9 @@ func TestShortcutMapping(t *testing.T) {
 		want int
 	}{
 		{0x20,false,false,false,false,false,idPlay},
+		{'A',true,false,false,false,false,idSelectAll},
+		{'A',true,false,false,false,true,keyNone},
+		{'A',true,false,false,true,false,keyNone},
 		{0x20,false,false,false,true,false,keyNone},
 		{'Z',true,false,false,false,false,idUndo},
 		{'Z',true,true,false,false,false,idRedo},

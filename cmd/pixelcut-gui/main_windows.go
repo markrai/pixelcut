@@ -90,6 +90,7 @@ const (
 	idFlipV
 	idRemoveAsset
 	idSnap
+	idSelectAll
 )
 
 type windowClass struct {
@@ -179,6 +180,9 @@ type editor struct {
 	projectPath string
 	snapDisabled bool
 	assetDrag *assetDrag
+	group map[string]bool
+	anchor string
+	marquee *marqueeDrag
 }
 
 func u(s string) *uint16 {
@@ -284,6 +288,7 @@ func (e *editor) refresh() {
 	}
 	if e.asset >= len(e.p.Assets) { e.asset = -1 }
 	if e.clip >= len(e.track().Clips) { e.clip = -1 }
+	e.normalizeGroup()
 	send.Call(a, lbSet, uintptr(e.asset), 0)
 	send.Call(c, lbSet, uintptr(e.clip), 0)
 	e.fields()
@@ -296,7 +301,7 @@ func (e *editor) fields() {
 	for _, id := range []int{idStart,idIn,idOut,idCrop,idAt} {
 		change(e.controls[id], "")
 	}
-	if !ok { return }
+	if !ok || len(e.group)>1 { return }
 	change(e.controls[idStart], fmtTime(c.Start))
 	change(e.controls[idIn], fmtTime(c.In))
 	change(e.controls[idOut], fmtTime(c.Out))
@@ -419,7 +424,10 @@ func (e *editor) startPreview(paused bool) error {
 
 func (e *editor) command(id, notification int) error {
 	if e.busy { return fmt.Errorf("media operation in progress") }
-	if e.assetDrag!=nil {return fmt.Errorf("finish the asset drag first")}
+	if e.assetDrag!=nil || e.marquee!=nil {return fmt.Errorf("finish the active drag first")}
+	if len(e.group)>1 {
+		switch id {case idApply,idSplit,idCropVisual,idCropReset,idTransform,idExport:return fmt.Errorf("select a single clip for this operation")}
+	}
 	if e.transformSession!=nil && id!=idTransformApply && id!=idTransformCancel && id!=idTransformReset && id!=idRotateLeft && id!=idRotateRight && id!=idFlipH && id!=idFlipV {return fmt.Errorf("Apply or cancel the active transform first")}
 	if e.cropSession!=nil && id!=idCropVisual && id!=idCropReset && id!=idKeys {return fmt.Errorf("Finish or cancel the active crop first")}
 	switch id {
@@ -440,6 +448,7 @@ func (e *editor) command(id, notification int) error {
 		q,merged,err:=q.MergeDuplicateAssets()
 		if err!=nil {return err}
 		e.stopPreview()
+		e.group=nil;e.anchor=""
 		e.p, e.undo, e.redo, e.asset, e.clip, e.dirty = q,nil,nil,-1,-1,len(merged)>0
 		e.origin,e.playhead,e.zoom=0,0,0
 		e.projectPath=projectPath
@@ -468,6 +477,7 @@ func (e *editor) command(id, notification int) error {
 	case idClips:
 		if notification == 1 {
 			n,_,_ := send.Call(e.controls[idClips],lbGet,0,0)
+			e.group=nil;e.anchor=""
 			e.clip = int(n)
 			e.stopPreview()
 			e.fields()
@@ -482,6 +492,7 @@ func (e *editor) command(id, notification int) error {
 			if n := c.Start+(c.Out-c.In); n>end { end=n }
 		}
 		q.Tracks[0].Clips = append(q.Tracks[0].Clips,project.Clip{ID:nextID("clip"),AssetID:a.ID,Start:end,Out:a.Duration})
+		e.group=nil;e.anchor=""
 		e.clip = len(q.Tracks[0].Clips)-1
 		if err := e.commit(q); err != nil { return err }
 		e.tell("Clip added.")
@@ -522,24 +533,26 @@ func (e *editor) command(id, notification int) error {
 		e.snapDisabled=!e.snapDisabled
 		e.updateSnapButton()
 		e.invalidateTimeline()
+	case idSelectAll:
+		e.selectAllClips()
 	case idDelete:
-		if _,ok:=e.selected(); !ok { return fmt.Errorf("select a clip") }
-		q:=e.p.Clone()
-		q.Tracks[0].Clips=append(q.Tracks[0].Clips[:e.clip],q.Tracks[0].Clips[e.clip+1:]...)
-		e.clip=-1
-		if err:=e.commit(q);err!=nil { return err }
-		e.tell("Clip removed; source unchanged.")
+		return e.deleteSelection()
 	case idUndo,idRedo:
 		from,to:=&e.undo,&e.redo
 		if id==idRedo { from,to=to,from }
 		if len(*from)==0 { return nil }
 		e.stopPreview()
 		*to=append(*to,e.p.Clone())
+		ids:=e.selectionIDs()
+		primary:=""
+		if c,ok:=e.selected();ok {primary=c.ID}
 		e.p=(*from)[len(*from)-1]
+		e.setSelection(ids,primary)
+		e.anchor=primary
 		*from=(*from)[:len(*from)-1]
 		e.dirty=true
 		e.refresh()
-		if _,ok:=e.selected();ok {
+		if _,ok:=e.selected();ok && len(e.group)<=1 {
 			if err:=e.startPreview(true);err!=nil {e.tell("History restored; preview unavailable: "+err.Error());return nil}
 		}
 		e.tell("History restored.")
@@ -626,6 +639,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0010:
 		ui.cancelAssetDrag()
+		ui.endMarquee(true)
 		if ui.cropSession!=nil {ui.cancelVisualCrop()}
 		if ui.transformSession!=nil {ui.cancelTransform()}
 		if ui.busy { ui.tell("Wait for the current media operation to finish."); return 0 }
