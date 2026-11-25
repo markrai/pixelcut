@@ -1,0 +1,9 @@
+/bin/
+/dist/
+/test-media/
+*.exe
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.pixelcut-tmp.mp4

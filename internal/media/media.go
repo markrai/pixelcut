@@ -1,0 +1,306 @@
+package media
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+)
+
+type Stream struct {
+	Index             int               `json:"index"`
+	CodecType         string            `json:"codec_type"`
+	CodecName         string            `json:"codec_name"`
+	PixelFormat       string            `json:"pix_fmt"`
+	Width             int               `json:"width"`
+	Height            int               `json:"height"`
+	Primaries         string            `json:"color_primaries"`
+	Transfer          string            `json:"color_transfer"`
+	Matrix            string            `json:"color_space"`
+	Range             string            `json:"color_range"`
+	ChromaLocation    string            `json:"chroma_location"`
+	SampleAspectRatio string            `json:"sample_aspect_ratio"`
+	AvgFrameRate      string            `json:"avg_frame_rate"`
+	Duration          string            `json:"duration"`
+	Tags              map[string]string `json:"tags,omitempty"`
+	SideData          []map[string]any  `json:"side_data_list,omitempty"`
+	Disposition       map[string]int    `json:"disposition,omitempty"`
+}
+
+type Report struct {
+	Streams []Stream       `json:"streams"`
+	Format  map[string]any `json:"format"`
+}
+
+type Engine struct{ FFmpeg, FFprobe, MPV string }
+
+func Default() Engine { return Engine{"ffmpeg", "ffprobe", "mpv"} }
+
+func (e Engine) Inspect(ctx context.Context, path string) (Report, error) {
+	var r Report
+	p, err := filepath.Abs(path)
+	if err != nil {
+		return r, err
+	}
+	cmd := exec.CommandContext(ctx, e.FFprobe, "-v", "error", "-show_streams", "-show_format", "-of", "json", "-i", p)
+	b, err := cmd.Output()
+	if err != nil {
+		return r, commandError(e.FFprobe, err)
+	}
+	err = json.Unmarshal(b, &r)
+	return r, err
+}
+
+func commandError(name string, err error) error {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		return fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(string(exit.Stderr)))
+	}
+	return fmt.Errorf("%s: %w", name, err)
+}
+
+func (r Report) Video() (Stream, error) {
+	var v Stream
+	count := 0
+	for _, s := range r.Streams {
+		if s.CodecType == "video" {
+			v = s
+			count++
+		}
+	}
+	if count != 1 || v.Disposition["attached_pic"] != 0 {
+		return v, errors.New("exactly one ordinary video stream is required")
+	}
+	return v, nil
+}
+
+func (r Report) audioCount() int {
+	n := 0
+	for _, s := range r.Streams {
+		if s.CodecType == "audio" {
+			n++
+		}
+	}
+	return n
+}
+
+func (v Stream) ValidateHLG() error {
+	if v.PixelFormat != "yuv420p10le" || v.Primaries != "bt2020" || v.Transfer != "arib-std-b67" || v.Matrix != "bt2020nc" || (v.Range != "tv" && v.Range != "pc") {
+		return errors.New("unsupported or incomplete color signaling; expected 10-bit 4:2:0 BT.2020 HLG with explicit range")
+	}
+	if v.ChromaLocation != "left" && v.ChromaLocation != "center" {
+		return errors.New("unsupported or missing chroma location")
+	}
+	if v.SampleAspectRatio != "1:1" {
+		return errors.New("only explicit square-pixel input is supported")
+	}
+	if v.Width <= 0 || v.Height <= 0 || v.Width%2 != 0 || v.Height%2 != 0 {
+		return errors.New("invalid or odd input dimensions")
+	}
+	if len(v.SideData) != 0 || (v.Tags["rotate"] != "" && v.Tags["rotate"] != "0") {
+		return errors.New("video stream contains side data or rotation that this renderer cannot guarantee to preserve")
+	}
+	return nil
+}
+
+type Crop struct{ X, Y, Width, Height int }
+
+func (c Crop) Validate(v Stream) error {
+	if c.X < 0 || c.Y < 0 || c.Width <= 0 || c.Height <= 0 || c.Width > v.Width || c.Height > v.Height || c.X > v.Width-c.Width || c.Y > v.Height-c.Height || c.X%2 != 0 || c.Y%2 != 0 || c.Width%2 != 0 || c.Height%2 != 0 {
+		return errors.New("crop must fit the frame and use even coordinates and dimensions")
+	}
+	return nil
+}
+
+type Edit struct {
+	Crop            *Crop
+	Start, Duration float64
+	Trim            bool
+}
+
+func (e Edit) validate(v Stream) error {
+	if e.Crop != nil {
+		if err := e.Crop.Validate(v); err != nil {
+			return err
+		}
+	}
+	if e.Trim && (math.IsNaN(e.Start) || math.IsNaN(e.Duration) || math.IsInf(e.Start, 0) || math.IsInf(e.Duration, 0) || e.Start < 0 || e.Duration <= 0) {
+		return errors.New("trim requires a finite nonnegative start and positive duration")
+	}
+	if !e.Trim && e.Crop == nil {
+		return errors.New("no edit requested")
+	}
+	if e.Trim {
+		if duration, err := strconv.ParseFloat(v.Duration, 64); err == nil && e.Start+e.Duration > duration+0.001 {
+			return errors.New("trim extends beyond video duration")
+		}
+	}
+	return nil
+}
+
+func verifyColor(a, b Stream, width, height int) error {
+	if a.PixelFormat != b.PixelFormat || a.Primaries != b.Primaries || a.Transfer != b.Transfer || a.Matrix != b.Matrix || a.Range != b.Range || a.ChromaLocation != b.ChromaLocation || a.SampleAspectRatio != b.SampleAspectRatio || b.Width != width || b.Height != height {
+		return errors.New("output does not match the expected color and geometry contract")
+	}
+	return nil
+}
+
+func (e Engine) Render(ctx context.Context, input, output string, edit Edit) error {
+	r, err := e.Inspect(ctx, input)
+	if err != nil {
+		return err
+	}
+	v, err := r.Video()
+	if err != nil {
+		return err
+	}
+	if err = v.ValidateHLG(); err != nil {
+		return err
+	}
+	if err = edit.validate(v); err != nil {
+		return err
+	}
+	if r.audioCount() > 1 {
+		return errors.New("multiple audio streams are not supported by the renderer")
+	}
+	for _, s := range r.Streams {
+		if s.CodecType != "video" && s.CodecType != "audio" {
+			return fmt.Errorf("unsupported input stream type %q; refusing to silently discard it", s.CodecType)
+		}
+	}
+	in, err := filepath.Abs(input)
+	if err != nil {
+		return err
+	}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-noautorotate", "-i", in}
+	if edit.Trim {
+		args = append(args, "-ss", seconds(edit.Start), "-t", seconds(edit.Duration))
+	}
+	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
+	w, h := v.Width, v.Height
+	if edit.Crop != nil {
+		c := *edit.Crop
+		w, h = c.Width, c.Height
+		args = append(args, "-vf", fmt.Sprintf("crop=%d:%d:%d:%d", w, h, c.X, c.Y))
+	}
+	rangeName, chroma := "limited", "0"
+	if v.Range == "pc" {
+		rangeName = "full"
+	}
+	if v.ChromaLocation == "center" {
+		chroma = "1"
+	}
+	x265 := "colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=" + rangeName + ":chromaloc=" + chroma
+	args = append(args, "-c:v", "libx265", "-x265-params", x265, "-preset", "medium", "-crf", "16", "-pix_fmt", v.PixelFormat, "-color_primaries", v.Primaries, "-color_trc", v.Transfer, "-colorspace", v.Matrix, "-color_range", v.Range, "-chroma_sample_location", v.ChromaLocation, "-fps_mode", "passthrough", "-tag:v", "hvc1")
+	if edit.Trim {
+		args = append(args, "-c:a", "aac", "-b:a", "192k")
+	} else {
+		args = append(args, "-c:a", "copy")
+	}
+	args = append(args, "-map_metadata", "-1", "-map_chapters", "-1", "-movflags", "+faststart")
+	return e.publish(ctx, output, args, func(out Report) error {
+		b, err := out.Video()
+		if err != nil {
+			return err
+		}
+		if b.CodecName != "hevc" || out.audioCount() != r.audioCount() {
+			return errors.New("unexpected output codec or audio stream count")
+		}
+		if err = b.ValidateHLG(); err != nil {
+			return err
+		}
+		return verifyColor(v, b, w, h)
+	})
+}
+
+func (e Engine) Remux(ctx context.Context, input, output string) error {
+	r, err := e.Inspect(ctx, input)
+	if err != nil {
+		return err
+	}
+	v, err := r.Video()
+	if err != nil {
+		return err
+	}
+	in, err := filepath.Abs(input)
+	if err != nil {
+		return err
+	}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in, "-map", "0", "-c", "copy", "-copy_unknown", "-movflags", "+faststart"}
+	return e.publish(ctx, output, args, func(out Report) error {
+		b, err := out.Video()
+		if err != nil {
+			return err
+		}
+		if b.CodecName != v.CodecName || len(out.Streams) != len(r.Streams) {
+			return errors.New("remux changed codec or stream count")
+		}
+		return verifyColor(v, b, v.Width, v.Height)
+	})
+}
+
+func seconds(n float64) string { return strconv.FormatFloat(n, 'f', 6, 64) }
+
+func (e Engine) publish(ctx context.Context, output string, args []string, verify func(Report) error) error {
+	out, err := filepath.Abs(output)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(filepath.Ext(out), ".mp4") {
+		return errors.New("output must have an .mp4 extension")
+	}
+	if _, err = os.Lstat(out); err == nil {
+		return errors.New("output already exists")
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	temp, err := os.CreateTemp(filepath.Dir(out), ".pixelcut-*.pixelcut-tmp.mp4")
+	if err != nil {
+		return err
+	}
+	name := temp.Name()
+	defer os.Remove(name)
+	if err = temp.Close(); err != nil {
+		return err
+	}
+	cmd := exec.CommandContext(ctx, e.FFmpeg, append(args, "-y", name)...)
+	if _, err = cmd.Output(); err != nil {
+		return commandError(e.FFmpeg, err)
+	}
+	report, err := e.Inspect(ctx, name)
+	if err != nil {
+		return err
+	}
+	if err = verify(report); err != nil {
+		return err
+	}
+	if err = ctx.Err(); err != nil {
+		return err
+	}
+	if err = os.Link(name, out); err != nil {
+		return fmt.Errorf("publish output (requires filesystem hard-link support): %w", err)
+	}
+	return nil
+}
+
+func (e Engine) Preview(ctx context.Context, path string, hdr bool) error {
+	p, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	args := []string{"--no-config", "--vo=gpu-next", "--hwdec=no"}
+	if hdr {
+		args = append(args, "--target-colorspace-hint=yes")
+	} else {
+		args = append(args, "--target-prim=bt.709", "--target-trc=bt.1886", "--tone-mapping=auto")
+	}
+	cmd := exec.CommandContext(ctx, e.MPV, append(args, "--", p)...)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
+}
