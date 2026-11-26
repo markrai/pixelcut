@@ -232,6 +232,6 @@ func (e *editor) paintVolumeEnvelope(dc uintptr, view timeline.View, track strin
 		}
 		x = min(right, x)
 		y := volumeY(k.Percent, top, bottom)
-		fill(dc, rect{max(left, x-3), y-3, min(right+1, x+4), y+4}, palette.accent)
+		fill(dc, rect{max(left, x-3), y - 3, min(right+1, x+4), y + 4}, palette.accent)
 	}
 }
