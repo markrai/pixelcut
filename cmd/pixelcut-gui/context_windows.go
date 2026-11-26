@@ -67,7 +67,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(idSelectAll, "Select all clips\tCtrl+A", s.hasClips),
 			item(idUndo, "Undo\tCtrl+Z", s.undo), item(idRedo, "Redo\tCtrl+Y", s.redo))
 	}
-	return append(items, separator(), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true), menuItem{id: idSnap, label: "Snapping\tN", enabled: true, checked: s.snap},
+	return append(items, separator(), item(menuCompositePlay, "Play composite (SDR, silent)", true), item(menuSourcePlay, "Play active track (source preview)", true), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true), menuItem{id: idSnap, label: "Snapping\tN", enabled: true, checked: s.snap},
 		menuItem{id: idRippleTrim, label: "Ripple trimming\tR", enabled: true, checked: s.ripple}, menuItem{id: idFrameSnap, label: "Source-frame trim snapping\tB", enabled: true, checked: s.frameSnap}, item(idFit, "Fit timeline\tF", true))
 }
 
@@ -247,7 +247,7 @@ func (e *editor) timelineContext(lp uintptr) {
 	}
 	var err error
 	switch id {
-	case menuLayerOpacity, menuLayerPreset, menuLayerLayout, menuCompositeStill:
+	case menuLayerOpacity, menuLayerPreset, menuLayerLayout, menuCompositeStill, menuCompositePlay, menuSourcePlay:
 		err = e.layerAction(id, screen)
 	case menuPasteHere:
 		err = e.pasteAt(false, &at)

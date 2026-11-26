@@ -197,6 +197,9 @@ func (e *editor) togglePreview() error {
 	if e.playing() {
 		return e.pausePreview()
 	}
+	if e.stillActive {
+		return e.startCompositePlayback()
+	}
 	e.updatePlaybackClock()
 	index, at, ok, err := e.previewTarget(e.playhead, true)
 	if err != nil {
@@ -352,7 +355,7 @@ func (e *editor) handleShortcut(m message) bool {
 		} else if e.drag != nil {
 			e.cancelTimelineDrag()
 			e.tell("Timeline edit canceled.")
-		} else if e.previewActive() {
+		} else if e.previewActive() || e.compositeRun != nil {
 			e.pausePreview()
 		}
 	case keyMarkerBack:

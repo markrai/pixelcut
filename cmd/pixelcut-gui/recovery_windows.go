@@ -152,6 +152,7 @@ func (e *editor) checkpointView() {
 }
 
 func (e *editor) beginClose(hwnd uintptr) {
+	e.stopPreview()
 	if !e.checkpoint() {
 		if e.warnRecoveryClose() {
 			destroy.Call(hwnd)

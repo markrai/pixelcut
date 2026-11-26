@@ -18,6 +18,8 @@ const (
 	menuLayerLayout
 	layerSurfaceID
 	menuCompositeStill
+	menuCompositePlay
+	menuSourcePlay
 	layerOpacityBase = 2320
 	layerPresetBase  = 2340
 	layerCanvasBase  = 2360
@@ -69,6 +71,13 @@ func (e *editor) layerAction(id int, screen point) error {
 	}
 	if id == menuCompositeStill {
 		return e.showCompositeStill()
+	}
+	if id == menuCompositePlay {
+		return e.startCompositePlayback()
+	}
+	if id == menuSourcePlay {
+		e.stopPreview()
+		return e.togglePreview()
 	}
 	p := e.model.Project()
 	if id == menuLayerCanvas {
