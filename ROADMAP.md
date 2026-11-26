@@ -62,8 +62,8 @@ from a build alone.
 | 2C.4 | Track visibility, mute, solo, lock | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45729406556); merged; native acceptance pending |
 | 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
 | 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.6 merged to main via PR #11; native qualification remains open |
-| 2D | Whole-project export and explicit output color contracts | 2D.1–2D.5 merged; 2D.6 automated qualification/hardening implemented; CI and physical acceptance pending |
-| 2E | Audio envelopes, fades, levels and mixing | Pending |
+| 2D | Whole-project export and explicit output color contracts | 2D.1–2D.6 merged; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45843280827); physical acceptance pending |
+| 2E | Audio envelopes, fades, levels and mixing | In progress; 2E.1 model/shared mixer implemented; CI pending |
 | 3A | GPU acceleration | Pending |
 | 3B | Transitions, keyframes, speed effects, titles and subtitles | Pending |
 | 4A | Packaging and distribution | Pending |
@@ -101,9 +101,23 @@ from a build alone.
 | 2D.3 | Multi-layer HDR composition with explicit linear-light blending and alpha, full range/chroma normalization qualification | Merged to main via PR #14; physical qualification pending |
 | 2D.4 | Offline audio mix, AAC mux, exact output frame/sample duration verification | Merged to main via PR #15; physical qualification pending |
 | 2D.5 | CLI and Windows export orchestration, progress, cancellation and destination safety | Merged to main via PR #16; physical Windows acceptance pending |
-| 2D.6 | Synthetic/reference and real Pixel HDR qualification, bounded resource/performance review | Automated checks implemented; CI and physical acceptance pending |
+| 2D.6 | Synthetic/reference and real Pixel HDR qualification, bounded resource/performance review | Merged via PR #17; CI passed; physical acceptance pending |
 
 See [project export contract](docs/project-export.md). Whole-project HDR video and audio export is available from the Windows Export menu in 2D.5. The existing selected-clip HLG export remains independent.
 
 
 2D.6 acceptance is tracked in [HDR export qualification](docs/export-qualification.md). Do not mark 2D fully qualified until the required CI and physical Windows/Pixel evidence exists. Phase 2E audio work can be planned independently; changes to the export path must preserve the qualification gates.
+
+
+## 2E staged delivery
+
+| Slice | Deliverable | Status |
+| --- | --- | --- |
+| 2E.1 | Versioned per-clip gain model, shared fixed-point PCM mixer, compatibility and parity tests | Implemented; CI pending |
+| 2E.2 | Per-clip volume and reversible mute controls, native audition behavior | Pending |
+| 2E.3 | Fade-in and fade-out, timeline edit semantics | Pending |
+| 2E.4 | Volume envelopes and draggable keyframes | Pending |
+| 2E.5 | Audio level meters and clipping indicators | Pending |
+| 2E.6 | Audio preview/export parity, performance and physical qualification | Pending |
+
+See [audio processing contract](docs/audio-processing.md). The shared mixer consumes decoded PCM; decoder timing and lossy AAC output remain separate qualification issues. 2D physical acceptance remains open.

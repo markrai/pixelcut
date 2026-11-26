@@ -247,3 +247,8 @@ Choose **Export...** in the toolbar (or Ctrl+Shift+E), then select a project fra
 ### HDR export qualification (2D.6)
 
 Whole-project export now verifies every video packet's presentation timestamp and duration on an exact integer CFR grid before publishing. All supported frame rates use a 240000 Hz MP4 video track/movie timescale; AAC presentation remains exactly 48000 Hz. An export with no sampled visible video pixels fails rather than producing an all-black result. See [export qualification](docs/export-qualification.md) for synthetic evidence, resource limits and the outstanding Windows/Pixel acceptance procedure. Native HDR fidelity and performance are not yet qualified.
+
+
+### Audio processing foundation (2E.1)
+
+Project schema 6 adds optional per-clip `audio_gain_percent` (0–400, omitted means 100). Existing versions 1–5 load with unity gain and retain their stored version on load/save. Non-unity gain requires version 6; older applications cannot read that schema. Split/copy/paste preserve gain; detach moves it to the independent audio clip and reattach restores that clip's current gain. The composite preview and whole-project exporter share one fixed-point stereo PCM mixer, rounding and clipping only after all contributions are summed. Zero gain suppresses audio decoding; the source preview is an explicitly separate audition path and does not apply non-unity gain yet. Selected-clip export refuses nonzero non-unity gain rather than ignoring it; zero gain exports video only. No GUI gain controls until 2E.2. See [audio processing contract](docs/audio-processing.md).
