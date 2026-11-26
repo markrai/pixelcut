@@ -64,7 +64,7 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 			}
 		}
 		first := int(pos-offset) * media.PCMChannels
-		if err := mixer.FinishObserved(out.Samples[first : first+n*media.PCMChannels], &out.Levels); err != nil {
+		if err := mixer.FinishObserved(out.Samples[first:first+n*media.PCMChannels], &out.Levels); err != nil {
 			return PCMBlock{}, err
 		}
 		pos = next

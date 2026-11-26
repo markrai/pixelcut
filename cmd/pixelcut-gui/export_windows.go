@@ -196,7 +196,7 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 			message += fmt.Sprintf(" (%d preflight warning(s); use plan-export for details)", len(warnings))
 		}
 		if levels := job.audioLevels(); err == nil && levels.Frames > 0 {
-			message += fmt.Sprintf(" | PCM peak L %s / R %s dBFS; clipped channel samples: %d", media.PeakLabel(levels.Peak[0]), media.PeakLabel(levels.Peak[1]), levels.ClipCount())
+			message = fmt.Sprintf("PCM peak L %s / R %s dBFS; clipped channel samples: %d | ", media.PeakLabel(levels.Peak[0]), media.PeakLabel(levels.Peak[1]), levels.ClipCount()) + message
 		}
 		return result{err: err, message: message}
 	}, func() { post.Call(hwnd, wmDone, 0, 0) })
