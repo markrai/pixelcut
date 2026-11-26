@@ -251,7 +251,7 @@ func (e *editor) cancelTimelineDrag() {
 }
 
 func (e *editor) handleShortcut(m message) bool {
-	if m.Message != 0x0100 {
+	if m.Message != 0x0100 && !(e.envelopeDrag != nil && m.Message == 0x0104) {
 		return false
 	}
 	if e.menuOpen {

@@ -44,7 +44,7 @@ func volumeHit(c project.Clip, v timeline.View, points []project.VolumeKeyframe,
 			continue
 		}
 		px := volumePointX(c, v, p.SourceTime)
-		if px < trackHeader || px >= v.Width {
+		if px < trackHeader || px > v.Width {
 			continue
 		}
 		dx, dy := int64(x-px), int64(y-volumeY(p.Percent, top, bottom))
@@ -139,6 +139,10 @@ func (e *editor) beginEnvelopeDrag(x, y int32, view timeline.View, lane timeline
 		}
 		e.envelopeDrag = &volumeDrag{ref: ref, fingerprint: p.Fingerprint(), clip: c, points: points, index: index, view: view, top: top, bottom: bottom, x: x, y: y}
 		user.NewProc("SetCapture").Call(e.timeline)
+		if owner, _, _ := user.NewProc("GetCapture").Call(); owner != e.timeline {
+			e.envelopeDrag = nil
+			e.tell("Could not capture timeline pointer.")
+		}
 		e.invalidateTimeline()
 		return true
 	}

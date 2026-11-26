@@ -598,6 +598,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0202:
 		if ui.envelopeDrag != nil {
+			ui.moveEnvelopeDrag(x, y)
 			ui.endEnvelopeDrag(false)
 		} else if ui.marquee != nil {
 			ui.moveMarquee(x, y, clientRect(hwnd).Right)
