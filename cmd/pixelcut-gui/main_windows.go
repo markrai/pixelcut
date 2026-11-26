@@ -183,6 +183,15 @@ type editor struct {
 	status, host            uintptr
 	layerSurface            uintptr
 	layerPlan               *composition.LayerPlan
+	stillWorker             *service.Latest[stillPreviewRequest, stillPreviewResult]
+	stillCancel             context.CancelFunc
+	stillSequence           uint64
+	stillActive             bool
+	stillFrame              *media.StillFrame
+	stillSources            map[string]mediacache.Source
+	stillFingerprint        string
+	stillTime               int64
+	stillError              string
 	busy                    bool
 	jobs                    service.Jobs[result]
 	jobFingerprint          string
@@ -633,7 +642,7 @@ func (e *editor) command(id, notification int) error {
 		if err = e.commitPlacement(r); err != nil {
 			return err
 		}
-		e.tell("Clip added to " + e.trackID() + ".")
+		e.tell(placementStatus(*e.track()))
 	case idApply:
 		c, ok := e.selected()
 		if !ok {
@@ -858,6 +867,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.updateThumbnails()
 			ui.updateWaveforms()
 			ui.checkSourceVersions(false)
+			ui.updateCompositeStill()
 			ui.checkpointView()
 			return 0
 		}
@@ -917,6 +927,9 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case 0x0002:
 		user.NewProc("KillTimer").Call(hwnd, playbackTimer)
 		ui.stopPreview()
+		if ui.stillWorker != nil {
+			ui.stillWorker.Close()
+		}
 		ui.retireMediaWorkers()
 		ui.jobs.Cancel()
 		if ui.sourceScanner != nil {

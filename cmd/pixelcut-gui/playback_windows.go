@@ -105,6 +105,14 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 	if t > end {
 		t = end
 	}
+	if e.stillActive && !playing {
+		e.playhead = t
+		e.refreshPlaybackMarker()
+		if err := e.showCompositeStill(); err != nil {
+			e.tell(err.Error())
+		}
+		return
+	}
 	index := -1
 	if t == end {
 		for i, c := range e.track().Clips {

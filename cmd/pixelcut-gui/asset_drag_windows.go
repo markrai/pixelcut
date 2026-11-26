@@ -129,7 +129,7 @@ func (e *editor) finishAssetDrag() {
 		return
 	}
 	user.NewProc("SetFocus").Call(e.timeline)
-	e.tell("Asset placed on timeline.")
+	e.tell(placementStatus(*e.track()))
 }
 
 func (e *editor) commitPlacement(p project.AssetPlacement, selectedAsset ...string) error {
@@ -189,6 +189,9 @@ func (e *editor) paintAssetGhost(dc uintptr, w int32) {
 	fill(dc, rect{max(left, right-2), laneTop, right, laneBottom}, col)
 	if right-left > 25 {
 		name := fmt.Sprintf("%s  %.2fs", filepath.Base(a.Path), project.Seconds(a.Duration))
+		if lane.Kind == project.AudioTrack {
+			name = "Audio only: " + name
+		}
 		fill(dc, rect{left + 2, laneTop + 3, right - 2, laneTop + 22}, palette.panel)
 		textAt(dc, rect{left + 5, laneTop + 3, right - 5, laneTop + 22}, name, col, 4)
 	}

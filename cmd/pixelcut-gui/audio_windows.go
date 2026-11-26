@@ -25,7 +25,9 @@ func (e *editor) syncPreviewLabel() {
 			preview += " / muted"
 		}
 	}
-	if e.layerPlan != nil {
+	if e.stillActive {
+		preview = "Composite frame / SDR / paused"
+	} else if e.layerPlan != nil {
 		preview = "Layer layout / schematic only"
 	} else if c, ok := e.selected(); ok && c.OpacityPercent() != 100 {
 		preview += " / layer opacity not applied"
