@@ -162,7 +162,7 @@ func (e *editor) resize() {
 			ww += dx
 		case p.id == idExportMenu || p.id == idZoomIn || p.id == idZoomOut || p.id == idFit || p.id == idSnap || (p.x >= 825 && p.y >= 50):
 			x += dx
-		case p.h == e.host || p.h == e.layerSurface:
+		case p.h == e.host || p.h == e.layerSurface || p.h == e.audioMeter:
 			ww += dx
 		}
 		if ww < 1 {

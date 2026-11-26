@@ -174,6 +174,9 @@ func cliExportProgress(out io.Writer) projectexport.Observer {
 		stage, last = p.Stage, time.Now()
 		if p.Total > 0 {
 			fmt.Fprintf(out, "%s: %d/%d submitted\n", p.Stage, p.Completed, p.Total)
+			if p.Stage == projectexport.StageAudio && p.Completed == p.Total && p.AudioLevels.Frames > 0 {
+				fmt.Fprintln(out, p.AudioLevels.String(), "(submitted to encoder)")
+			}
 		} else {
 			fmt.Fprintln(out, p.Stage)
 		}

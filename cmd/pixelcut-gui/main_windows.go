@@ -272,6 +272,8 @@ type editor struct {
 	prefs                   session.Preferences
 	preferencesWarning      string
 	previewLabel            uintptr
+	audioMeter              uintptr
+	meterView               audioMeterView
 	timelineLabel           uintptr
 	composition             *composition.Evaluator
 	compositionFingerprint  string
@@ -902,6 +904,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.checkSourceVersions(false)
 			ui.updateCompositePlayback()
 			ui.updateCompositeStill()
+			ui.pollAudioMeter()
 			ui.checkpointView()
 			ui.pollExportProgress()
 			return 0
@@ -1008,6 +1011,7 @@ func main() {
 	defer ui.closeRecovery()
 	ui.loadPreferences()
 	registerTimeline()
+	registerAudioMeter()
 	mainWindow, _, _ = createWindow.Call(0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(u("PixelCut - Editor preview"))), 0x00cf0000, 100, 70, 1200, 790, 0, 0, instance, 0)
 	if mainWindow == 0 {
 		fmt.Fprintln(os.Stderr, "unable to create PixelCut window")
@@ -1032,9 +1036,10 @@ func main() {
 	button("Add to V1", 136, 350, 121, idAdd)
 	button("Remove asset", 12, 384, 245, idRemoveAsset)
 	ui.previewLabel = label("Source preview / SDR", 270, 50, 570)
-	ui.host = control("STATIC", "", 0x02000000|0x04000000|4, 270, 75, 540, 303, 0)
-	ui.layerSurface = control("STATIC", "", 0x0000000d, 270, 75, 540, 303, layerSurfaceID)
+	ui.host = control("STATIC", "", 0x02000000|0x04000000|4, 270, 75, 540, 253, 0)
+	ui.layerSurface = control("STATIC", "", 0x0000000d, 270, 75, 540, 253, layerSurfaceID)
 	user.NewProc("ShowWindow").Call(ui.layerSurface, 0)
+	ui.audioMeter = control("PixelCutAudioMeter", "", 0, 270, 333, 540, 45, 0)
 	button("Play  (Space)", 270, 384, 124, idPlay)
 	button("Stop", 400, 384, 80, idStop)
 	button("< Frame", 486, 384, 70, idFrameBack)
