@@ -33,6 +33,9 @@ func (e *editor) pollAudioMeter() {
 	if run := e.compositeRun; run != nil && run.metrics != nil {
 		latest, total, at := run.metrics.AudioMeter()
 		view.label = "Mix meter | confirmed PCM"
+		if total.Frames == 0 {
+			view.label = "Mix meter | buffering"
+		}
 		view.hold, view.clips = total.Peak, total.ClipCount()
 		if !at.IsZero() && time.Since(at) <= 250*time.Millisecond {
 			view.peak = latest.Peak
@@ -102,7 +105,29 @@ func audioMeterProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		var ps paintStruct
 		dc, _, _ := user.NewProc("BeginPaint").Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		if dc != 0 && ui != nil {
-			paintAudioMeter(dc, clientRect(hwnd), ui.meterView)
+			r := clientRect(hwnd)
+			if r.Right > 0 && r.Bottom > 0 {
+				mem, _, _ := gdi.NewProc("CreateCompatibleDC").Call(dc)
+				bmp, _, _ := gdi.NewProc("CreateCompatibleBitmap").Call(dc, uintptr(r.Right), uintptr(r.Bottom))
+				if mem != 0 && bmp != 0 {
+					old, _, _ := gdi.NewProc("SelectObject").Call(mem, bmp)
+					if old != 0 && old != ^uintptr(0) {
+						paintAudioMeter(mem, r, ui.meterView)
+						gdi.NewProc("BitBlt").Call(dc, 0, 0, uintptr(r.Right), uintptr(r.Bottom), mem, 0, 0, 0x00cc0020)
+						gdi.NewProc("SelectObject").Call(mem, old)
+					} else {
+						paintAudioMeter(dc, r, ui.meterView)
+					}
+				} else {
+					paintAudioMeter(dc, r, ui.meterView)
+				}
+				if bmp != 0 {
+					gdi.NewProc("DeleteObject").Call(bmp)
+				}
+				if mem != 0 {
+					gdi.NewProc("DeleteDC").Call(mem)
+				}
+			}
 		}
 		user.NewProc("EndPaint").Call(hwnd, uintptr(unsafe.Pointer(&ps)))
 		return 0
