@@ -164,7 +164,7 @@ Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or exper
 
 ### Multitrack foundation (2C.1)
 
-The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lanes and independent audio audition are implemented; simultaneous audio mixing and compositing follow in later phases. New projects use format version 4; versions 1 through 3 remain readable.
+The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lanes and independent audio audition are implemented; simultaneous audio mixing and compositing follow in later phases. New projects use format version 5; versions 1 through 4 remain readable.
 
 ## Development and architectural stabilization
 
@@ -179,3 +179,8 @@ Select an audio track to audition it using the existing playback controls. Right
 ### Track controls (2C.4)
 
 Right-click a lane header or use the Track menu to hide video, mute audio, solo or lock the active track. H, M, S and L in the header identify its settings. Hide suppresses video but not its attached audio; mute suppresses audio but not video; solo includes only soloed tracks (multiple solos are allowed). Hide and mute still take precedence. Locked tracks allow selection, copy and preview, but reject edits, transfers, placement, and source changes. Toggle controls again to restore normal operation. Settings persist and are undoable. Preview remains active-track only; selected-clip export honors mute and detached audio but ignores timeline hide/solo.
+
+
+### Layer layout (2C.5)
+
+Use the Track menu to select the shared composition canvas (automatic, portrait, landscape or square, including UHD presets). Right-click a video clip to set opacity (0/25/50/75/100%) or choose Fit canvas / a picture-in-picture corner. PiP uses 35% of aspect-fit scale and a 4% margin, preserving crop and orientation. The first placement preset freezes the automatic canvas size. Fine-tune scale and offset with Transform. Show layer layout at playhead displays colored bounds and opacity labels in bottom-to-top order, not decoded composite video. Hidden and zero-opacity layers do not appear; audio is unchanged. Press Play to return to isolated source preview. Partial opacity is not applied to isolated source audition, and selected-clip export rejects it rather than silently discarding it. Actual composite playback and project export remain future phases.

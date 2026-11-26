@@ -352,6 +352,7 @@ func (e *editor) refresh() {
 }
 
 func (e *editor) fields() {
+	e.syncPreviewLabel()
 	c, ok := e.selected()
 	for _, id := range []int{idStart, idIn, idOut, idCrop, idAt} {
 		change(e.controls[id], "")
