@@ -178,7 +178,8 @@ func (e *editor) cancelCompositeRun() {
 
 func (e *editor) freezeCompositePlayback() {
 	if run := e.compositeRun; run != nil && run.clock != nil {
-		e.stillTime, e.playhead = run.clock.Tick(), run.clock.Tick()
+		tick := run.clock.Tick()
+		e.stillTime, e.playhead = tick, tick
 		e.refreshPlaybackMarker()
 	}
 	e.cancelCompositeRun()

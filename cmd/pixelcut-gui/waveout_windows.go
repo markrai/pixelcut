@@ -19,6 +19,7 @@ const waveHeaderDone = 0x00000001
 
 var winmm = syscall.NewLazyDLL("winmm.dll")
 var waveDeviceFault atomic.Bool
+var waveCopy = syscall.NewLazyDLL("ntdll.dll").NewProc("RtlMoveMemory")
 
 type waveFormat struct {
 	Tag, Channels         uint16
@@ -62,8 +63,8 @@ func queueWave(handle uintptr, block composition.PCMBlock) (queuedWave, error) {
 		return queuedWave{}, fmt.Errorf("audio output buffer allocation failed")
 	}
 	header := waveHeader{Data: address + size, Length: uint32(length)}
-	nativeCopy(address, uintptr(unsafe.Pointer(&header)), size)
-	nativeCopy(header.Data, uintptr(unsafe.Pointer(&block.Samples[0])), length)
+	waveCopy.Call(address, uintptr(unsafe.Pointer(&header)), size)
+	waveCopy.Call(header.Data, uintptr(unsafe.Pointer(&block.Samples[0])), length)
 	runtime.KeepAlive(&header)
 	runtime.KeepAlive(block.Samples)
 	if err := waveCall("waveOutPrepareHeader", handle, address, size); err != nil {
@@ -82,7 +83,7 @@ func queueWave(handle uintptr, block composition.PCMBlock) (queuedWave, error) {
 
 func waveDone(address uintptr) bool {
 	var h waveHeader
-	nativeCopy(uintptr(unsafe.Pointer(&h)), address, unsafe.Sizeof(h))
+	waveCopy.Call(uintptr(unsafe.Pointer(&h)), address, unsafe.Sizeof(h))
 	runtime.KeepAlive(&h)
 	return h.Flags&waveHeaderDone != 0
 }

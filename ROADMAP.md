@@ -61,7 +61,7 @@ from a build alone.
 | 2C.3 | Independent audio playback, detach/relink | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45725905248); merged; native acceptance pending |
 | 2C.4 | Track visibility, mute, solo, lock | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45729406556); merged; native acceptance pending |
 | 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
-| 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.3 CI passed; PR #8 merged into #7 (open); 2C.6.4 implemented on stacked branch; verification pending |
+| 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.3 CI passed; PR #8 merged into #7 (open; combined head passed [CI](https://github.com/markrai/pixelcut/actions/runs/45810629291) and [performance qualification](https://github.com/markrai/pixelcut/actions/runs/45810629330)); 2C.6.4 implemented on stacked branch; verification pending |
 | 2D | Whole-project export and explicit output color contracts | Pending |
 | 2E | Audio envelopes, fades, levels and mixing | Pending |
 | 3A | GPU acceleration | Pending |
