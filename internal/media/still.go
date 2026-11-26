@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/markrai/pixelcut/internal/mediacache"
 )
@@ -110,6 +111,7 @@ type stillEntry struct {
 type stillSource struct {
 	source mediacache.Source
 	stream Stream
+	raw    Stream
 	index  *FrameIndex
 }
 
@@ -148,6 +150,10 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	if err = v.ValidateHLG(); err != nil {
 		return stillSource{}, err
 	}
+	raw := v
+	if _, _, err := d.engine.VideoDecodePipeline(raw, "", false); err != nil {
+		return stillSource{}, err
+	}
 	v, err = v.DisplayGeometry()
 	if err != nil {
 		return stillSource{}, err
@@ -155,14 +161,19 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	if v.Width > 16384 || v.Height > 16384 || int64(v.Width)*int64(v.Height) > 33554432 {
 		return stillSource{}, errors.New("source exceeds static preview frame budget")
 	}
-	index, err := d.engine.CachedFrames(ctx, d.disk, path)
+	var index *FrameIndex
+	if d.engine.DecodeBackend == BackendCUDA {
+		index, err = d.engine.ExportFrames(ctx, path)
+	} else {
+		index, err = d.engine.CachedFrames(ctx, d.disk, path)
+	}
 	if err != nil {
 		return stillSource{}, err
 	}
 	if !unchanged(path, identity) {
 		return stillSource{}, errors.New("source changed during frame indexing")
 	}
-	s := stillSource{source: identity, stream: v, index: index}
+	s := stillSource{source: identity, stream: v, raw: raw, index: index}
 	if len(d.sources) >= 4 {
 		copy(d.sources, d.sources[1:])
 		d.sources[len(d.sources)-1] = stillSource{}
@@ -227,10 +238,30 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 			return cloneStill(entry.frame), nil
 		}
 	}
-	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, "-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1", "-ss", seconds(float64(tick)/1000000), "-i", req.Path, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-vf", graph, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
+	args := []string{"-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1"}
+	if d.engine.DecodeBackend == BackendCUDA {
+		ordinal, ok := s.index.OrdinalAtOrBefore(req.Tick)
+		if !ok {
+			return StillFrame{}, errors.New("missing CUDA source ordinal")
+		}
+		input, filter, err := d.engine.VideoDecodePipeline(s.raw, fmt.Sprintf("select=eq(n\\,%d),%s", ordinal, graph), true)
+		if err != nil {
+			return StillFrame{}, err
+		}
+		args = append(args, "-xerror", "-copyts", "-start_at_zero")
+		args = append(args, input...)
+		graph = filter
+	} else {
+		args = append(args, "-ss", seconds(float64(tick)/1000000))
+	}
+	args = append(args, "-i", req.Path, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-vf", graph, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
+	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, args...)
+	if d.engine.DecodeBackend == BackendCUDA {
+		cmd.WaitDelay = 2 * time.Second
+	}
 	b, err := cmd.Output()
 	if err != nil {
-		return StillFrame{}, commandError(d.engine.FFmpeg, err)
+		return StillFrame{}, fmt.Errorf("%s still decode: %w", d.engine.DecodeBackendName(), commandError(d.engine.FFmpeg, err))
 	}
 	frame := StillFrame{Width: req.OutputWidth, Height: req.OutputHeight, Pixels: b}
 	if !frame.Valid() {

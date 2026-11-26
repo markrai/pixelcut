@@ -19,6 +19,7 @@ type Source struct {
 	Identity mediacache.Source
 	Rotation int
 	Chroma   string
+	video    media.Stream
 }
 
 type Prepared struct {
@@ -97,11 +98,18 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 		if visible[asset.ID] && (v.Range != "tv" || v.ChromaLocation != "left") {
 			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, v.Range, v.ChromaLocation))
 		}
+		if visible[asset.ID] {
+			if engine, ok := inspector.(media.Engine); ok {
+				if _, _, err := engine.VideoDecodePipeline(v, "", false); err != nil {
+					return Prepared{}, fmt.Errorf("asset %s: %w", asset.ID, err)
+				}
+			}
+		}
 		rotation, err := v.DisplayRotation()
 		if err != nil {
 			return Prepared{}, err
 		}
-		prepared.Sources = append(prepared.Sources, Source{Asset: actual, Identity: identity, Rotation: rotation, Chroma: v.ChromaLocation})
+		prepared.Sources = append(prepared.Sources, Source{Asset: actual, Identity: identity, Rotation: rotation, Chroma: v.ChromaLocation, video: v})
 	}
 	if err := prepared.VerifySources(ctx); err != nil {
 		return Prepared{}, err
