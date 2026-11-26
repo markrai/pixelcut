@@ -732,7 +732,7 @@ func (e *editor) command(id, notification int) error {
 		}
 		e.playhead = min(e.playhead, e.endTime())
 		e.refresh()
-		if _, ok := e.selected(); ok && e.model.Count() <= 1 && !e.audioTrack() {
+		if _, ok := e.selected(); ok && e.model.Count() <= 1 {
 			if err := e.startPreview(true); err != nil {
 				e.tell("History restored; preview unavailable: " + err.Error())
 				return nil
