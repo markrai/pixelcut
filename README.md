@@ -286,3 +286,7 @@ Run `pixelcut gpu-decode-check -frames 120 INPUT` to compare a bounded window of
 ### Experimental CUDA decoding (3A.2 integration)
 
 Settings > Video decode: NVIDIA CUDA (experimental) enables explicit NVDEC for composite stills, live composite playback and whole-project export. CPU is the default; Automatic currently resolves to CPU. Source audition (mpv), thumbnails, selected-clip export, geometry, compositing, encoding and audio are unchanged. Unsupported source or CUDA failure stops the operation; select CPU and retry. CLI project exports accept `-decode cpu|auto|cuda`. Changing the setting retires media workers and invalidates the still cache. See [CUDA qualification](docs/gpu-decode-qualification.md) for hardware tests.
+
+### CUDA scaling qualification (3A.3a)
+
+Run `pixelcut gpu-scale-check -width 960 -height 540 -frames 120 INPUT` to compare actual CUDA nearest-neighbor scaling before hardware download against software nearest-neighbor scaling of the same indexed 10-bit HEVC frames. Choose even output dimensions and a valid source frame window. The command verifies exact raw frame hashes, dimensions, byte counts and timing, and reports nominal tightly packed source and download bytes per frame. These are not measured PCIe traffic. No source/project change, automatic fallback or renderer setting change. Nearest-neighbor qualification is not qualification of the production resampler, crop, rotation, flip or composition. See [GPU geometry qualification](docs/gpu-geometry-qualification.md).

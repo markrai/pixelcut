@@ -100,6 +100,33 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 	if window[2].pts-window[1].pts == window[1].pts-window[0].pts {
 		t.Fatal("fixture did not exercise VFR")
 	}
+	for _, size := range []scaleCheckSize{{64, 48}, {32, 24}, {128, 96}} {
+		scaled, err := engine.frameCheckFrames(ctx, path, v, 0, 9, false, &size)
+		if err != nil {
+			t.Fatal(err)
+		}
+		part, err := engine.frameCheckFrames(ctx, path, v, 2, 4, false, &size)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n, err := compareDecodeHashes(scaled[2:6], part, index.ticks[2:6], 2); err != nil || n != 4 {
+			t.Fatalf("scaled VFR ordinal selection: %d %v", n, err)
+		}
+		if size.width == v.Width && size.height == v.Height {
+			if _, err := compareDecodeHashes(full, scaled, index.ticks, 0); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if os.Getenv("PIXELCUT_QUALIFY_CUDA_SCALE") == "1" {
+		for _, size := range []scaleCheckSize{{64, 48}, {32, 24}, {128, 96}} {
+			r, err := engine.CheckCUDAScale(ctx, path, 2, 4, size.width, size.height)
+			if err != nil || r.Matched != 4 || r.Status != "matched" {
+				t.Fatalf("physical CUDA scale parity: %+v %v", r, err)
+			}
+			t.Logf("CUDA scale parity: %+v", r)
+		}
+	}
 	if os.Getenv("PIXELCUT_QUALIFY_CUDA") == "1" {
 		for _, tc := range [][2]int{{0, 9}, {2, 4}, {7, 2}} {
 			r, err := engine.CheckHEVCDecode(ctx, path, tc[0], tc[1])
