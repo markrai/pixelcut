@@ -106,7 +106,7 @@ func TestCompositeQualificationRealMedia(t *testing.T) {
 	}
 	single := media.NewPCMDecoder(ctx, engine)
 	defer single.Close()
-	reference, err := single.DecodePCM(ctx, media.PCMRequest{ClipID: "reference", Path: path, Frames: media.PCMBlockFrames})
+	reference, err := single.DecodePCM(ctx, media.PCMRequest{ClipID: "reference", Path: path, Frames: media.PCMBlockFrames, SourceEnd: 24000})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,23 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/mediacache"
-	"github.com/markrai/pixelcut/internal/project"
 )
-
-func floorAudioFrames(ticks int64) int64 {
-	q, r := ticks/project.TicksPerSecond, ticks%project.TicksPerSecond
-	n := r * media.PCMRate
-	tail := n / project.TicksPerSecond
-	if n < 0 && n%project.TicksPerSecond != 0 {
-		tail--
-	}
-	return q*media.PCMRate + tail
-}
 
 func audioInterval(a composition.AudioContribution) (first, end, sourceFirst int64, err error) {
 	if !a.Timeline.Valid() || !a.SourceInterval.Valid() || a.Timeline.End-a.Timeline.Start != a.SourceInterval.End-a.SourceInterval.Start {
@@ -30,8 +18,8 @@ func audioInterval(a composition.AudioContribution) (first, end, sourceFirst int
 	}
 	first = media.PCMFramesForTicks(a.Timeline.Start)
 	end = media.PCMFramesForTicks(a.Timeline.End)
-	sourceFirst = first + floorAudioFrames(a.SourceInterval.Start-a.Timeline.Start)
-	if sourceFirst < 0 || end < first {
+	sourceFirst, err = media.PCMSourceFrame(a.SourceInterval.Start, a.Timeline.Start, 0, first)
+	if err != nil || end < first {
 		return 0, 0, 0, errors.New("invalid source sample interval")
 	}
 	return first, end, sourceFirst, nil
@@ -66,8 +54,11 @@ func (d *offlineAudio) open(a composition.AudioContribution, pos int64) (*audioS
 		return nil, errors.New("audio decoder must start at first clip sample")
 	}
 	sourceEnd := sourceFirst + end - first
-	graph := "aresample=48000:async=1:first_pts=0,apad=whole_len=" + strconv.FormatInt(sourceEnd, 10) + ",atrim=start_sample=" + strconv.FormatInt(sourceFirst, 10) + ":end_sample=" + strconv.FormatInt(sourceEnd, 10) + ",asetpts=N/SR/TB"
-	proc := newExportProcess(d.ctx, d.engine.FFmpeg, "-v", "error", "-xerror", "-nostdin", "-threads", "2", "-filter_threads", "1", "-copyts", "-start_at_zero", "-i", source.Identity.Path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", graph, "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "-f", "s16le", "-")
+	args, err := media.PCMDecodeArgs(source.Identity.Path, sourceFirst, sourceEnd)
+	if err != nil {
+		return nil, err
+	}
+	proc := newExportProcess(d.ctx, d.engine.FFmpeg, args...)
 	reader, err := proc.cmd.StdoutPipe()
 	if err != nil {
 		proc.close()
