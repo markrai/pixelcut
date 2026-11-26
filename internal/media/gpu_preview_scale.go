@@ -101,20 +101,23 @@ type PreviewScaleQuality struct {
 }
 
 type PreviewScaleReport struct {
-	Backend       string                   `json:"backend"`
-	Source        string                   `json:"source"`
-	SourceVideo   *PreviewScaleSource      `json:"source_video,omitempty"`
-	FirstFrame    int                      `json:"first_frame"`
-	Frames        int                      `json:"frames"`
-	Compared      int                      `json:"compared"`
-	OutputWidth   int                      `json:"output_width"`
-	OutputHeight  int                      `json:"output_height"`
-	Interpolation string                   `json:"interpolation"`
-	Status        string                   `json:"status"`
-	Failure       string                   `json:"failure,omitempty"`
-	Quality       PreviewScaleQuality      `json:"quality"`
-	WallSeconds   float64                  `json:"wall_seconds"`
-	Stages        *PreviewScaleDiagnostics `json:"stages,omitempty"`
+	Backend       string                     `json:"backend"`
+	Source        string                     `json:"source"`
+	SourceVideo   *PreviewScaleSource        `json:"source_video,omitempty"`
+	FirstFrame    int                        `json:"first_frame"`
+	Frames        int                        `json:"frames"`
+	Compared      int                        `json:"compared"`
+	OutputWidth   int                        `json:"output_width"`
+	OutputHeight  int                        `json:"output_height"`
+	Interpolation string                     `json:"interpolation"`
+	Status        string                     `json:"status"`
+	Failure       string                     `json:"failure,omitempty"`
+	Quality       PreviewScaleQuality        `json:"quality"`
+	WallSeconds   float64                    `json:"wall_seconds"`
+	Stages        *PreviewScaleDiagnostics   `json:"stages,omitempty"`
+	Tools         *PreviewQualificationTools `json:"tools,omitempty"`
+	Chroma        []PreviewChromaControl     `json:"chroma_controls,omitempty"`
+	Benchmark     *PreviewScaleBenchmark     `json:"benchmark,omitempty"`
 }
 
 type previewQualityAccumulator struct {
@@ -345,14 +348,14 @@ func (e Engine) comparePreviewPair(ctx context.Context, cpuArgs, gpuArgs []strin
 }
 
 func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int) (PreviewScaleReport, error) {
-	return e.checkCUDAPreviewScale(ctx, path, first, count, width, height, false)
+	return e.CheckCUDAPreviewScaleWithOptions(ctx, path, first, count, width, height, PreviewScaleOptions{})
 }
 
 func (e Engine) DiagnoseCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int) (PreviewScaleReport, error) {
-	return e.checkCUDAPreviewScale(ctx, path, first, count, width, height, true)
+	return e.CheckCUDAPreviewScaleWithOptions(ctx, path, first, count, width, height, PreviewScaleOptions{Diagnose: true})
 }
 
-func (e Engine) checkCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int, diagnose bool) (r PreviewScaleReport, err error) {
+func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path string, first, count, width, height int, options PreviewScaleOptions) (r PreviewScaleReport, err error) {
 	r = PreviewScaleReport{Backend: "cuda", Source: path, FirstFrame: first, Frames: count, OutputWidth: width, OutputHeight: height, Interpolation: "lanczos", Status: "failed"}
 	defer func() {
 		if err != nil {
@@ -366,6 +369,10 @@ func (e Engine) checkCUDAPreviewScale(ctx context.Context, path string, first, c
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	identity, err := mediacache.Identify(path)
+	if err != nil {
+		return r, err
+	}
+	e, r.Tools, err = e.previewQualificationTools(ctx)
 	if err != nil {
 		return r, err
 	}
@@ -405,7 +412,7 @@ func (e Engine) checkCUDAPreviewScale(ctx context.Context, path string, first, c
 	if !unchanged(identity.Path, identity) {
 		return r, errors.New("source changed during preview scale check")
 	}
-	if diagnose {
+	if options.Diagnose || options.Chroma {
 		r.Stages = &PreviewScaleDiagnostics{}
 		if err = e.diagnosePreviewStages(ctx, v, req, first, index.ticks[first:first+count], r.Stages); err != nil {
 			return r, err
@@ -413,6 +420,21 @@ func (e Engine) checkCUDAPreviewScale(ctx context.Context, path string, first, c
 		if !unchanged(identity.Path, identity) {
 			return r, errors.New("source changed during stage diagnostics")
 		}
+	}
+	if options.Chroma {
+		r.Chroma, err = e.diagnosePreviewChroma(ctx, v, req, first, index.ticks[first:first+count])
+		if err != nil {
+			return r, err
+		}
+	}
+	if options.Benchmark {
+		r.Benchmark, err = e.benchmarkPreviewScale(ctx, v, req, first, index.ticks[first:first+count])
+		if err != nil {
+			return r, err
+		}
+	}
+	if !unchanged(identity.Path, identity) {
+		return r, errors.New("source changed during preview qualification")
 	}
 	if !r.Quality.withinLimits() {
 		return r, errors.New("preview scale candidate exceeds provisional quality limits (worst frame/channel PSNR >= 40 dB, max channel delta <= 16)")
