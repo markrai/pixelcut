@@ -74,7 +74,11 @@ func TestRenderProjectAudioAndVideoPacketPreservation(t *testing.T) {
 		t.Fatal("mux modified encoded HEVC packets")
 	}
 	out := filepath.Join(dir, "project.mp4")
-	if err := RenderProject(ctx, engine, p, "hlg", 30, out); err != nil {
+	var events []Progress
+	if err := RenderProjectObserved(ctx, engine, p, "hlg", 30, out, func(v Progress) { events = append(events, v) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkExportProgress(events, plan); err != nil {
 		t.Fatal(err)
 	}
 	report, err = engine.Inspect(ctx, out)
@@ -114,6 +118,31 @@ func TestRenderProjectAudioAndVideoPacketPreservation(t *testing.T) {
 	}
 	if _, err := os.Stat(failed); !os.IsNotExist(err) {
 		t.Fatal("cancelled output published")
+	}
+	mid, stopMid := context.WithCancel(ctx)
+	defer stopMid()
+	midPath := filepath.Join(dir, "mid-cancel.mp4")
+	if err := RenderProjectObserved(mid, engine, p, "hlg", 30, midPath, func(v Progress) {
+		if v.Stage == StageVideo && v.Completed >= 1 {
+			stopMid()
+		}
+	}); err == nil {
+		t.Fatal("mid-render cancellation accepted")
+	}
+	if _, err := os.Stat(midPath); !os.IsNotExist(err) {
+		t.Fatal("mid-render cancellation published output")
+	}
+	racePath := filepath.Join(dir, "race.mp4")
+	var raceErr error
+	if err := RenderProjectObserved(ctx, engine, p, "hlg", 30, racePath, func(v Progress) {
+		if v.Stage == StagePublish {
+			raceErr = os.WriteFile(racePath, []byte("existing"), 0600)
+		}
+	}); err == nil || raceErr != nil {
+		t.Fatalf("late destination collision: %v %v", err, raceErr)
+	}
+	if data, err := os.ReadFile(racePath); err != nil || string(data) != "existing" {
+		t.Fatal("late destination collision overwritten")
 	}
 	files, err := filepath.Glob(filepath.Join(dir, ".pixelcut-*"))
 	if err != nil || len(files) != 0 {

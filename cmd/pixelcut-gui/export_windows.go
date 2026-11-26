@@ -79,7 +79,7 @@ func exportMenuItems(p project.Project, clipAllowed bool) []menuItem {
 	for i, fps := range exportRates {
 		label := fmt.Sprintf("Export project at %d fps...", fps)
 		if fps == 30 {
-			label = "Export project at 30 fps (standard)..."
+			label = "Export project at 30 fps..."
 		}
 		items = append(items, item(exportFPSBase+1+i, label, p.EndTime() > 0))
 	}
@@ -218,10 +218,14 @@ func (e *editor) cancelProjectExport() {
 
 func (e *editor) pollExportProgress() {
 	j := e.exportJob
-	if j == nil || j.stopping || time.Since(j.lastPoll) < 150*time.Millisecond {
+	if j == nil || time.Since(j.lastPoll) < 150*time.Millisecond {
 		return
 	}
 	j.lastPoll = time.Now()
+	if j.stopping {
+		e.tell("Cancel requested. Waiting for export cleanup...")
+		return
+	}
 	p, warnings := j.snapshot()
 	if p.Stage != "" {
 		e.tell(exportStatus(p, len(warnings)))
