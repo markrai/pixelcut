@@ -123,6 +123,7 @@ const (
 	idRelinkFolder
 	idPreferences
 	idTracks
+	idExportMenu
 )
 
 type windowClass struct {
@@ -203,6 +204,7 @@ type editor struct {
 	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]
+	exportJob               *projectExportJob
 	jobFingerprint          string
 	projectEpoch            uint64
 	previewCancel           context.CancelFunc
@@ -448,6 +450,9 @@ func (e *editor) finished() {
 		return
 	}
 	e.busy = false
+	if e.exportJob != nil {
+		e.finishExportUI()
+	}
 	e.setControlsEnabled(true)
 	if !current || e.jobFingerprint != e.model.Fingerprint() {
 		e.tell("Discarded background result for an outdated project.")
@@ -573,6 +578,10 @@ func (e *editor) command(id, notification int) error {
 		return fmt.Errorf("close the context menu first")
 	}
 	if e.busy {
+		if id == idExportMenu && e.exportJob != nil {
+			e.cancelProjectExport()
+			return nil
+		}
 		return fmt.Errorf("media operation in progress")
 	}
 	if e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing {
@@ -799,6 +808,8 @@ func (e *editor) command(id, notification int) error {
 		return e.togglePreview()
 	case idStop:
 		return e.pausePreview()
+	case idExportMenu:
+		return e.showExportMenu()
 	case idExport:
 		c, ok := e.selected()
 		if !ok {
@@ -863,7 +874,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg, wp, lp)
 	case wmCommand:
 		id, notification := int(wp&0xffff), int((wp>>16)&0xffff)
-		if id >= idNew && id <= idTracks && !(id >= idCanvasW && id <= idPositionY) && id != idStart && id != idIn && id != idOut && id != idCrop && id != idAt {
+		if id >= idNew && id <= idExportMenu && !(id >= idCanvasW && id <= idPositionY) && id != idStart && id != idIn && id != idOut && id != idCrop && id != idAt {
 			if err := ui.command(id, notification); err != nil {
 				ui.tell(err.Error())
 			}
@@ -885,6 +896,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.updateCompositePlayback()
 			ui.updateCompositeStill()
 			ui.checkpointView()
+			ui.pollExportProgress()
 			return 0
 		}
 	case wmDropFiles:
@@ -935,6 +947,10 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.cancelTransform()
 		}
 		if ui.busy {
+			if ui.exportJob != nil {
+				ui.cancelProjectExport()
+				return 0
+			}
 			ui.tell("Wait for the current media operation to finish.")
 			return 0
 		}
@@ -1000,7 +1016,7 @@ func main() {
 	button("Shortcuts", 628, 10, 110, idKeys)
 	button("Cache", 744, 10, 75, idMediaCache)
 	button("Relink", 825, 10, 132, idRelinkMenu)
-	button("Export clip", 970, 10, 126, idExport)
+	button("Export...", 970, 10, 126, idExportMenu)
 	applyDarkTitle(mainWindow)
 	label("Media bin / Drop files", 12, 50, 245)
 	control("LISTBOX", "", wsBorder|wsTab|0x00200000|1|0x100, 12, 75, 245, 270, idAssets)

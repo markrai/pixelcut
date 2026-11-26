@@ -49,6 +49,8 @@ func TestShortcutMapping(t *testing.T) {
 		{'Z', true, false, false, false, false, idUndo},
 		{'Z', true, true, false, false, false, idRedo},
 		{'Z', true, false, false, true, false, keyNone},
+		{'E', true, false, false, false, false, idExport},
+		{'E', true, true, false, false, false, idExportMenu},
 		{'S', true, false, false, false, false, idSave},
 		{'S', true, true, false, false, false, idSaveAs},
 		{'W', true, false, false, false, false, idCloseProject},
