@@ -274,6 +274,9 @@ func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, co
 	if err := prepared.VerifySources(ctx); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := os.Link(name, out); err != nil {
 		return fmt.Errorf("publish output (requires filesystem hard-link support): %w", err)
 	}

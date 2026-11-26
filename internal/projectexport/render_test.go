@@ -97,6 +97,15 @@ func TestRenderOpaqueHLGProject(t *testing.T) {
 	if _, err := os.Stat(missing); !os.IsNotExist(err) {
 		t.Fatal("cancelled output published")
 	}
+	broken := engine
+	broken.FFmpeg = filepath.Join(dir, "missing-ffmpeg")
+	failed := filepath.Join(dir, "failed.mp4")
+	if err := RenderVideo(ctx, broken, p, "hlg", 30, false, failed); err == nil {
+		t.Fatal("missing encoder accepted")
+	}
+	if _, err := os.Stat(failed); !os.IsNotExist(err) {
+		t.Fatal("failed output published")
+	}
 	files, err := filepath.Glob(filepath.Join(dir, ".pixelcut-*"))
 	if err != nil || len(files) != 0 {
 		t.Fatalf("staged output leaked: %v %v", files, err)
