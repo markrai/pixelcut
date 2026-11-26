@@ -20,6 +20,7 @@ const (
 	menuCompositeStill
 	menuCompositePlay
 	menuSourcePlay
+	menuCompositeDiagnostics
 	layerOpacityBase = 2320
 	layerPresetBase  = 2340
 	layerCanvasBase  = 2360

@@ -25,8 +25,8 @@ type stillPreviewResult struct {
 	sources map[string]mediacache.Source
 }
 
-func newStillWorker(engine media.Engine) *service.Latest[stillPreviewRequest, stillPreviewResult] {
-	decoder := media.NewStillDecoder(engine)
+func newStillWorker(engine media.Engine, disk *mediacache.Cache) *service.Latest[stillPreviewRequest, stillPreviewResult] {
+	decoder := media.NewStillDecoderWithCache(engine, disk)
 	return service.NewLatest(func(parent context.Context, req stillPreviewRequest) (stillPreviewResult, error) {
 		ctx, cancel := context.WithTimeout(req.ctx, 90*time.Second)
 		defer cancel()
@@ -129,7 +129,7 @@ func (e *editor) submitCompositeStill() error {
 		return err
 	}
 	if e.stillWorker == nil {
-		e.stillWorker = newStillWorker(e.engine)
+		e.stillWorker = newStillWorker(e.engine, e.mediaDisk)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.stillCancel = cancel

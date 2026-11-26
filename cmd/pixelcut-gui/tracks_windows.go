@@ -135,7 +135,7 @@ func trackMenuItems(p project.Project, active string, selected []string) []menuI
 			items = append(items, item(trackMenuMove+j, "Move selection to "+strings.ReplaceAll(t.ID, "&", "&&"), err == nil))
 		}
 	}
-	return append(items, separator(), item(menuLayerCanvas, "Composition canvas...", true), item(menuCompositePlay, "Play composite (SDR, with audio)", true), item(menuSourcePlay, "Play active track (source preview)", true), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true))
+	return append(items, separator(), item(menuLayerCanvas, "Composition canvas...", true), item(menuCompositePlay, "Play composite (SDR, with audio)", true), item(menuSourcePlay, "Play active track (source preview)", true), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true), item(menuCompositeDiagnostics, "Composite playback diagnostics...", true))
 }
 
 func (e *editor) showTracks() error {
@@ -153,6 +153,9 @@ func (e *editor) showTracks() error {
 	if id >= trackMenuSelect && id < trackMenuSelect+len(e.model.Project().Tracks) {
 		e.switchTrack(e.model.Project().Tracks[id-trackMenuSelect].ID)
 		return nil
+	}
+	if id == menuCompositeDiagnostics {
+		return e.showCompositeDiagnostics()
 	}
 	if id == menuLayerCanvas || id == menuLayerLayout || id == menuCompositeStill || id == menuCompositePlay || id == menuSourcePlay {
 		return e.layerAction(id, point{r.Left, r.Bottom})

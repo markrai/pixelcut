@@ -16,6 +16,7 @@ import (
 	"github.com/markrai/pixelcut/internal/composition"
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/media"
+	"github.com/markrai/pixelcut/internal/playback"
 	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/service"
@@ -195,6 +196,7 @@ type editor struct {
 	stillDue                time.Time
 	compositeResume         bool
 	compositeRun            *compositePreviewRun
+	lastCompositeMetrics    *playback.PreviewMetrics
 	compositeFrameTime      int64
 	compositeFrameUntil     int64
 	compositeFrameEnd       bool
