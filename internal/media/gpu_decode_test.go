@@ -118,6 +118,11 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 			}
 		}
 	}
+	req := StillRequest{Path: path, Width: v.Width, Height: v.Height, Canvas: CanvasSize{v.Width, v.Height}, OutputWidth: 32, OutputHeight: 24}
+	q, n, err := engine.comparePreviewScale(ctx, v, req, 2, index.ticks[2:6], false)
+	if err != nil || n != 4 || q.ExactFrames != 4 || !q.withinLimits() {
+		t.Fatalf("CPU preview comparison: %+v %d %v", q, n, err)
+	}
 	if os.Getenv("PIXELCUT_QUALIFY_CUDA_SCALE") == "1" {
 		for _, size := range []scaleCheckSize{{64, 48}, {32, 24}, {128, 96}} {
 			r, err := engine.CheckCUDAScale(ctx, path, 2, 4, size.width, size.height)

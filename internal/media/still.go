@@ -13,6 +13,7 @@ import (
 )
 
 const MaxStillSide = 960
+const previewToneMapGraph = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=mobius:desat=2,zscale=t=bt709:m=bt709:r=limited,format=yuv420p,format=bgra"
 const stillCacheBytes = 24 * 1024 * 1024
 const stillCacheEntries = 64
 
@@ -90,7 +91,7 @@ func stillFilter(req StillRequest) (string, error) {
 		filters = append(filters, fmt.Sprintf("crop=%d:%d:%d:%d", p.Width, p.Height, p.SourceX, p.SourceY))
 	}
 	w, h := max(2, (req.OutputWidth+1)&^1), max(2, (req.OutputHeight+1)&^1)
-	filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", w, h), "zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709", "tonemap=mobius:desat=2", "zscale=t=bt709:m=bt709:r=limited", "format=yuv420p", "format=bgra")
+	filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", w, h), previewToneMapGraph)
 	if w != req.OutputWidth || h != req.OutputHeight {
 		filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", req.OutputWidth, req.OutputHeight))
 	}
@@ -116,11 +117,12 @@ type stillSource struct {
 }
 
 type StillDecoder struct {
-	engine  Engine
-	disk    *mediacache.Cache
-	sources []stillSource
-	frames  []stillEntry
-	bytes   int
+	engine       Engine
+	previewScale bool
+	disk         *mediacache.Cache
+	sources      []stillSource
+	frames       []stillEntry
+	bytes        int
 }
 
 func NewStillDecoder(engine Engine) *StillDecoder {
@@ -244,7 +246,7 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 		if !ok {
 			return StillFrame{}, errors.New("missing CUDA source ordinal")
 		}
-		input, filter, err := d.engine.VideoDecodePipeline(s.raw, fmt.Sprintf("select=eq(n\\,%d),%s", ordinal, graph), true)
+		input, filter, err := d.engine.previewCUDAPipeline(s.raw, req, fmt.Sprintf("select=eq(n\\,%d)", ordinal), graph, d.previewScale)
 		if err != nil {
 			return StillFrame{}, err
 		}

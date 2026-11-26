@@ -32,3 +32,27 @@ Local FFmpeg 7.1.5 CPU command-level experiment on a generated 64x48 VFR HLG sou
 ## Remaining 3A.3 work
 
 3A.3b: evaluate real production scale interpolation and chroma/range handling against reference; qualify crop/rotation/flip/placement and explicit transfer boundaries. Integrate only qualified operations and retain explicit CPU reference without silent fallback. Do not select CUDA geometry simply because scale_cuda is advertised or nearest-neighbor passes. Compare real preview/export geometry, cancellation, bounded resources and actual performance, including late seeks. GPU HLG compositing remains 3A.4; hardware encoding remains 3A.5. No project schema or preference changes in 3A.3a.
+
+## 3A.3b candidate and provisional quality gate
+
+PR #29 passed CI 45885116645 and performance 45885116756 and merged. User reported 1920x1080 to 960x540 nearest-neighbor parity:
+
+| Ordinals | Matched | CPU seconds | CUDA seconds |
+| --- | --- | --- | --- |
+| 0–119 | 120/120 | 0.9600741 | 3.5319224 |
+| 120–239 | 120/120 | 1.8340004 | 0.6370063 |
+
+These timings include prefix decoding and startup; they do not establish steady-state speed. Nominal frame payload falls from 6220800 to 1555200 bytes.
+
+The preview candidate is strictly limited to unrotated, uncropped, untransformed limited-range left-sited Main 10 HLG with a source-sized canvas and even aspect-preserving downscale up to 960 pixels per side. The CPU reference uses the existing Lanczos preview graph. The CUDA graph scales hardware frames with Lanczos before downloading and runs the same CPU tone map. Still and persistent preview decoders share an internal candidate graph builder; the switch is not exposed to normal users. Crops, rotation, placement, odd dimensions, differing aspect ratios, other chroma/range and exports are not qualified by this check.
+
+The qualification command uses two concurrent FFmpeg processes, bounded one-frame-per-path BGRA payload buffers, bounded frame hash streams, exact source ordinal selection and timestamp/duration comparison. Each raw frame is independently hashed and checked against the emitted FFmpeg framehash. No partial success, output file or fallback. The quality report measures RGB code values after SDR tone mapping: minimum PSNR over every frame and channel (identical capped at 100 dB), maximum absolute channel delta and mean absolute delta; opaque alpha required. Provisional screening thresholds are 40 dB minimum and 16 maximum 8-bit codes. These are not perceptual HDR guarantees; a failure blocks activation and should be investigated before modifying limits. Wall time is combined concurrent comparison time, not CPU/GPU individual performance.
+
+```cmd
+go build -o pixelcut.exe ./cmd/pixelcut
+pixelcut gpu-preview-scale-check -width 960 -height 540 -frames 120 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -width 960 -height 540 -start-frame 120 -frames 120 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -width 640 -height 360 -frames 120 "test-media\test.mp4"
+```
+
+Run the raw nearest/decode checks first. Record output for real landscape, portrait without rotation metadata, detailed edges, gradients, motion and UHD footage. Candidate CI and physical Lanczos parity are pending. Normal renderer activation, persistent decoder measurements, remaining geometry and HDR export remain outstanding. Do not treat status within_limits as blanket GPU qualification.

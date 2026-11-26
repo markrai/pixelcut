@@ -47,3 +47,7 @@ PR #26 and #27 passed both workflows and merged. The user reported 240/240 exact
 ## 3A.3a scaling and transfer qualification
 
 PR #28 merged at 5e8da14b957fa004a311ca0d755485120416f223; CI 45882080825 and paired performance 45882080659 passed. Integrated CUDA decode physical acceptance remains open. The first geometry slice adds an isolated CUDA scale qualification command that consumes hardware frames and downloads at the requested output dimensions. The existing bounded frame-hash, exact timestamp and source identity checks are reused. Nearest-neighbor is deliberately a narrow test contract, not the production geometry resampler. No product geometry mode is enabled, and the stage policy still rejects explicit CUDA geometry. See [GPU geometry qualification](gpu-geometry-qualification.md).
+
+## 3A.3b preview scale candidate
+
+PR #29 merged at 41d3ec06ff2c2b0ab7f3008b2d4905507739bf21; CI 45885116645 and performance 45885116756 passed. User reported 240/240 exact nearest-neighbor frame matches. The next candidate moves only a simple aspect-preserving preview downscale onto CUDA using Lanczos; the existing CPU tone map remains shared. Still and stream decoder integration has an internal qualification-only switch. Ordinary CPU and experimental CUDA decode behavior remain unchanged. No candidate geometry selected by the product stage policy. Qualification is against displayed SDR pixels, not HDR export precision.

@@ -85,7 +85,11 @@ func (d *StreamDecoder) Close() {
 }
 
 func streamFilter(graph string, offset int64) string {
-	return fmt.Sprintf("setpts=PTS-STARTPTS-%s/TB,tpad=stop_mode=clone:stop_duration=0.2,fps=%d:start_time=0:round=up:eof_action=pass,%s", seconds(float64(offset)/1000000), CompositeFPS, graph)
+	return streamTimingFilter(offset) + "," + graph
+}
+
+func streamTimingFilter(offset int64) string {
+	return fmt.Sprintf("setpts=PTS-STARTPTS-%s/TB,tpad=stop_mode=clone:stop_duration=0.2,fps=%d:start_time=0:round=up:eof_action=pass", seconds(float64(offset)/1000000), CompositeFPS)
 }
 
 func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity mediacache.Source, graph string) (*previewStream, error) {
@@ -114,7 +118,7 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 		if !ok {
 			return nil, errors.New("missing CUDA source ordinal")
 		}
-		input, cudaFilter, err := engine.VideoDecodePipeline(source.raw, fmt.Sprintf("select=gte(n\\,%d),%s", ordinal, filter), true)
+		input, cudaFilter, err := engine.previewCUDAPipeline(source.raw, req, fmt.Sprintf("select=gte(n\\,%d),%s", ordinal, streamTimingFilter(req.Tick-at)), graph, d.indexer.previewScale)
 		if err != nil {
 			return nil, err
 		}
