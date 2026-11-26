@@ -26,11 +26,26 @@ func previewScaleCandidate(v Stream, req StillRequest) (string, error) {
 		return "", err
 	}
 	w, h := req.OutputWidth, req.OutputHeight
-	if rotation != 0 || v.Range != "tv" || v.ChromaLocation != "left" || req.Crop != nil || req.Transform != nil ||
-		req.Width != v.Width || req.Height != v.Height || req.Canvas != (CanvasSize{v.Width, v.Height}) ||
-		w < 2 || h < 2 || w > MaxStillSide || h > MaxStillSide || w%2 != 0 || h%2 != 0 ||
-		w > v.Width || h > v.Height || int64(w)*int64(v.Height) != int64(h)*int64(v.Width) {
-		return "", errors.New("CUDA preview scale candidate requires uncropped unrotated limited-range left-sited HLG, source-sized canvas and even aspect-preserving downscale")
+	if rotation != 0 {
+		return "", fmt.Errorf("CUDA preview scale candidate requires zero display rotation; got %d degrees", rotation)
+	}
+	if v.Range != "tv" {
+		return "", fmt.Errorf("CUDA preview scale candidate requires limited-range HLG (tv); got %q", v.Range)
+	}
+	if v.ChromaLocation != "left" {
+		return "", fmt.Errorf("CUDA preview scale candidate requires left-sited chroma; got %q", v.ChromaLocation)
+	}
+	if req.Crop != nil || req.Transform != nil {
+		return "", errors.New("CUDA preview scale candidate does not support crop or transform")
+	}
+	if req.Width != v.Width || req.Height != v.Height || req.Canvas != (CanvasSize{v.Width, v.Height}) {
+		return "", errors.New("CUDA preview scale candidate requires source-sized geometry and canvas")
+	}
+	if w < 2 || h < 2 || w > MaxStillSide || h > MaxStillSide || w%2 != 0 || h%2 != 0 {
+		return "", fmt.Errorf("CUDA preview scale candidate requires even output dimensions up to %d; got %dx%d", MaxStillSide, w, h)
+	}
+	if w > v.Width || h > v.Height || int64(w)*int64(v.Height) != int64(h)*int64(v.Width) {
+		return "", fmt.Errorf("CUDA preview scale candidate requires aspect-preserving downscale; got %dx%d to %dx%d", v.Width, v.Height, w, h)
 	}
 	return fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le:interp_algo=lanczos:passthrough=0,%s", w, h, cudaDownloadFilter), nil
 }
@@ -49,16 +64,39 @@ func (e Engine) previewCUDAPipeline(v Stream, req StillRequest, temporal, graph 
 	return append([]string{"-noautorotate"}, cudaDecodeInput()...), prefix + "," + temporal + "," + previewToneMapGraph, nil
 }
 
+const previewScaleMinPSNR = 40
+const previewScaleMaxDelta = 16
+
+type PreviewScaleSample struct {
+	FrameOffset int    `json:"frame_offset"`
+	PixelIndex  int    `json:"pixel_index"`
+	Channel     string `json:"channel"`
+	CPU         uint8  `json:"cpu"`
+	CUDA        uint8  `json:"cuda"`
+}
+
+type PreviewScaleSource struct {
+	Width          int    `json:"width"`
+	Height         int    `json:"height"`
+	Range          string `json:"range"`
+	ChromaLocation string `json:"chroma_location"`
+	Rotation       *int   `json:"rotation_degrees,omitempty"`
+}
+
 type PreviewScaleQuality struct {
-	MinFramePSNRDB    float64 `json:"min_frame_psnr_db"`
-	MaxChannelDelta   int     `json:"max_channel_delta"`
-	MeanAbsoluteDelta float64 `json:"mean_absolute_delta"`
-	ExactFrames       int     `json:"exact_frames"`
+	MinFramePSNRDB    float64             `json:"min_frame_psnr_db"`
+	MaxChannelDelta   int                 `json:"max_channel_delta"`
+	MeanAbsoluteDelta float64             `json:"mean_absolute_delta"`
+	ExactFrames       int                 `json:"exact_frames"`
+	SamplesCompared   uint64              `json:"samples_compared"`
+	SamplesOverLimit  uint64              `json:"samples_over_limit"`
+	WorstSample       *PreviewScaleSample `json:"worst_sample,omitempty"`
 }
 
 type PreviewScaleReport struct {
 	Backend       string              `json:"backend"`
 	Source        string              `json:"source"`
+	SourceVideo   *PreviewScaleSource `json:"source_video,omitempty"`
 	FirstFrame    int                 `json:"first_frame"`
 	Frames        int                 `json:"frames"`
 	Compared      int                 `json:"compared"`
@@ -74,6 +112,7 @@ type PreviewScaleReport struct {
 type previewQualityAccumulator struct {
 	quality           PreviewScaleQuality
 	absolute, samples uint64
+	frames            int
 }
 
 func (a *previewQualityAccumulator) add(cpu, gpu []byte) error {
@@ -83,6 +122,9 @@ func (a *previewQualityAccumulator) add(cpu, gpu []byte) error {
 	var sum uint64
 	var squares [3]uint64
 	maxDelta := 0
+	var overLimit uint64
+	var worst *PreviewScaleSample
+	channels := [3]string{"B", "G", "R"}
 	for i := 0; i < len(cpu); i += 4 {
 		if cpu[i+3] != 255 || gpu[i+3] != 255 {
 			return errors.New("nonopaque preview pixel")
@@ -92,7 +134,13 @@ func (a *previewQualityAccumulator) add(cpu, gpu []byte) error {
 			if d < 0 {
 				d = -d
 			}
-			maxDelta = max(maxDelta, d)
+			if d > maxDelta {
+				maxDelta = d
+				worst = &PreviewScaleSample{FrameOffset: a.frames, PixelIndex: i / 4, Channel: channels[c], CPU: cpu[i+c], CUDA: gpu[i+c]}
+			}
+			if d > previewScaleMaxDelta {
+				overLimit++
+			}
 			sum += uint64(d)
 			squares[c] += uint64(d * d)
 		}
@@ -106,18 +154,24 @@ func (a *previewQualityAccumulator) add(cpu, gpu []byte) error {
 	if a.samples == 0 || psnr < a.quality.MinFramePSNRDB {
 		a.quality.MinFramePSNRDB = psnr
 	}
-	a.quality.MaxChannelDelta = max(a.quality.MaxChannelDelta, maxDelta)
+	if maxDelta > a.quality.MaxChannelDelta {
+		a.quality.MaxChannelDelta = maxDelta
+		a.quality.WorstSample = worst
+	}
+	a.quality.SamplesOverLimit += overLimit
 	if maxDelta == 0 {
 		a.quality.ExactFrames++
 	}
 	a.absolute += sum
 	a.samples += uint64(len(cpu) / 4 * 3)
 	a.quality.MeanAbsoluteDelta = float64(a.absolute) / float64(a.samples)
+	a.quality.SamplesCompared = a.samples
+	a.frames++
 	return nil
 }
 
 func (q PreviewScaleQuality) withinLimits() bool {
-	return q.MinFramePSNRDB >= 40 && q.MaxChannelDelta <= 16
+	return q.MinFramePSNRDB >= previewScaleMinPSNR && q.MaxChannelDelta <= previewScaleMaxDelta
 }
 
 func previewCheckArgs(e Engine, v Stream, req StillRequest, first, count int, cuda bool) ([]string, error) {
@@ -290,6 +344,10 @@ func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, c
 	v, err := report.Video()
 	if err != nil {
 		return r, err
+	}
+	r.SourceVideo = &PreviewScaleSource{Width: v.Width, Height: v.Height, Range: v.Range, ChromaLocation: v.ChromaLocation}
+	if rotation, rotationErr := v.DisplayRotation(); rotationErr == nil {
+		r.SourceVideo.Rotation = &rotation
 	}
 	req := StillRequest{Path: identity.Path, Width: v.Width, Height: v.Height, Canvas: CanvasSize{v.Width, v.Height}, OutputWidth: width, OutputHeight: height}
 	if _, err = previewScaleCandidate(v, req); err != nil {
