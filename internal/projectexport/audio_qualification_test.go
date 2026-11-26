@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/binary"
 	"math"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
