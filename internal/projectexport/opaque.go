@@ -105,7 +105,7 @@ func validateVideo(plan Plan, discardAudio bool) error {
 		return errors.New("video export currently supports at most 4096 pixels per side and 4096x2160 pixels total")
 	}
 	if plan.Contract.Audio && !discardAudio {
-		return errors.New("project contains enabled audio; offline audio export is pending; pass -discard-audio to explicitly export video only")
+		return errors.New("project contains enabled audio; use export-project or pass -discard-audio to explicitly export video only")
 	}
 	for _, s := range plan.Spans {
 		if s.FirstFrame == s.EndFrame {

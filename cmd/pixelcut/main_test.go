@@ -24,3 +24,10 @@ func TestExportVideoCommandRequiresDestination(t *testing.T) {
 		t.Fatalf("missing export destination not rejected: %v", err)
 	}
 }
+
+func TestExportProjectCommandRequiresDestination(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"export-project", "-color", "hlg", "-fps", "30", "project.pixelcut.json"}, &out); err == nil || !strings.Contains(err.Error(), "OUTPUT.mp4") {
+		t.Fatalf("missing project export destination not rejected: %v", err)
+	}
+}

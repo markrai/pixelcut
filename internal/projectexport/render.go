@@ -186,8 +186,12 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 }
 
 func verifyVideoOutput(plan Plan, report media.Report) error {
+	plan.Contract.Audio = false
+	return verifyProjectOutput(plan, report)
+}
+
+func verifyProjectOutput(plan Plan, report media.Report) error {
 	contract := plan.Contract
-	contract.Audio = false
 	if err := contract.VerifyOutput(report); err != nil {
 		return err
 	}
@@ -204,10 +208,28 @@ func verifyVideoOutput(plan Plan, report media.Report) error {
 	if err != nil || duration < want-1 || duration > want+1 {
 		return errors.New("output video duration does not match CFR frame count")
 	}
+	if v.StartPTS == nil || *v.StartPTS != 0 {
+		return errors.New("output video does not start at zero")
+	}
+	if contract.Audio {
+		for _, stream := range report.Streams {
+			if stream.CodecType == "audio" && (stream.TimeBase != "1/48000" || stream.StartPTS == nil || *stream.StartPTS != 0 || stream.DurationTS == nil || *stream.DurationTS != plan.OutputAudioFrames) {
+				return errors.New("output AAC presentation sample interval does not match project")
+			}
+		}
+	}
 	return nil
 }
 
 func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, discardAudio bool, output string) error {
+	return renderProject(ctx, engine, p, color, fps, false, discardAudio, output)
+}
+
+func RenderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, output string) error {
+	return renderProject(ctx, engine, p, color, fps, true, false, output)
+}
+
+func renderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string) error {
 	out, err := filepath.Abs(output)
 	if err != nil {
 		return err
@@ -225,8 +247,13 @@ func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, co
 		return err
 	}
 	plan := prepared.Plan
-	if err := validateVideo(plan, discardAudio); err != nil {
+	if err := validateVideo(plan, discardAudio || includeAudio); err != nil {
 		return err
+	}
+	if includeAudio && plan.Contract.Audio {
+		if err := validateAudio(plan); err != nil {
+			return err
+		}
 	}
 	sources := make(map[string]Source, len(prepared.Sources))
 	for _, source := range prepared.Sources {
@@ -272,6 +299,31 @@ func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, co
 	}
 	if err := verifyVideoOutput(plan, report); err != nil {
 		return err
+	}
+	if includeAudio && plan.Contract.Audio {
+		if err := prepared.VerifySources(ctx); err != nil {
+			return err
+		}
+		muxed, err := os.CreateTemp(filepath.Dir(out), ".pixelcut-*.pixelcut-tmp.mp4")
+		if err != nil {
+			return err
+		}
+		muxName := muxed.Name()
+		defer os.Remove(muxName)
+		if err := muxed.Close(); err != nil {
+			return err
+		}
+		if err := muxAudio(ctx, engine, plan, sources, name, muxName); err != nil {
+			return fmt.Errorf("mux project audio: %w", err)
+		}
+		report, err := engine.Inspect(ctx, muxName)
+		if err != nil {
+			return err
+		}
+		if err := verifyProjectOutput(plan, report); err != nil {
+			return err
+		}
+		name = muxName
 	}
 	if err := prepared.VerifySources(ctx); err != nil {
 		return err
