@@ -132,6 +132,19 @@ func TestRenderProjectAudioAndVideoPacketPreservation(t *testing.T) {
 	if _, err := os.Stat(midPath); !os.IsNotExist(err) {
 		t.Fatal("mid-render cancellation published output")
 	}
+	audioCtx, stopAudio := context.WithCancel(ctx)
+	defer stopAudio()
+	audioPath := filepath.Join(dir, "audio-cancel.mp4")
+	if err := RenderProjectObserved(audioCtx, engine, p, "hlg", 30, audioPath, func(v Progress) {
+		if v.Stage == StageAudio && v.Completed > 0 {
+			stopAudio()
+		}
+	}); err == nil {
+		t.Fatal("mid-audio cancellation accepted")
+	}
+	if _, err := os.Stat(audioPath); !os.IsNotExist(err) {
+		t.Fatal("mid-audio cancellation published output")
+	}
 	racePath := filepath.Join(dir, "race.mp4")
 	var raceErr error
 	if err := RenderProjectObserved(ctx, engine, p, "hlg", 30, racePath, func(v Progress) {
@@ -143,6 +156,18 @@ func TestRenderProjectAudioAndVideoPacketPreservation(t *testing.T) {
 	}
 	if data, err := os.ReadFile(racePath); err != nil || string(data) != "existing" {
 		t.Fatal("late destination collision overwritten")
+	}
+	changedPath := filepath.Join(dir, "source-changed.mp4")
+	var changeErr error
+	if err := RenderProjectObserved(ctx, engine, p, "hlg", 30, changedPath, func(v Progress) {
+		if v.Stage == StagePublish {
+			changeErr = os.WriteFile(src, append(append([]byte(nil), original...), 0), 0600)
+		}
+	}); err == nil || changeErr != nil {
+		t.Fatalf("changed source publication: %v %v", err, changeErr)
+	}
+	if _, err := os.Stat(changedPath); !os.IsNotExist(err) {
+		t.Fatal("changed source export published")
 	}
 	files, err := filepath.Glob(filepath.Join(dir, ".pixelcut-*"))
 	if err != nil || len(files) != 0 {

@@ -337,10 +337,10 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 			return err
 		}
 	}
+	emit(observe, StagePublish, 0, 0)
 	if err := prepared.VerifySources(ctx); err != nil {
 		return err
 	}
-	emit(observe, StagePublish, 0, 0)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
