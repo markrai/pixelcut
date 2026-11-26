@@ -62,7 +62,7 @@ from a build alone.
 | 2C.4 | Track visibility, mute, solo, lock | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45729406556); merged; native acceptance pending |
 | 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
 | 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.6 merged to main via PR #11; native qualification remains open |
-| 2D | Whole-project export and explicit output color contracts | In progress: 2D.1 merged; 2D.2 opaque HDR video rendering implemented; CI pending |
+| 2D | Whole-project export and explicit output color contracts | In progress: 2D.1–2D.2 merged; 2D.3 scene-linear opacity and source normalization implemented; CI pending |
 | 2E | Audio envelopes, fades, levels and mixing | Pending |
 | 3A | GPU acceleration | Pending |
 | 3B | Transitions, keyframes, speed effects, titles and subtitles | Pending |
@@ -97,10 +97,10 @@ from a build alone.
 | Slice | Scope | Status |
 | --- | --- | --- |
 | 2D.1 | Explicit HLG output contract, immutable timeline plan, source preflight and CLI inspection | Merged to main via PR #12 |
-| 2D.2 | Native 10-bit HLG opaque video rendering, geometry, gaps, CFR and verified publication | Implemented; CI and physical qualification pending |
-| 2D.3 | Multi-layer HDR composition with explicit linear-light blending and alpha, full range/chroma normalization qualification | Pending |
+| 2D.2 | Native 10-bit HLG opaque video rendering, geometry, gaps, CFR and verified publication | Merged to main via PR #13; physical qualification pending |
+| 2D.3 | Multi-layer HDR composition with explicit linear-light blending and alpha, full range/chroma normalization qualification | Implemented; CI and physical qualification pending |
 | 2D.4 | Offline audio mix, AAC mux, exact output frame/sample duration verification | Pending |
 | 2D.5 | CLI and Windows export orchestration, progress, cancellation and destination safety | Pending |
 | 2D.6 | Synthetic/reference and real Pixel HDR qualification, bounded resource/performance review | Pending |
 
-See [project export contract](docs/project-export.md). Experimental opaque whole-project video-only rendering is available in 2D.2; audio and partial opacity remain pending. The existing selected-clip HLG export remains independent.
+See [project export contract](docs/project-export.md). Experimental whole-project HDR video-only rendering and partial opacity are available in 2D.3; audio remains pending. The existing selected-clip HLG export remains independent.

@@ -73,6 +73,24 @@ func TestRenderOpaqueHLGProject(t *testing.T) {
 			t.Fatalf("frame %d at %d,%d: luma %d want %d", tc.frame, tc.x, tc.y, got, tc.want)
 		}
 	}
+	q, err := p.SetClipOpacity(project.ClipRef{TrackID: "V2", ClipID: "top"}, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blendPath := filepath.Join(dir, "blend.mp4")
+	if err := RenderVideo(ctx, engine, q, "hlg", 30, false, blendPath); err != nil {
+		t.Fatal(err)
+	}
+	blended, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", blendPath, "-map", "0:v:0", "-c:v", "rawvideo", "-threads", "1", "-pix_fmt", "yuv420p10le", "-f", "rawvideo", "-").Output()
+	if err != nil || len(blended) != len(raw) {
+		t.Fatalf("blended output: %v", err)
+	}
+	if got := int(binary.LittleEndian.Uint16(blended[6*frameBytes+2*(24*64+32):])); got < 575 || got > 599 {
+		t.Fatalf("linear blend luma %d want 587 (not code-space average 530)", got)
+	}
+	if got := int(binary.LittleEndian.Uint16(blended[6*frameBytes+2*(4*64+4):])); got < 368 || got > 392 {
+		t.Fatalf("uncovered base luma changed: %d", got)
+	}
 	current, err := os.ReadFile(src)
 	if err != nil || sha256.Sum256(original) != sha256.Sum256(current) {
 		t.Fatal("source changed during export")

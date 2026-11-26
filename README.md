@@ -213,7 +213,7 @@ Composite still and playback workers now reuse the existing bounded on-disk fram
 
 ### Whole-project export preflight (2D.1)
 
-Run `pixelcut plan-export -color hlg -fps 30 project.pixelcut.json` to inspect the intended HDR export contract, timeline spans, frame/sample ranges and validated contributing sources. This is read-only JSON planning, **not** an export command. Both HLG and a supported integer CFR (24, 25, 30, 50 or 60) must be explicit. Full-range or center-sited visible HLG sources require a future qualified normalization path; unsupported inputs are rejected rather than relabeled. Opaque video rendering is available in 2D.2; HDR opacity blending, audio mux and UI remain subsequent slices. See [project export](docs/project-export.md).
+Run `pixelcut plan-export -color hlg -fps 30 project.pixelcut.json` to inspect the intended HDR export contract, timeline spans, frame/sample ranges and validated contributing sources. This is read-only JSON planning, **not** an export command. Both HLG and a supported integer CFR (24, 25, 30, 50 or 60) must be explicit. Full-range and center-sited HLG inputs are explicitly normalized for project video export in 2D.3; other unsupported inputs are rejected rather than relabeled. HDR video rendering and opacity blending are available in 2D.3; audio mux and UI remain subsequent slices. See [project export](docs/project-export.md).
 
 
 ### Experimental whole-project HLG video export (2D.2)
@@ -222,4 +222,9 @@ Run `pixelcut plan-export -color hlg -fps 30 project.pixelcut.json` to inspect t
 pixelcut export-video -color hlg -fps 30 -discard-audio project.pixelcut.json output.mp4
 ```
 
-Exports original 10-bit HLG frames, opaque layers, cuts, geometry, and black gaps to one HEVC Main 10 HLG MP4. If enabled audio is present, the command refuses unless `-discard-audio` is explicitly supplied; offline audio export is 2D.4. Partial opacity fails rather than producing a misleading composite. At most four simultaneous layers and a 4096-pixel side / 4096x2160 total-pixel canvas are supported. Output must not exist. The source frame index selects the predecessor at each CFR tick; decoding currently starts at source beginning for each span, so long trims may be slow. Actual Pixel HDR/rotation/VFR qualification is still required. Existing selected-clip export is unchanged.
+Exports original 10-bit HLG frames, opaque layers, cuts, geometry, and black gaps to one HEVC Main 10 HLG MP4. If enabled audio is present, the command refuses unless `-discard-audio` is explicitly supplied; offline audio export is 2D.4. Partial opacity is now composited in scene-linear BT.2020 RGB (2D.3). At most four simultaneous layers and a 4096-pixel side / 4096x2160 total-pixel canvas are supported. Output must not exist. The source frame index selects the predecessor at each CFR tick; decoding currently starts at source beginning for each span, so long trims may be slow. Actual Pixel HDR/rotation/VFR qualification is still required. Existing selected-clip export is unchanged.
+
+
+### Linear-light HDR composition (2D.3)
+
+The experimental `export-video` command now supports translucent video layers with the same 0–100% project opacity controls. Input full/limited range and left/center chroma siting are converted to limited-range 10-bit HLG 4:4:4 before geometry. Blended pixels are decoded with the HLG inverse OETF to scene-linear BT.2020 RGB, combined by source-over coverage, then encoded once; fully opaque pixels retain the direct copy path. This is scene-referred compositing, not display-referred tone mapping. Geometry resampling remains in HLG signal space. Existing full-range transform restrictions in the project model remain unchanged. Real Pixel footage, chroma-edge fidelity and 4K blend performance remain qualification gates.

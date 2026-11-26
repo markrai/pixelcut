@@ -18,7 +18,7 @@ func (i *fixtureInspector) Inspect(_ context.Context, _ string) (media.Report, e
 	return i.report, nil
 }
 
-func TestPrepareRevalidatesSourceAndRejectsColorConversion(t *testing.T) {
+func TestPrepareRevalidatesSourceAndRecordsNormalization(t *testing.T) {
 	p := exportFixture(t)
 	path := p.Assets[0].Path
 	if err := os.WriteFile(path, []byte("source"), 0600); err != nil {
@@ -40,8 +40,13 @@ func TestPrepareRevalidatesSourceAndRejectsColorConversion(t *testing.T) {
 		t.Fatal("changed source accepted after preflight")
 	}
 	i.report.Streams[0].ChromaLocation = "center"
+	normalized, err := Prepare(ctx, i, p, "hlg", 30)
+	if err != nil || normalized.Sources[0].Chroma != "center" || len(normalized.Plan.Warnings) <= len(prepared.Plan.Warnings) {
+		t.Fatalf("center-sited normalization not recorded: %v", err)
+	}
+	i.report.Streams[0].Range = "pc"
 	if _, err := Prepare(ctx, i, p, "hlg", 30); err == nil {
-		t.Fatal("unimplemented chroma conversion accepted")
+		t.Fatal("changed declared range accepted")
 	}
 	i.report.Streams[0] = video
 	i.report.Streams[0].Width = 128
