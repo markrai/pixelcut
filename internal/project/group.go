@@ -48,6 +48,9 @@ func (p Project) DeleteClips(trackID string, ids []string) (Project, error) {
 	if err != nil {
 		return p, err
 	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
+		return p, err
+	}
 	q := p.Clone()
 	clips := q.Tracks[i].Clips[:0]
 	for _, c := range q.Tracks[i].Clips {
@@ -78,6 +81,12 @@ func (p Project) MoveClipsTo(from, to string, ids []string, delta, marker, toler
 	dst := p.TrackIndex(to)
 	if dst < 0 || p.Tracks[i].Kind != p.Tracks[dst].Kind {
 		return result, errors.New("destination must be a track of the same kind")
+	}
+	if err := p.RequireEditableTrack(from); err != nil {
+		return result, err
+	}
+	if err := p.RequireEditableTrack(to); err != nil {
+		return result, err
 	}
 	lo, hi := int64(math.MinInt64), int64(math.MaxInt64)
 	targets := []int64{0}

@@ -19,6 +19,12 @@ func (p Project) DetachAudio(video ClipRef, target, id string) (Project, error) 
 	if dst < 0 || p.Tracks[dst].Kind != AudioTrack {
 		return p, errors.New("detach requires an audio track")
 	}
+	if err := p.RequireEditableTrack(video.TrackID); err != nil {
+		return p, err
+	}
+	if err := p.RequireEditableTrack(target); err != nil {
+		return p, err
+	}
 	q := p.Clone()
 	q.Version = Version
 	q.Tracks[ti].Clips[ci].AudioDetached = true
@@ -65,6 +71,12 @@ func (p Project) ReattachAudio(video, audio ClipRef) (Project, error) {
 	v, a := p.Tracks[vi].Clips[vc], p.Tracks[ai].Clips[ac]
 	if p.Tracks[vi].Kind != VideoTrack || p.Tracks[ai].Kind != AudioTrack || !v.AudioDetached || !audioAligned(v, a) {
 		return p, errors.New("reattach requires detached video and audio with identical source and timeline intervals")
+	}
+	if err := p.RequireEditableTrack(video.TrackID); err != nil {
+		return p, err
+	}
+	if err := p.RequireEditableTrack(audio.TrackID); err != nil {
+		return p, err
 	}
 	q := p.Clone()
 	q.Tracks[vi].Clips[vc].AudioDetached = false

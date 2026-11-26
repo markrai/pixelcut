@@ -105,6 +105,9 @@ func (s *State) Commit(p project.Project, u SelectionUpdate) (bool, error) {
 	if err := p.Validate(); err != nil {
 		return false, err
 	}
+	if err := s.p.ValidateLockedEdit(p); err != nil {
+		return false, err
+	}
 	p = p.Clone()
 	fingerprint := p.Fingerprint()
 	if fingerprint == "" {

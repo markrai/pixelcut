@@ -73,6 +73,9 @@ func (p Project) PasteClips(trackID string, b ClipClipboard, at int64, ids []str
 	if ti < 0 || p.Tracks[ti].Kind != b.kind {
 		return result, errors.New("clipboard requires a track of the same kind")
 	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
+		return result, err
+	}
 	for id, source := range b.assets {
 		a, ok := p.Asset(id)
 		if !ok || a != source {

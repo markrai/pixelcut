@@ -9,7 +9,8 @@ import (
 
 const LegacyVersion = 1
 const TrackVersion = 2
-const Version = 3
+const AudioVersion = 3
+const Version = 4
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -40,9 +41,13 @@ type Clip struct {
 }
 
 type Track struct {
-	ID    string `json:"id"`
-	Kind  string `json:"kind"`
-	Clips []Clip `json:"clips"`
+	ID     string `json:"id"`
+	Kind   string `json:"kind"`
+	Clips  []Clip `json:"clips"`
+	Hidden bool   `json:"hidden,omitempty"`
+	Muted  bool   `json:"muted,omitempty"`
+	Solo   bool   `json:"solo,omitempty"`
+	Locked bool   `json:"locked,omitempty"`
 }
 
 type Project struct {
@@ -110,6 +115,9 @@ func (p Project) Split(track, clip, rightID string, at int64) (Project, error) {
 	i, j, ok := p.ClipIndex(ClipRef{TrackID: track, ClipID: clip})
 	if !ok {
 		return p, ErrClipNotFound
+	}
+	if err := p.RequireEditableTrack(track); err != nil {
+		return p, err
 	}
 	c := p.Tracks[i].Clips[j]
 	if at <= c.Start || !c.Contains(at) {

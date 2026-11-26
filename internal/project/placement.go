@@ -26,6 +26,9 @@ func (p Project) PlaceAssets(trackID string, assetIDs, clipIDs []string, start, 
 	if ti < 0 {
 		return result, ErrTrackNotFound
 	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
+		return result, err
+	}
 	var duration int64
 	clips := make([]Clip, 0, len(assetIDs))
 	for i, id := range assetIDs {

@@ -25,6 +25,9 @@ func (p Project) RemoveAsset(id string, removeClips bool) (Project, error) {
 	if _, ok := p.Asset(id); !ok {
 		return p, ErrAssetNotFound
 	}
+	if err := p.RequireEditableAsset(id); err != nil {
+		return p, err
+	}
 	if !removeClips && p.AssetReferences(id) > 0 {
 		return p, errors.New("asset is used by timeline clips")
 	}
@@ -115,6 +118,11 @@ func (p Project) MergeDuplicateAssets() (Project, map[string]string, error) {
 		}
 		if !duplicate {
 			q.Assets = append(q.Assets, a)
+		}
+	}
+	for id := range remap {
+		if err := p.RequireEditableAsset(id); err != nil {
+			return p, nil, err
 		}
 	}
 	if len(remap) == 0 {
