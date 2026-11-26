@@ -169,3 +169,8 @@ The Track menu switches the active editing track, adds video/audio tracks, trans
 ## Development and architectural stabilization
 
 Feature work is paused for the 2C.R refactoring milestone. See [Architecture](ARCHITECTURE.md), [Roadmap](ROADMAP.md), and the [reproducible baseline](docs/refactor-baseline.md) for ownership boundaries, phase acceptance gates, test commands and measurements. Automated CI success is distinct from physical Windows and HDR qualification.
+
+
+### Independent audio preview (2C.3)
+
+Select an audio track to audition it using the existing playback controls. Right-click a video clip to detach source audio into an independent audio track, or reattach a uniquely aligned matching audio clip. The detached video previews and exports without its source audio. Independent audio and video preview remain isolated; simultaneous composition and mixing are future phases.

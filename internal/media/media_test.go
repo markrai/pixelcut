@@ -152,6 +152,25 @@ func TestHLGMediaPipeline(t *testing.T) {
 	if !bytes.Equal(hashes(src), hashes(copied)) {
 		t.Fatal("remux changed decoded frame hashes or timestamps")
 	}
+	silentCopy := filepath.Join(dir, "silent-copy.mp4")
+	if err = e.RemuxVideoOnly(ctx, src, silentCopy); err != nil {
+		t.Fatal(err)
+	}
+	silentReport, err := e.Inspect(ctx, silentCopy)
+	if err != nil || silentReport.audioCount() != 0 || len(silentReport.Streams) != 1 {
+		t.Fatalf("video-only remux streams: %+v %v", silentReport.Streams, err)
+	}
+	if !bytes.Equal(hashes(src), hashes(silentCopy)) {
+		t.Fatal("video-only remux changed decoded frame hashes or timestamps")
+	}
+	silentTrim := filepath.Join(dir, "silent-trim.mp4")
+	if err = e.Render(ctx, src, silentTrim, Edit{Trim: true, Start: 0.5, Duration: 1, Silent: true}); err != nil {
+		t.Fatal(err)
+	}
+	silentReport, err = e.Inspect(ctx, silentTrim)
+	if err != nil || silentReport.audioCount() != 0 || len(silentReport.Streams) != 1 {
+		t.Fatalf("video-only render streams: %+v %v", silentReport.Streams, err)
+	}
 	if err = e.Remux(ctx, src, copied); err == nil {
 		t.Fatal("overwrote existing output")
 	}

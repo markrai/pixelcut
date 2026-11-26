@@ -31,7 +31,7 @@ Windows acceptance for these recent slices is not recorded here.
 
 ## 2C.R: Architectural stabilization
 
-New product features require stabilization acceptance before merge/release. Work on 2C.2 is isolated on a feature branch at the user's request while physical qualification remains outstanding.
+New product features require stabilization acceptance before merge/release. 2C.2 was merged at the user's direction after CI; physical qualification remains outstanding. 2C.3 is staged on a separate feature branch.
 Each slice must independently preserve existing functionality and project/recovery
 compatibility. Ownership rules are in [ARCHITECTURE.md](ARCHITECTURE.md).
 The next slice cannot be accepted until its predecessor's verification is recorded.
@@ -57,8 +57,8 @@ from a build alone.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 2C.2 | Stacked lanes and cross-track dragging | Implemented on feature branch; automated and native verification pending |
-| 2C.3 | Independent audio playback, detach/relink | Pending |
+| 2C.2 | Stacked lanes and cross-track dragging | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45722841420); merged; native acceptance pending |
+| 2C.3 | Independent audio playback, detach/relink | Implemented on feature branch; automated and native verification pending |
 | 2C.4 | Track visibility, mute, solo, lock | Pending |
 | 2C.5 | Layering, opacity and picture-in-picture | Pending |
 | 2C.6 | Composite preview and continuous timeline playback | Pending |

@@ -221,7 +221,7 @@ func (e *editor) timelineContext(lp uintptr) {
 			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
 				s.detachAudio = a.HasAudio && !c.AudioDetached
-				s.reattachAudio = c.AudioDetached && len(e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})) > 0
+				s.reattachAudio = c.AudioDetached && len(e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})) == 1
 			}
 		}
 		e.checkpoint()

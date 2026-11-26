@@ -80,13 +80,7 @@ func (e *editor) syncPreferencesUI() {
 		change(h, text)
 		user.NewProc("InvalidateRect").Call(h, 0, 1)
 	}
-	preview := "Source preview / SDR"
-	if e.prefs.HDR {
-		preview = "Source preview / HDR (experimental)"
-	}
-	if e.previewLabel != 0 {
-		change(e.previewLabel, preview)
-	}
+	e.syncPreviewLabel()
 }
 
 func (e *editor) rememberPreferences() string {
