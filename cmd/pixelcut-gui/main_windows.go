@@ -171,6 +171,7 @@ type result struct {
 	cacheCleared bool
 	relink       *relinkPlan
 	preferences  *session.Preferences
+	gpuInfo      *media.AccelerationReport
 	err          error
 	message      string
 }
@@ -483,6 +484,10 @@ func (e *editor) finished() {
 	}
 	if r.relink != nil {
 		e.finishRelink(r.relink)
+		return
+	}
+	if r.gpuInfo != nil {
+		e.presentGPUInfo(*r.gpuInfo)
 		return
 	}
 	if r.preferences != nil {

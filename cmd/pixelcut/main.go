@@ -19,6 +19,7 @@ import (
 const usage = `PixelCut - source-aware video editing foundation
 
 Usage:
+  pixelcut gpu-info [-probe-devices]
   pixelcut inspect INPUT
   pixelcut remux INPUT OUTPUT.mp4
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
@@ -38,6 +39,26 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	switch args[0] {
+	case "gpu-info":
+		fs := flag.NewFlagSet("gpu-info", flag.ContinueOnError)
+		fs.SetOutput(stdout)
+		devices := fs.Bool("probe-devices", false, "attempt hardware device initialization (not a rendering qualification)")
+		if err := fs.Parse(args[1:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil
+			}
+			return err
+		}
+		if fs.NArg() != 0 {
+			return errors.New("usage: pixelcut gpu-info [-probe-devices]")
+		}
+		report, err := e.ProbeAcceleration(ctx, *devices)
+		if err != nil {
+			return err
+		}
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(report)
 	case "plan-export", "export-video", "export-project":
 		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		fs.SetOutput(stdout)

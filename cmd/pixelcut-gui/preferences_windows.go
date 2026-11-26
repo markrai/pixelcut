@@ -34,6 +34,7 @@ const (
 	prefMPV
 	prefAutoTools
 	prefReset
+	prefGPUInfo
 )
 
 func engineForPreferences(p session.Preferences) media.Engine {
@@ -171,6 +172,7 @@ func preferenceItems(p session.Preferences) []menuItem {
 		item(prefFFprobe, toolLabel("FFprobe", p.FFprobe)+"...", true),
 		item(prefMPV, toolLabel("mpv", p.MPV)+"...", true),
 		item(prefAutoTools, "Use automatic tool discovery", true),
+		separator(), item(prefGPUInfo, "GPU capabilities / device diagnostics...", true),
 		separator(), item(prefReset, "Reset preferences to defaults...", true))
 	return items
 }
@@ -221,6 +223,8 @@ func (e *editor) showPreferences() error {
 		p.FFmpeg = ""
 		p.FFprobe = ""
 		p.MPV = ""
+	case prefGPUInfo:
+		return e.showGPUInfo()
 	case prefReset:
 		if r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u("Reset application preferences? Projects, recovery snapshots and cache contents are unchanged."))), uintptr(unsafe.Pointer(u("PixelCut settings"))), 0x134); r != 6 {
 			return nil
