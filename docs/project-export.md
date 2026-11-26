@@ -81,3 +81,6 @@ Both video encode and audio mux set the MP4 video track and movie timescale to 2
 ## 2E.1: shared audio gain
 
 The initial unity-gain-only mixer is superseded by the shared `composition.PCMMixer`. Optional version 6 clip gain is a linear amplitude percentage from 0 to 400 (default 100); zero-gain audio is omitted by the evaluator. Preview and offline export use the same fixed-point accumulation, symmetric final rounding and single saturation. Loud overlaps may still clip: there is no limiter or automatic normalization. If every audio contribution is suppressed, no audio stream is emitted. Selected-clip export can omit zero-gain audio but refuses positive non-unity gain, which requires whole-project export. See [audio processing contract](audio-processing.md).
+
+
+2E.2 adds independent clip mute: muted audio is suppressed before either mixer, with configured gain retained. All enabled audio policies compose with clip mute; the exporter omits an AAC stream if no effective audio contributions remain. Selected-clip export honors clip mute, zero gain and track mute without requiring composition, but audible non-unity gain still requires whole-project export.

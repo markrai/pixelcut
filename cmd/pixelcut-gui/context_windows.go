@@ -24,6 +24,7 @@ const (
 	menuReplaceClip
 	menuDetachAudio
 	menuReattachAudio
+	menuClipMute
 )
 
 type menuItem struct {
@@ -40,6 +41,7 @@ func separator() menuItem { return menuItem{} }
 type timelineMenuState struct {
 	count                                                            int
 	detachAudio, reattachAudio                                       bool
+	clipAudio, clipMuted                                             bool
 	audioTrack                                                       bool
 	frameSnap                                                        bool
 	offline                                                          bool
@@ -58,6 +60,13 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(idDelete, "Delete\tDel", true), item(idRippleDelete, "Ripple delete\tShift+Del", true), separator(),
 			item(menuSelectAsset, "Select source in media bin", single), item(menuRevealClip, "Show source in Explorer", single && !s.offline),
 			item(menuRelinkClip, "Relink source...", single && s.offline), item(menuReplaceClip, "Replace source...", single))
+		if single {
+			muteLabel := "Mute clip audio"
+			if s.clipMuted {
+				muteLabel = "Unmute clip audio"
+			}
+			items = append(items, separator(), item(idClipAudio, "Clip audio / volume...", s.clipAudio), menuItem{id: menuClipMute, label: muteLabel, enabled: s.clipAudio, checked: s.clipMuted})
+		}
 		if single && !s.audioTrack {
 			items = append(items, separator(), item(menuDetachAudio, "Detach source audio", s.detachAudio), item(menuReattachAudio, "Reattach matching audio", s.reattachAudio), separator(), item(menuLayerOpacity, "Layer opacity...", true), item(menuLayerPreset, "Layer placement / picture-in-picture...", true))
 		}
@@ -231,6 +240,8 @@ func (e *editor) timelineContext(lp uintptr) {
 			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
 				s.detachAudio = a.HasAudio && !c.AudioDetached
+				s.clipAudio = a.HasAudio && !c.AudioDetached
+				s.clipMuted = c.AudioMuted
 				matches := e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})
 				s.reattachAudio = c.AudioDetached && len(matches) == 1 && e.model.Project().RequireEditableTrack(matches[0].TrackID) == nil
 			}
@@ -247,6 +258,8 @@ func (e *editor) timelineContext(lp uintptr) {
 	}
 	var err error
 	switch id {
+	case idClipAudio, menuClipMute:
+		err = e.clipAudioAction(id, screen)
 	case menuLayerOpacity, menuLayerPreset, menuLayerLayout, menuCompositeStill, menuCompositePlay, menuSourcePlay:
 		err = e.layerAction(id, screen)
 	case menuPasteHere:
