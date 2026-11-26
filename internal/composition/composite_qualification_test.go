@@ -91,10 +91,6 @@ func TestCompositeQualificationRealMedia(t *testing.T) {
 	if !bytes.Equal(ref.Pixels, frame.Frame.Pixels) {
 		t.Fatal("aligned still and streaming SDR pixels differ")
 	}
-	plan, err = e.PlanLayers(100000)
-	if err != nil {
-		t.Fatal(err)
-	}
 	started = time.Now()
 	next, err := renderCompositeFrame(ctx, e, video, 100000, identities)
 	if err != nil || bytes.Equal(next.Frame.Pixels, frame.Frame.Pixels) {
@@ -128,6 +124,7 @@ func TestCompositeQualificationRealMedia(t *testing.T) {
 	if _, err = MixPCM(ctx, e, audio, 0, media.PCMBlockFrames, media.PCMBlockFrames); err != nil || audio.Stats().Opened != 2 {
 		t.Fatalf("audio stream reuse: %v", err)
 	}
+	cancel()
 	video.Close()
 	audio.Close()
 	single.Close()

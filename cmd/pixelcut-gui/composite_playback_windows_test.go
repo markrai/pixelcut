@@ -16,6 +16,9 @@ func TestCompositePlaybackMenuAndRetirement(t *testing.T) {
 			}
 		}
 	}
+	if v, ok := findMenuItem(trackMenuItems(project.New(), "V1", nil), menuCompositeDiagnostics); !ok || !v.enabled {
+		t.Fatal("composite diagnostics menu unavailable")
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	run := &compositePreviewRun{cancel: cancel, done: make(chan struct{})}
 	e := editor{compositeRun: run, stillActive: true}
