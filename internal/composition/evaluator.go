@@ -27,7 +27,8 @@ type VideoLayer struct {
 
 type AudioContribution struct {
 	Contribution
-	Linked bool
+	Linked      bool
+	GainPercent int
 }
 
 type Evaluation struct {
@@ -129,8 +130,8 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 			c = c.Clone()
 			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform, Opacity: c.OpacityPercent()})
 		}
-		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached {
-			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack})
+		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.GainPercent() > 0 {
+			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack, GainPercent: c.GainPercent()})
 		}
 	}
 	return f, nil
@@ -151,7 +152,7 @@ func (e *Evaluator) AuditionTarget(trackID string, at int64, advance bool) (proj
 			if c.Start > at && !advance {
 				break
 			}
-			if t.policy.Video || (t.policy.Audio && item.asset.HasAudio && !c.AudioDetached) {
+			if t.policy.Video || (t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.GainPercent() > 0) {
 				return project.ClipRef{TrackID: t.id, ClipID: c.ID}, max(at, c.Start), true
 			}
 			if !advance {

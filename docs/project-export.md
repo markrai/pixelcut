@@ -76,3 +76,8 @@ Native acceptance: export an unsaved multi-track project with no clip selected; 
 ## 2D.6: exact packet-grid verification
 
 Both video encode and audio mux set the MP4 video track and movie timescale to 240000 Hz. In addition to the stream-level color, count and duration checks, the final staged video must have exactly one packet for every planned presentation index, each at index * (240000/FPS) with that exact packet duration. B-frame reorder is permitted; duplicate, missing, off-grid or extra packets fail. The verifier streams packet records and uses a bounded bitset rather than a full decoded frame list. A source probe with decode error diagnostics now fails strict export even if FFprobe exits successfully. If no visible rectangle has a CFR sample, the renderer fails instead of publishing black-only video. See [qualification and physical acceptance](export-qualification.md). No physical HDR or real Pixel footage qualification is implied by metadata or synthetic packet checks.
+
+
+## 2E.1: shared audio gain
+
+The initial unity-gain-only mixer is superseded by the shared `composition.PCMMixer`. Optional version 6 clip gain is a linear amplitude percentage from 0 to 400 (default 100); zero-gain audio is omitted by the evaluator. Preview and offline export use the same fixed-point accumulation, symmetric final rounding and single saturation. Loud overlaps may still clip: there is no limiter or automatic normalization. If every audio contribution is suppressed, no audio stream is emitted. Selected-clip export can omit zero-gain audio but refuses positive non-unity gain, which requires whole-project export. See [audio processing contract](audio-processing.md).

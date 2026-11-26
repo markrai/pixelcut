@@ -181,8 +181,9 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 		return err
 	}
 	var pos int64
-	sum := make([]int32, media.PCMBlockFrames*media.PCMChannels)
-	raw := make([]byte, len(sum)*2)
+	var mixer composition.PCMMixer
+	mixed := make([]int16, media.PCMBlockFrames*media.PCMChannels)
+	raw := make([]byte, len(mixed)*2)
 	for _, span := range plan.Spans {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -205,22 +206,24 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 				return err
 			}
 			n := int(min(int64(media.PCMBlockFrames), span.EndSample-pos))
-			block := sum[:n*media.PCMChannels]
-			clear(block)
+			block := mixed[:n*media.PCMChannels]
+			if err := mixer.Reset(n); err != nil {
+				return err
+			}
 			for _, a := range span.Audio {
 				samples, err := decoder.Read(a, pos, n)
 				if err != nil {
 					return fmt.Errorf("audio %s/%s: %w", a.Ref.TrackID, a.Ref.ClipID, err)
 				}
-				if len(samples) != len(block) {
-					return errors.New("invalid offline PCM block")
-				}
-				for i, v := range samples {
-					block[i] += int32(v)
+				if err := mixer.Add(samples, a.GainPercent); err != nil {
+					return err
 				}
 			}
+			if err := mixer.Finish(block); err != nil {
+				return err
+			}
 			for i, v := range block {
-				binary.LittleEndian.PutUint16(raw[2*i:], uint16(int16(max(-32768, min(32767, v)))))
+				binary.LittleEndian.PutUint16(raw[2*i:], uint16(v))
 			}
 			if err := writePCM(dst, raw[:len(block)*2]); err != nil {
 				return err

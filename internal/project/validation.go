@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -38,8 +38,8 @@ func validateTrackLayout(p Project) error {
 		return fmt.Errorf("%w %d", ErrUnsupportedVersion, p.Version)
 	}
 	if p.CanvasWidth != 0 || p.CanvasHeight != 0 {
-		if p.Version < Version {
-			return fmt.Errorf("%w: composition canvas requires version %d", ErrUnsupportedVersion, Version)
+		if p.Version < LayerVersion {
+			return fmt.Errorf("%w: composition canvas requires version %d", ErrUnsupportedVersion, LayerVersion)
 		}
 		if err := (media.CanvasSize{Width: p.CanvasWidth, Height: p.CanvasHeight}).Validate(); err != nil {
 			return err
@@ -73,6 +73,9 @@ func validateClip(c Clip, a Asset, kind string) error {
 	}
 	if c.Opacity != nil && (kind != VideoTrack || *c.Opacity < 0 || *c.Opacity > 100) {
 		return fmt.Errorf("%w %q: opacity requires a video clip and a value from 0 to 100", ErrInvalidClip, c.ID)
+	}
+	if c.Gain != nil && (!a.HasAudio || c.AudioDetached || *c.Gain < 0 || *c.Gain > MaxGainPercent) {
+		return fmt.Errorf("%w %q: gain requires attached or independent source audio and a value from 0 to %d", ErrInvalidClip, c.ID, MaxGainPercent)
 	}
 	if kind == AudioTrack && (!a.HasAudio || c.Crop != nil || c.Transform != nil) {
 		return fmt.Errorf("%w %q: invalid audio clip", ErrInvalidClip, c.ID)
@@ -135,8 +138,11 @@ func (p Project) Validate() error {
 			if c.AudioDetached && p.Version < AudioVersion {
 				return fmt.Errorf("%w: detached audio requires version %d", ErrUnsupportedVersion, AudioVersion)
 			}
-			if c.Opacity != nil && p.Version < Version {
-				return fmt.Errorf("%w: opacity requires version %d", ErrUnsupportedVersion, Version)
+			if c.Opacity != nil && p.Version < LayerVersion {
+				return fmt.Errorf("%w: opacity requires version %d", ErrUnsupportedVersion, LayerVersion)
+			}
+			if c.Gain != nil && p.Version < Version {
+				return fmt.Errorf("%w: audio gain requires version %d", ErrUnsupportedVersion, Version)
 			}
 			if err := validateClip(c, a, t.Kind); err != nil {
 				return err
