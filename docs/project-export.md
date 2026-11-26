@@ -30,4 +30,15 @@ At least one enabled nonzero-opacity video layer, positive timeline, maximum 24 
 
 ## Remaining slices
 
-2D.2 opaque 10-bit video render and verified publication; 2D.3 linear-light multilayer blending and normalization; 2D.4 offline audio and mux; 2D.5 CLI/GUI orchestration, progress/cancel and destination safeguards; 2D.6 reference tests, actual Pixel footage and resource review. Until these are implemented, use the existing selected-clip HLG export, not a purported whole-project HDR output.
+2D.2 opaque 10-bit video render and verified publication; 2D.3 linear-light multilayer blending and normalization; 2D.4 offline audio and mux; 2D.5 CLI/GUI orchestration, progress/cancel and destination safeguards; 2D.6 reference tests, actual Pixel footage and resource review. The 2D.2 experimental video-only command below is now available; it is not yet the complete audio-capable export.
+
+
+## 2D.2: experimental opaque video-only export
+
+```text
+pixelcut export-video -color hlg -fps 30 [-discard-audio] project.pixelcut.json output.mp4
+```
+
+The encoder operates on the original 10-bit signal, not SDR preview pixels. Supports opaque overlapping layers (bottom-to-top), source rotation, crop, transform, picture-in-picture, hidden tracks, solo, and black leading/interior/trailing gaps. Rejects sampled partial opacity, excess layers, unsupported color normalization, and enabled audio unless explicitly discarded. Silent projects need no discard flag. A 24-hour logical duration is still the planner limit; execution additionally caps output at 4096 pixels per side and 4096x2160 total pixels, intermediate/source images at 16,777,216 pixels, and four visible layers. Source frames are selected by strict presentation-order index; no approximate seek is used. Decode begins at the source start for each span and emits only needed source ordinals. This favors deterministic timing over long-trim performance; real VFR, rotation, chroma and HDR fidelity remain unqualified beyond synthetic tests.
+
+The encoder receives one frame per CFR sample. Raw working frames use 10-bit limited-range BT.2020 HLG Y'CbCr 4:4:4; explicit chroma up/downsampling surrounds geometry and opaque copying. No partial-opacity blending or SDR tone mapping. MP4 is staged in the output directory and inspected for color, geometry, HEVC Main 10 profile, exact frame count, CFR duration and no audio. Sources are rechecked before publication; existing files are never overwritten. Hard-link support is required, as for selected-clip export. Ctrl+C cancels CLI rendering; child FFmpeg processes and temporary output are cleaned up on normal error/cancel. A hard process termination may leave a temporary file. No physical HDR display or perceptual equivalence claim follows from metadata verification.

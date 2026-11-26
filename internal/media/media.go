@@ -17,6 +17,7 @@ type Stream struct {
 	Index             int               `json:"index"`
 	CodecType         string            `json:"codec_type"`
 	CodecName         string            `json:"codec_name"`
+	Profile           string            `json:"profile,omitempty"`
 	CodecTag          string            `json:"codec_tag_string"`
 	PixelFormat       string            `json:"pix_fmt"`
 	Width             int               `json:"width"`
@@ -28,6 +29,7 @@ type Stream struct {
 	ChromaLocation    string            `json:"chroma_location"`
 	SampleAspectRatio string            `json:"sample_aspect_ratio"`
 	AvgFrameRate      string            `json:"avg_frame_rate"`
+	FrameCount        string            `json:"nb_frames,omitempty"`
 	SampleRate        string            `json:"sample_rate,omitempty"`
 	Channels          int               `json:"channels,omitempty"`
 	Duration          string            `json:"duration"`

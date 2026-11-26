@@ -17,3 +17,10 @@ func TestPlanExportCommandRequiresProjectAndExplicitContract(t *testing.T) {
 		t.Fatal("missing project accepted")
 	}
 }
+
+func TestExportVideoCommandRequiresDestination(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"export-video", "-color", "hlg", "-fps", "30", "project.pixelcut.json"}, &out); err == nil || !strings.Contains(err.Error(), "OUTPUT.mp4") {
+		t.Fatalf("missing export destination not rejected: %v", err)
+	}
+}

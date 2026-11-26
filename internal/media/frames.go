@@ -85,6 +85,10 @@ func parseFrameTime(s string) (int64, error) {
 }
 
 func readFrameIndex(r io.Reader) (*FrameIndex, error) {
+	return readFrameIndexMode(r, false)
+}
+
+func readFrameIndexMode(r io.Reader, strict bool) (*FrameIndex, error) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 4096), 1<<20)
 	var ticks []int64
@@ -131,6 +135,13 @@ func readFrameIndex(r io.Reader) (*FrameIndex, error) {
 	if !hasOrigin || len(ticks) == 0 {
 		return nil, errors.New("no complete frame timestamp index")
 	}
+	if strict {
+		for i, tick := range ticks {
+			if tick < origin || (i > 0 && tick <= ticks[i-1]) {
+				return nil, errors.New("export requires strictly ordered nonnegative normalized frame timestamps")
+			}
+		}
+	}
 	sort.Slice(ticks, func(i, j int) bool { return ticks[i] < ticks[j] })
 	out := ticks[:0]
 	for _, v := range ticks {
@@ -149,7 +160,23 @@ func readFrameIndex(r io.Reader) (*FrameIndex, error) {
 	return &FrameIndex{ticks: out}, nil
 }
 
+func (f *FrameIndex) OrdinalAtOrBefore(tick int64) (int, bool) {
+	if f == nil || tick < 0 {
+		return 0, false
+	}
+	i := sort.Search(len(f.ticks), func(i int) bool { return f.ticks[i] > tick })
+	return i - 1, i > 0
+}
+
 func (e Engine) Frames(ctx context.Context, path string) (*FrameIndex, error) {
+	return e.frames(ctx, path, false)
+}
+
+func (e Engine) ExportFrames(ctx context.Context, path string) (*FrameIndex, error) {
+	return e.frames(ctx, path, true)
+}
+
+func (e Engine) frames(ctx context.Context, path string, strict bool) (*FrameIndex, error) {
 	p, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -164,7 +191,7 @@ func (e Engine) Frames(ctx context.Context, path string) (*FrameIndex, error) {
 	if err = cmd.Start(); err != nil {
 		return nil, err
 	}
-	index, err := readFrameIndex(stdout)
+	index, err := readFrameIndexMode(stdout, strict)
 	if err != nil {
 		cancel()
 	}
