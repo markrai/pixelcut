@@ -10,7 +10,8 @@ import (
 const LegacyVersion = 1
 const TrackVersion = 2
 const AudioVersion = 3
-const Version = 4
+const ControlsVersion = 4
+const Version = 5
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -38,6 +39,7 @@ type Clip struct {
 	Crop          *Crop            `json:"crop,omitempty"`
 	Transform     *media.Transform `json:"transform,omitempty"`
 	AudioDetached bool             `json:"audio_detached,omitempty"`
+	Opacity       *int             `json:"opacity_percent,omitempty"`
 }
 
 type Track struct {
@@ -51,9 +53,11 @@ type Track struct {
 }
 
 type Project struct {
-	Version int     `json:"version"`
-	Assets  []Asset `json:"assets"`
-	Tracks  []Track `json:"tracks"`
+	Version      int     `json:"version"`
+	Assets       []Asset `json:"assets"`
+	Tracks       []Track `json:"tracks"`
+	CanvasWidth  int     `json:"canvas_width,omitempty"`
+	CanvasHeight int     `json:"canvas_height,omitempty"`
 }
 
 func New() Project {
@@ -145,6 +149,9 @@ func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
 	}
 	if err := validateClip(c, a, VideoTrack); err != nil {
 		return a, media.Edit{}, err
+	}
+	if c.OpacityPercent() != 100 {
+		return a, media.Edit{}, errors.New("layer opacity requires project composition; selected-clip export cannot apply it")
 	}
 	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Duration()), Trim: c.In != 0 || c.Out != a.Duration, Silent: c.AudioDetached}
 	if c.Crop != nil {

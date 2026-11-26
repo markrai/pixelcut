@@ -59,7 +59,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(menuSelectAsset, "Select source in media bin", single), item(menuRevealClip, "Show source in Explorer", single && !s.offline),
 			item(menuRelinkClip, "Relink source...", single && s.offline), item(menuReplaceClip, "Replace source...", single))
 		if single && !s.audioTrack {
-			items = append(items, separator(), item(menuDetachAudio, "Detach source audio", s.detachAudio), item(menuReattachAudio, "Reattach matching audio", s.reattachAudio))
+			items = append(items, separator(), item(menuDetachAudio, "Detach source audio", s.detachAudio), item(menuReattachAudio, "Reattach matching audio", s.reattachAudio), separator(), item(menuLayerOpacity, "Layer opacity...", true), item(menuLayerPreset, "Layer placement / picture-in-picture...", true))
 		}
 	} else {
 		items = append(items, item(menuPasteHere, "Paste here", s.pasteHere), item(idPaste, "Paste at playhead\tCtrl+V", s.paste),
@@ -67,7 +67,7 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(idSelectAll, "Select all clips\tCtrl+A", s.hasClips),
 			item(idUndo, "Undo\tCtrl+Z", s.undo), item(idRedo, "Redo\tCtrl+Y", s.redo))
 	}
-	return append(items, separator(), menuItem{id: idSnap, label: "Snapping\tN", enabled: true, checked: s.snap},
+	return append(items, separator(), item(menuLayerLayout, "Show layer layout at playhead", true), menuItem{id: idSnap, label: "Snapping\tN", enabled: true, checked: s.snap},
 		menuItem{id: idRippleTrim, label: "Ripple trimming\tR", enabled: true, checked: s.ripple}, menuItem{id: idFrameSnap, label: "Source-frame trim snapping\tB", enabled: true, checked: s.frameSnap}, item(idFit, "Fit timeline\tF", true))
 }
 
@@ -247,6 +247,8 @@ func (e *editor) timelineContext(lp uintptr) {
 	}
 	var err error
 	switch id {
+	case menuLayerOpacity, menuLayerPreset, menuLayerLayout:
+		err = e.layerAction(id, screen)
 	case menuPasteHere:
 		err = e.pasteAt(false, &at)
 	case menuGapHere:

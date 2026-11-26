@@ -181,6 +181,8 @@ type editor struct {
 	model                   editorstate.State
 	controls                map[int]uintptr
 	status, host            uintptr
+	layerSurface            uintptr
+	layerPlan               *composition.LayerPlan
 	busy                    bool
 	jobs                    service.Jobs[result]
 	jobFingerprint          string
@@ -350,6 +352,7 @@ func (e *editor) refresh() {
 }
 
 func (e *editor) fields() {
+	e.syncPreviewLabel()
 	c, ok := e.selected()
 	for _, id := range []int{idStart, idIn, idOut, idCrop, idAt} {
 		change(e.controls[id], "")
@@ -458,6 +461,7 @@ func (e *editor) finished() {
 }
 
 func (e *editor) stopPreview() {
+	e.hideLayerLayout()
 	if e.cropSession != nil {
 		e.endVisualCropUI()
 	}
@@ -825,6 +829,9 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		runtime.KeepAlive(&m)
 		return 0
 	case 0x002b:
+		if ui != nil && ui.drawLayerLayout(lp) {
+			return 1
+		}
 		if drawButton(lp) {
 			return 1
 		}
@@ -973,6 +980,8 @@ func main() {
 	button("Remove asset", 12, 384, 245, idRemoveAsset)
 	ui.previewLabel = label("Source preview / SDR", 270, 50, 570)
 	ui.host = control("STATIC", "", 0x02000000|0x04000000|4, 270, 75, 540, 303, 0)
+	ui.layerSurface = control("STATIC", "", 0x0000000d, 270, 75, 540, 303, layerSurfaceID)
+	user.NewProc("ShowWindow").Call(ui.layerSurface, 0)
 	button("Play  (Space)", 270, 384, 124, idPlay)
 	button("Stop", 400, 384, 80, idStop)
 	button("< Frame", 486, 384, 70, idFrameBack)
