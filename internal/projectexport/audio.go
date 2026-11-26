@@ -256,7 +256,7 @@ func muxAudioObserved(ctx context.Context, engine media.Engine, plan Plan, sourc
 	if err := validateAudio(plan); err != nil {
 		return err
 	}
-	proc := newExportProcess(ctx, engine.FFmpeg, "-v", "error", "-xerror", "-nostdin", "-i", video, "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-tag:v", "hvc1", "-c:a", "aac", "-b:a", "192k", "-movie_timescale", "240000", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-y", output)
+	proc := newExportProcess(ctx, engine.FFmpeg, "-v", "error", "-xerror", "-nostdin", "-i", video, "-f", "s16le", "-ar", "48000", "-ac", "2", "-i", "pipe:0", "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-tag:v", "hvc1", "-c:a", "aac", "-b:a", "192k", "-video_track_timescale", "240000", "-movie_timescale", "240000", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart", "-y", output)
 	defer proc.close()
 	stdin, err := proc.cmd.StdinPipe()
 	if err != nil {

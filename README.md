@@ -242,3 +242,8 @@ Exports the entire timeline to HEVC Main 10 HLG with AAC 48 kHz stereo when enab
 ### Exporting a complete project in Windows (2D.5)
 
 Choose **Export...** in the toolbar (or Ctrl+Shift+E), then select a project frame rate (24, 25, 30, 50 or 60 fps). Choose a new MP4 filename and confirm the resolution, duration, HLG contract and audio policy. The exporter snapshots the current timeline, including unsaved edits. No selected clip is required. All enabled audio is included; selected-clip export is still available via Ctrl+E or the menu. During whole-project export, the status shows the current stage and submitted frame/sample count; the Export button becomes Cancel export. Esc also requests cancellation. Editing remains disabled until cleanup completes. A close request cancels and leaves the editor open; close again once export has finished. No output is overwritten, and publication requires hard-link support. CLI users may add `-progress` to export-project. Real Windows/Pixel HDR qualification remains pending.
+
+
+### HDR export qualification (2D.6)
+
+Whole-project export now verifies every video packet's presentation timestamp and duration on an exact integer CFR grid before publishing. All supported frame rates use a 240000 Hz MP4 video track/movie timescale; AAC presentation remains exactly 48000 Hz. An export with no sampled visible video pixels fails rather than producing an all-black result. See [export qualification](docs/export-qualification.md) for synthetic evidence, resource limits and the outstanding Windows/Pixel acceptance procedure. Native HDR fidelity and performance are not yet qualified.

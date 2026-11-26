@@ -176,6 +176,15 @@ func (e Engine) ExportFrames(ctx context.Context, path string) (*FrameIndex, err
 	return e.frames(ctx, path, true)
 }
 
+type probeErrorFlag struct {
+	written bool
+}
+
+func (f *probeErrorFlag) Write(p []byte) (int, error) {
+	f.written = f.written || len(p) > 0
+	return len(p), nil
+}
+
 func (e Engine) frames(ctx context.Context, path string, strict bool) (*FrameIndex, error) {
 	p, err := filepath.Abs(path)
 	if err != nil {
@@ -184,6 +193,10 @@ func (e Engine) frames(ctx context.Context, path string, strict bool) (*FrameInd
 	job, cancel := context.WithCancel(ctx)
 	defer cancel()
 	cmd := exec.CommandContext(job, e.FFprobe, "-v", "error", "-threads", "2", "-select_streams", "v:0", "-show_frames", "-show_format", "-show_entries", "frame=best_effort_timestamp_time:format=start_time", "-of", "compact=p=1:nk=0", "-i", p)
+	var diagnostic probeErrorFlag
+	if strict {
+		cmd.Stderr = &diagnostic
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err
@@ -204,6 +217,9 @@ func (e Engine) frames(ctx context.Context, path string, strict bool) (*FrameInd
 	}
 	if wait != nil {
 		return nil, fmt.Errorf("frame probe: %w", wait)
+	}
+	if strict && diagnostic.written {
+		return nil, errors.New("source frame probe reported decode errors")
 	}
 	return index, nil
 }
