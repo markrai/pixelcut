@@ -120,3 +120,37 @@ func TestExperimentalCUDAPreviewScale(t *testing.T) {
 		t.Fatalf("candidate stream lifecycle: %+v", stats)
 	}
 }
+
+func TestPreviewScaleDiagnosticSourceRestrictions(t *testing.T) {
+	v := (ExportContract{Canvas: CanvasSize{1920, 1080}, Color: "hlg", FPS: 30}).ExpectedVideo()
+	v.Profile = "Main 10"
+	req := StillRequest{Path: "source.mp4", Width: 1920, Height: 1080, Canvas: CanvasSize{1920, 1080}, OutputWidth: 960, OutputHeight: 540}
+	v.Range = "pc"
+	if _, err := previewScaleCandidate(v, req); err == nil || !strings.Contains(err.Error(), "limited-range HLG (tv); got \"pc\"") {
+		t.Fatalf("range rejection: %v", err)
+	}
+	v.Range = "tv"
+	v.ChromaLocation = "center"
+	if _, err := previewScaleCandidate(v, req); err == nil || !strings.Contains(err.Error(), "left-sited chroma; got \"center\"") {
+		t.Fatalf("chroma rejection: %v", err)
+	}
+}
+
+func TestPreviewScaleDiagnosticWorstSample(t *testing.T) {
+	var a previewQualityAccumulator
+	c := []byte{10, 20, 30, 255, 40, 50, 60, 255}
+	if err := a.add(c, c); err != nil {
+		t.Fatal(err)
+	}
+	g := []byte{10, 20, 49, 255, 40, 67, 60, 255}
+	if err := a.add(c, g); err != nil {
+		t.Fatal(err)
+	}
+	q := a.quality
+	if q.SamplesCompared != 12 || q.SamplesOverLimit != 2 || q.WorstSample == nil || *q.WorstSample != (PreviewScaleSample{FrameOffset: 1, PixelIndex: 0, Channel: "R", CPU: 30, CUDA: 49}) || q.withinLimits() {
+		t.Fatalf("incorrect diagnostic: %+v worst=%+v", q, q.WorstSample)
+	}
+	if err := a.add(c, c); err != nil || a.quality.SamplesOverLimit != 2 || a.quality.WorstSample.FrameOffset != 1 {
+		t.Fatalf("worst sample not retained: %+v %v", a.quality, err)
+	}
+}
