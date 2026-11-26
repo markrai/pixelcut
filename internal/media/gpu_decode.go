@@ -65,13 +65,17 @@ func hevcFrameCheckArgs(path string, first, count int, cuda bool, scale *scaleCh
 }
 
 func parseDecodeFrameHashes(raw string, width, height, count int) ([]decodeFrameHash, error) {
+	return parseFrameHashes(raw, width, height, count, 3)
+}
+
+func parseFrameHashes(raw string, width, height, count int, bytesPerPixel int64) ([]decodeFrameHash, error) {
 	if width < 2 || height < 2 || width%2 != 0 || height%2 != 0 || width > 8192 || height > 8192 || int64(width)*int64(height) > 33554432 || count < 1 || count > MaxDecodeCheckFrames {
 		return nil, errors.New("invalid frame hash dimensions or count")
 	}
 	sc := bufio.NewScanner(strings.NewReader(raw))
 	var hashes []decodeFrameHash
 	var timebase, dimensions, sha bool
-	expectedSize := int64(width) * int64(height) * 3
+	expectedSize := int64(width) * int64(height) * bytesPerPixel
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if line == "" {
