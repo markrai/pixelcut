@@ -101,19 +101,20 @@ type PreviewScaleQuality struct {
 }
 
 type PreviewScaleReport struct {
-	Backend       string              `json:"backend"`
-	Source        string              `json:"source"`
-	SourceVideo   *PreviewScaleSource `json:"source_video,omitempty"`
-	FirstFrame    int                 `json:"first_frame"`
-	Frames        int                 `json:"frames"`
-	Compared      int                 `json:"compared"`
-	OutputWidth   int                 `json:"output_width"`
-	OutputHeight  int                 `json:"output_height"`
-	Interpolation string              `json:"interpolation"`
-	Status        string              `json:"status"`
-	Failure       string              `json:"failure,omitempty"`
-	Quality       PreviewScaleQuality `json:"quality"`
-	WallSeconds   float64             `json:"wall_seconds"`
+	Backend       string                   `json:"backend"`
+	Source        string                   `json:"source"`
+	SourceVideo   *PreviewScaleSource      `json:"source_video,omitempty"`
+	FirstFrame    int                      `json:"first_frame"`
+	Frames        int                      `json:"frames"`
+	Compared      int                      `json:"compared"`
+	OutputWidth   int                      `json:"output_width"`
+	OutputHeight  int                      `json:"output_height"`
+	Interpolation string                   `json:"interpolation"`
+	Status        string                   `json:"status"`
+	Failure       string                   `json:"failure,omitempty"`
+	Quality       PreviewScaleQuality      `json:"quality"`
+	WallSeconds   float64                  `json:"wall_seconds"`
+	Stages        *PreviewScaleDiagnostics `json:"stages,omitempty"`
 }
 
 type previewQualityAccumulator struct {
@@ -207,17 +208,21 @@ func previewCheckArgs(e Engine, v Stream, req StillRequest, first, count int, cu
 			return nil, err
 		}
 	}
+	return previewPairArgs(req.Path, input, graph, count, "bgra"), nil
+}
+
+func previewPairArgs(path string, input []string, graph string, count int, format string) []string {
 	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-filter_complex_threads", "1", "-copyts", "-start_at_zero"}
 	args = append(args, input...)
-	args = append(args, "-i", req.Path, "-filter_complex", "[0:v:0]"+graph+",split=2[pixels][hash]")
+	args = append(args, "-i", path, "-filter_complex", "[0:v:0]"+graph+",split=2[pixels][hash]")
 	for _, out := range []struct{ label, format, pipe string }{{"[pixels]", "rawvideo", "pipe:1"}, {"[hash]", "framehash", "pipe:2"}} {
-		args = append(args, "-map", out.label, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-fps_mode", "passthrough", "-enc_time_base", "1:1000000", "-frames:v", strconv.Itoa(count), "-f", out.format)
+		args = append(args, "-map", out.label, "-an", "-sn", "-dn", "-c:v", "rawvideo", "-pix_fmt", format, "-threads", "1", "-fps_mode", "passthrough", "-enc_time_base", "1:1000000", "-frames:v", strconv.Itoa(count), "-f", out.format)
 		if out.format == "framehash" {
 			args = append(args, "-hash", "sha256")
 		}
 		args = append(args, out.pipe)
 	}
-	return args, nil
+	return args
 }
 
 type previewCheckChild struct {
@@ -243,7 +248,7 @@ func startPreviewCheck(ctx context.Context, e Engine, args []string) (*previewCh
 	return p, nil
 }
 
-func (p *previewCheckChild) finish(width, height, count int) ([]decodeFrameHash, error) {
+func (p *previewCheckChild) finish(width, height, count, bytesPerPixel int) ([]decodeFrameHash, error) {
 	var extra [1]byte
 	n, err := io.ReadFull(p.pipe, extra[:])
 	if n != 0 || err != io.EOF {
@@ -254,7 +259,7 @@ func (p *previewCheckChild) finish(width, height, count int) ([]decodeFrameHash,
 	if err != nil || p.hashes.overflow {
 		return nil, fmt.Errorf("preview scale FFmpeg failed: %v %s", err, string(p.hashes.data[:min(len(p.hashes.data), 1024)]))
 	}
-	return parseFrameHashes(string(p.hashes.data), width, height, count, 4)
+	return parseFrameHashes(string(p.hashes.data), width, height, count, int64(bytesPerPixel))
 }
 
 func (p *previewCheckChild) readFrame(pixels []byte) error {
@@ -283,56 +288,71 @@ func (e Engine) comparePreviewScale(ctx context.Context, v Stream, req StillRequ
 	if err != nil {
 		return PreviewScaleQuality{}, 0, err
 	}
+	var quality previewQualityAccumulator
+	n, err := e.comparePreviewPair(ctx, cpuArgs, gpuArgs, req.OutputWidth, req.OutputHeight, 4, first, ticks, quality.add)
+	return quality.quality, n, err
+}
+
+func (e Engine) comparePreviewPair(ctx context.Context, cpuArgs, gpuArgs []string, w, h, bytesPerPixel, first int, ticks []int64, consume func([]byte, []byte) error) (int, error) {
+	if w < 2 || h < 2 || w > MaxStillSide || h > MaxStillSide || w%2 != 0 || h%2 != 0 || (bytesPerPixel != 3 && bytesPerPixel != 4) || len(ticks) < 1 || len(ticks) > maxPreviewScaleFrames {
+		return 0, errors.New("invalid paired preview frame contract")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	cpu, err := startPreviewCheck(ctx, e, cpuArgs)
 	if err != nil {
 		cancel()
-		return PreviewScaleQuality{}, 0, err
+		return 0, err
 	}
 	defer func() { cancel(); cpu.close() }()
 	gpu, err := startPreviewCheck(ctx, e, gpuArgs)
 	if err != nil {
-		return PreviewScaleQuality{}, 0, err
+		return 0, err
 	}
 	defer func() { cancel(); gpu.close() }()
-	w, h := req.OutputWidth, req.OutputHeight
-	c, g := make([]byte, w*h*4), make([]byte, w*h*4)
+	c, g := make([]byte, w*h*bytesPerPixel), make([]byte, w*h*bytesPerPixel)
 	ch, gh := make([][32]byte, len(ticks)), make([][32]byte, len(ticks))
-	var quality previewQualityAccumulator
 	for i := range ticks {
 		if err := cpu.readFrame(c); err != nil {
-			return quality.quality, i, fmt.Errorf("CPU preview frame %d: %w", first+i, err)
+			return i, fmt.Errorf("CPU preview frame %d: %w", first+i, err)
 		}
 		if err := gpu.readFrame(g); err != nil {
-			return quality.quality, i, fmt.Errorf("candidate preview frame %d: %w", first+i, err)
+			return i, fmt.Errorf("candidate preview frame %d: %w", first+i, err)
 		}
 		ch[i], gh[i] = sha256.Sum256(c), sha256.Sum256(g)
-		if err := quality.add(c, g); err != nil {
-			return quality.quality, i, err
+		if err := consume(c, g); err != nil {
+			return i, err
 		}
 	}
-	cpuHashes, err := cpu.finish(w, h, len(ticks))
+	cpuHashes, err := cpu.finish(w, h, len(ticks), bytesPerPixel)
 	if err != nil {
-		return quality.quality, 0, err
+		return 0, err
 	}
-	gpuHashes, err := gpu.finish(w, h, len(ticks))
+	gpuHashes, err := gpu.finish(w, h, len(ticks), bytesPerPixel)
 	if err != nil {
-		return quality.quality, 0, err
+		return 0, err
 	}
 	for i, tick := range ticks {
 		cf, gf := cpuHashes[i], gpuHashes[i]
 		if tickDistance(cf.pts, tick) > 1 || cf.pts != gf.pts || cf.duration != gf.duration ||
 			cf.hash != hex.EncodeToString(ch[i][:]) || gf.hash != hex.EncodeToString(gh[i][:]) {
-			return quality.quality, i, fmt.Errorf("preview frame %d timestamp or raw hash mismatch", first+i)
+			return i, fmt.Errorf("preview frame %d timestamp or raw hash mismatch", first+i)
 		}
 	}
 	if err := ctx.Err(); err != nil {
-		return quality.quality, 0, err
+		return 0, err
 	}
-	return quality.quality, len(ticks), nil
+	return len(ticks), nil
 }
 
-func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int) (r PreviewScaleReport, err error) {
+func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int) (PreviewScaleReport, error) {
+	return e.checkCUDAPreviewScale(ctx, path, first, count, width, height, false)
+}
+
+func (e Engine) DiagnoseCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int) (PreviewScaleReport, error) {
+	return e.checkCUDAPreviewScale(ctx, path, first, count, width, height, true)
+}
+
+func (e Engine) checkCUDAPreviewScale(ctx context.Context, path string, first, count, width, height int, diagnose bool) (r PreviewScaleReport, err error) {
 	r = PreviewScaleReport{Backend: "cuda", Source: path, FirstFrame: first, Frames: count, OutputWidth: width, OutputHeight: height, Interpolation: "lanczos", Status: "failed"}
 	defer func() {
 		if err != nil {
@@ -384,6 +404,15 @@ func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, c
 	}
 	if !unchanged(identity.Path, identity) {
 		return r, errors.New("source changed during preview scale check")
+	}
+	if diagnose {
+		r.Stages = &PreviewScaleDiagnostics{}
+		if err = e.diagnosePreviewStages(ctx, v, req, first, index.ticks[first:first+count], r.Stages); err != nil {
+			return r, err
+		}
+		if !unchanged(identity.Path, identity) {
+			return r, errors.New("source changed during stage diagnostics")
+		}
 	}
 	if !r.Quality.withinLimits() {
 		return r, errors.New("preview scale candidate exceeds provisional quality limits (worst frame/channel PSNR >= 40 dB, max channel delta <= 16)")

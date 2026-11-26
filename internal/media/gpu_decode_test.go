@@ -123,6 +123,16 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 	if err != nil || n != 4 || q.ExactFrames != 4 || !q.withinLimits() {
 		t.Fatalf("CPU preview comparison: %+v %d %v", q, n, err)
 	}
+	graphs, err := buildPreviewStageGraphs(v, req, 2, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := []string{"-noautorotate", "-hwaccel", "none", "-c:v", "hevc"}
+	ref := previewPairArgs(path, input, graphs.reference, 4, "yuv420p10le")
+	planes, err := engine.comparePreviewPlanes(ctx, req, 2, index.ticks[2:6], ref, ref)
+	if err != nil || planes.ExactFrames != 4 || planes.Y.Samples != 32*24*4 || planes.U.Samples != 16*12*4 || planes.V.MaxDelta != 0 {
+		t.Fatalf("CPU planar comparison: %+v %v", planes, err)
+	}
 	for _, angle := range []string{"-90", "90", "180"} {
 		rotated := filepath.Join(t.TempDir(), "rotated.mp4")
 		runFF(t, "-v", "error", "-display_rotation:v:0", angle, "-i", path, "-map", "0:v:0", "-c:v", "copy", rotated)
@@ -155,6 +165,16 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 			if _, err := previewScaleCandidate(raw, bad); err == nil {
 				t.Fatal("coded orientation incorrectly accepted as display output")
 			}
+		}
+		graphs, err := buildPreviewStageGraphs(raw, req, 2, 4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ref := previewPairArgs(rotated, input, graphs.reference, 4, "yuv420p10le")
+		order := previewPairArgs(rotated, input, graphs.cpuOrder, 4, "yuv420p10le")
+		planes, err := engine.comparePreviewPlanes(ctx, req, 2, index.ticks[2:6], ref, order)
+		if err != nil || planes.Compared != 4 || planes.Y.Samples != 32*24*4 {
+			t.Fatalf("rotated CPU planar comparison: %+v %v", planes, err)
 		}
 		q, n, err := engine.comparePreviewScale(ctx, raw, req, 2, index.ticks[2:6], false)
 		if err != nil || n != 4 || q.ExactFrames != 4 || !q.withinLimits() {

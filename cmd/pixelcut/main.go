@@ -22,7 +22,7 @@ Usage:
   pixelcut gpu-info [-probe-devices]
   pixelcut gpu-decode-check [-start-frame N] [-frames N] INPUT
   pixelcut gpu-scale-check -width W -height H [-start-frame N] [-frames N] INPUT
-  pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] INPUT
+  pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] INPUT
   pixelcut inspect INPUT
   pixelcut remux INPUT OUTPUT.mp4
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
@@ -49,6 +49,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		height := fs.Int("height", 0, "required even displayed output height")
 		first := fs.Int("start-frame", 0, "first source frame ordinal (zero based)")
 		count := fs.Int("frames", 120, "number of consecutive frames (1-120)")
+		diagnose := fs.Bool("diagnose", false, "also compare pre-tone-map 10-bit planes and CPU geometry order")
 		if err := fs.Parse(args[1:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return nil
@@ -58,7 +59,11 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		if fs.NArg() != 1 {
 			return errors.New("usage: pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] INPUT")
 		}
-		report, err := e.CheckCUDAPreviewScale(ctx, fs.Arg(0), *first, *count, *width, *height)
+		check := e.CheckCUDAPreviewScale
+		if *diagnose {
+			check = e.DiagnoseCUDAPreviewScale
+		}
+		report, err := check(ctx, fs.Arg(0), *first, *count, *width, *height)
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if writeErr := enc.Encode(report); writeErr != nil {
