@@ -39,13 +39,13 @@ func item(id int, label string, enabled bool) menuItem {
 func separator() menuItem { return menuItem{} }
 
 type timelineMenuState struct {
-	count                                                            int
-	detachAudio, reattachAudio                                       bool
-	clipAudio, clipMuted                                             bool
-	audioTrack                                                       bool
-	frameSnap                                                        bool
-	offline                                                          bool
-	split, paste, pasteHere, gap, hasClips, undo, redo, snap, ripple bool
+	count                                                           int
+	detachAudio, reattachAudio                                      bool
+	clipAudio, clipMuted                                            bool
+	audioTrack                                                      bool
+	frameSnap                                                       bool
+	offline                                                         bool
+	split, paste, pasteHere, gap, hasClips, undo, redo, snap, ripplebool
 }
 
 func timelineMenuItems(s timelineMenuState) []menuItem {

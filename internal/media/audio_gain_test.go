@@ -17,9 +17,9 @@ func TestSourceAuditionGainArguments(t *testing.T) {
 	e := Engine{MPV: exe}
 	path := filepath.Join(t.TempDir(), "source.mp4")
 	for _, tc := range []struct {
-		gain int
+		gain   int
 		silent bool
-		want string
+		want   string
 	}{
 		{100, false, ""},
 		{75, false, "--af=lavfi=[volume=0.75:precision=double]"},

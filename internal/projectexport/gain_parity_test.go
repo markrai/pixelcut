@@ -99,3 +99,30 @@ func TestPreviewAndOfflineGainParity(t *testing.T) {
 		t.Fatalf("all zero gain audio produced a mux contribution: %v", err)
 	}
 }
+
+
+func TestMutedClipOfflinePlanPreservesVideo(t *testing.T) {
+	p := exportFixture(t)
+	var err error
+	for _, ref := range []project.ClipRef{
+		{TrackID: "V1", ClipID: "base"},
+		{TrackID: "V2", ClipID: "top"},
+		{TrackID: "A1", ClipID: "audio"},
+	} {
+		p, err = p.SetClipGain(ref, 175)
+		if err != nil {
+			t.Fatal(err)
+		}
+		p, err = p.SetClipMuted(ref, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan, err := Build(p, "hlg", 30)
+	if err != nil || plan.Contract.Audio || plan.VideoFrames != 6 {
+		t.Fatalf("mute affected video or retained audio: %+v %v", plan, err)
+	}
+	if len(plan.Spans[2].Layers) != 2 {
+		t.Fatal("mute removed visible layers")
+	}
+}

@@ -8,12 +8,12 @@ import (
 )
 
 const (
-	clipGainBase = 9200
-	clipGainDown = 9250
-	clipGainUp = 9251
+	clipGainBase    = 9200
+	clipGainDown    = 9250
+	clipGainUp      = 9251
 	clipGainDownTen = 9252
-	clipGainUpTen = 9253
-	clipGainHeader = 9254
+	clipGainUpTen   = 9253
+	clipGainHeader  = 9254
 )
 
 var clipGainChoices = [...]int{0, 10, 25, 50, 75, 100, 125, 150, 200, 300, 400}
