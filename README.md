@@ -273,3 +273,7 @@ The stereo mix meter below the preview shows the latest completed composite PCM 
 ### Audio qualification (2E.6)
 
 Composite playback and whole-project export now share the same timestamp normalization, 48 kHz resampling and exact source-sample trim policy in addition to the shared mixer. Real-media regression tests compare pre-AAC PCM and metering across delayed 44.1 kHz and 48 kHz stereo AAC sources, off-grid edits, automation, gaps and grid-aligned seeks. Canonical decoding begins at source origin rather than seeking before resampling; late seeks into long sources can take longer. Off-grid playback starts use a run-relative sample grid. Direct mpv audition remains a separate path. AAC output is lossy and is checked by presentation timing and signal correlation rather than bit equality. See [audio qualification](docs/audio-qualification.md) for automated and physical acceptance gates.
+
+### GPU diagnostics (3A.1)
+
+Use Settings > GPU capabilities / device diagnostics, or run `pixelcut gpu-info` for the configured FFmpeg inventory and `pixelcut gpu-info -probe-devices` to attempt device initialization. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. Rendering remains CPU-only; a successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
