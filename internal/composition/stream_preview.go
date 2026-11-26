@@ -40,44 +40,11 @@ func RenderSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder
 			return err
 		}
 		started := time.Now()
-		plan, err := e.PlanLayers(at)
+		frame, err := renderCompositeFrame(ctx, e, decoder, at, identities)
 		if err != nil {
 			return err
 		}
-		ids := make([]string, 0, len(plan.Layers))
-		sources := make(map[string]mediacache.Source)
-		for _, layer := range plan.Layers {
-			ids = append(ids, layer.Layer.Ref.ClipID)
-			path := layer.Layer.Asset.Path
-			if _, ok := sources[path]; ok {
-				continue
-			}
-			s, err := mediacache.Identify(path)
-			if err != nil {
-				return err
-			}
-			if prior, ok := identities[path]; ok && prior != s {
-				return errors.New("source changed during continuous preview")
-			}
-			identities[path] = s
-			sources[path] = s
-		}
-		if err := decoder.Retain(ids); err != nil {
-			return err
-		}
-		job, cancel := context.WithTimeout(ctx, 90*time.Second)
-		frame, err := RenderStill(job, decoder, plan, CompositePreviewSide)
-		cancel()
-		if err != nil {
-			return err
-		}
-		for path, identity := range sources {
-			now, err := mediacache.Identify(path)
-			if err != nil || now != identity {
-				return errors.New("source changed during composite frame")
-			}
-		}
-		if err := present(ctx, CompositeFrame{Time: at, Frame: frame, Sources: sources, End: at == e.Duration()}); err != nil {
+		if err := present(ctx, frame); err != nil {
 			return err
 		}
 		if at == e.Duration() {
@@ -92,6 +59,88 @@ func RenderSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder
 				return ctx.Err()
 			case <-timer.C:
 			}
+		}
+		at = NextCompositeTick(at, e.Duration())
+	}
+}
+
+func renderCompositeFrame(ctx context.Context, e *Evaluator, decoder SequentialDecoder, at int64, identities map[string]mediacache.Source) (CompositeFrame, error) {
+	plan, err := e.PlanLayers(at)
+	if err != nil {
+		return CompositeFrame{}, err
+	}
+	ids := make([]string, 0, len(plan.Layers))
+	sources := make(map[string]mediacache.Source)
+	for _, layer := range plan.Layers {
+		ids = append(ids, layer.Layer.Ref.ClipID)
+		path := layer.Layer.Asset.Path
+		if _, ok := sources[path]; ok {
+			continue
+		}
+		s, err := mediacache.Identify(path)
+		if err != nil {
+			return CompositeFrame{}, err
+		}
+		if prior, ok := identities[path]; ok && prior != s {
+			return CompositeFrame{}, errors.New("source changed during continuous preview")
+		}
+		identities[path] = s
+		sources[path] = s
+	}
+	if err := decoder.Retain(ids); err != nil {
+		return CompositeFrame{}, err
+	}
+	job, cancel := context.WithTimeout(ctx, 90*time.Second)
+	frame, err := RenderStill(job, decoder, plan, CompositePreviewSide)
+	cancel()
+	if err != nil {
+		return CompositeFrame{}, err
+	}
+	for path, identity := range sources {
+		now, err := mediacache.Identify(path)
+		if err != nil || now != identity {
+			return CompositeFrame{}, errors.New("source changed during composite frame")
+		}
+	}
+	return CompositeFrame{Time: at, Frame: frame, Sources: sources, End: at == e.Duration()}, nil
+}
+
+func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder, start int64, clock func() int64, present func(context.Context, CompositeFrame) error) error {
+	if e == nil || decoder == nil || clock == nil || present == nil || start < 0 || start >= e.Duration() {
+		return errors.New("invalid clocked preview request")
+	}
+	identities := make(map[string]mediacache.Source)
+	at := start
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		now := min(e.Duration(), max(start, clock()))
+		if now == e.Duration() {
+			at = now
+		} else {
+			at = max(at, start+(now-start)/media.CompositeStep*media.CompositeStep)
+		}
+		frame, err := renderCompositeFrame(ctx, e, decoder, at, identities)
+		if err != nil {
+			return err
+		}
+		for clock() < at {
+			timer := time.NewTimer(5 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return ctx.Err()
+			case <-timer.C:
+			}
+		}
+		if at == e.Duration() || clock()-at <= 2*media.CompositeStep {
+			if err := present(ctx, frame); err != nil {
+				return err
+			}
+		}
+		if at == e.Duration() {
+			return nil
 		}
 		at = NextCompositeTick(at, e.Duration())
 	}
