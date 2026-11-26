@@ -121,3 +121,5 @@ set PIXELCUT_QUALIFY_CUDA_CHROMA=
 ```
 
 4K command assumes a real unrotated 3840x2160 limited-range left-sited HEVC Main 10 HLG recording with at least 120 frames; substitute path or swap output dimensions for a portrait recording. 1080p/4K are source resolutions, not preview output sizes. No new activation, thresholds, schema or dependencies. Candidate CI and hardware runs pending.
+
+Local command-level FFmpeg verification: both generated fixtures probe as Main 10, left-sited 10-bit 4:2:0, four frames. The impulse fixture produced four distinct raw SHA-256 results for the four named chroma-location controls, each 82,944 bytes (four 96x72 planar frames). This validates fixture and option execution on the local build only; candidate Go suite and CUDA remain untested locally. Ordinary CI exercises the explicit CPU location control when its FFmpeg advertises both named options; older builds still exercise baseline and timing.

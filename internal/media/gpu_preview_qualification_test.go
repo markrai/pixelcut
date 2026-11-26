@@ -76,6 +76,27 @@ func TestPreviewQualificationChromaFixtures(t *testing.T) {
 			if err != nil || q.ExactFrames != 4 || q.Y.Samples != 96*72*4 {
 				t.Fatalf("CPU chroma fixture: %+v %v", q, err)
 			}
+			help, err := exec.CommandContext(ctx, e.FFmpeg, "-hide_banner", "-h", "filter=scale").CombinedOutput()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(help), "in_chroma_loc") && strings.Contains(string(help), "out_chroma_loc") {
+				left, err := previewChromaControlGraph(v, req, 0, 4, "left", "left")
+				if err != nil {
+					t.Fatal(err)
+				}
+				center, err := previewChromaControlGraph(v, req, 0, 4, "left", "center")
+				if err != nil {
+					t.Fatal(err)
+				}
+				input := []string{"-noautorotate", "-hwaccel", "none", "-c:v", "hevc"}
+				controls, err := e.comparePreviewPlanes(ctx, req, 0, index.ticks, previewPairArgs(path, input, left, 4, "yuv420p10le"), previewPairArgs(path, input, center, 4, "yuv420p10le"))
+				if err != nil || controls.Compared != 4 || controls.U.DifferentSamples == 0 {
+					t.Fatalf("explicit CPU chroma location control: %+v %v", controls, err)
+				}
+			} else {
+				t.Log("explicit named chroma location controls unavailable in this FFmpeg; CPU baseline and timing still exercised")
+			}
 			bgra, err := previewCheckArgs(e, v, req, 0, 4, false)
 			if err != nil {
 				t.Fatal(err)
