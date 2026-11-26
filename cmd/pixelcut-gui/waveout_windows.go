@@ -27,11 +27,11 @@ type waveFormat struct {
 }
 
 type waveHeader struct {
-	Data                 uintptr
+	Data                  uintptr
 	Length, BytesRecorded uint32
-	User                 uintptr
+	User                  uintptr
 	Flags, Loops          uint32
-	Next, Reserved       uintptr
+	Next, Reserved        uintptr
 }
 
 type queuedWave struct {

@@ -61,7 +61,7 @@ from a build alone.
 | 2C.3 | Independent audio playback, detach/relink | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45725905248); merged; native acceptance pending |
 | 2C.4 | Track visibility, mute, solo, lock | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45729406556); merged; native acceptance pending |
 | 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
-| 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.2 CI passed (PR #7 open); 2C.6.3 implemented on stacked branch; verification pending |
+| 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.3 CI passed; PR #8 merged into #7 (open); 2C.6.4 implemented on stacked branch; verification pending |
 | 2D | Whole-project export and explicit output color contracts | Pending |
 | 2E | Audio envelopes, fades, levels and mixing | Pending |
 | 3A | GPU acceleration | Pending |
@@ -74,8 +74,8 @@ from a build alone.
 | --- | --- | --- |
 | 2C.6.1 | Timestamped still decoder, bounded source/frame cache | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45742732607); PR #7 open |
 | 2C.6.2 | Static SDR composite, geometry/opacity and Windows preview | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45742732607); PR #7 open; native acceptance pending |
-| 2C.6.3 | Continuous multi-layer video playback with persistent decoding | Implemented on stacked branch; CI and native acceptance pending |
-| 2C.6.4 | Audio synchronization, elementary mixing and master clock | Pending |
+| 2C.6.3 | Continuous multi-layer video playback with persistent decoding | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45808454654); merged into PR #7; native acceptance pending |
+| 2C.6.4 | Audio synchronization, elementary mixing and master clock | Implemented on stacked branch; CI and native acceptance pending |
 | 2C.6.5 | Integrated seeking, scrubbing, gaps and clip boundaries | Pending |
 | 2C.6.6 | Performance, cancellation/resource management and HDR display fidelity qualification | Pending |
 

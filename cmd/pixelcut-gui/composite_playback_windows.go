@@ -137,6 +137,14 @@ func (e *editor) startCompositePlayback() error {
 		return err
 	}
 	e.stopPreview()
+	if e.retiringPreview != nil {
+		select {
+		case <-e.retiringPreview:
+			e.retiringPreview = nil
+		default:
+			return fmt.Errorf("source preview is closing; retry Play")
+		}
+	}
 	if e.playhead >= compiled.Duration() {
 		return fmt.Errorf("no timeline remains ahead of the playhead")
 	}
