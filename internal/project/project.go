@@ -8,7 +8,8 @@ import (
 )
 
 const LegacyVersion = 1
-const Version = 2
+const TrackVersion = 2
+const Version = 3
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -28,13 +29,14 @@ type Crop struct {
 }
 
 type Clip struct {
-	ID        string           `json:"id"`
-	AssetID   string           `json:"asset_id"`
-	Start     int64            `json:"start_us"`
-	In        int64            `json:"in_us"`
-	Out       int64            `json:"out_us"`
-	Crop      *Crop            `json:"crop,omitempty"`
-	Transform *media.Transform `json:"transform,omitempty"`
+	ID            string           `json:"id"`
+	AssetID       string           `json:"asset_id"`
+	Start         int64            `json:"start_us"`
+	In            int64            `json:"in_us"`
+	Out           int64            `json:"out_us"`
+	Crop          *Crop            `json:"crop,omitempty"`
+	Transform     *media.Transform `json:"transform,omitempty"`
+	AudioDetached bool             `json:"audio_detached,omitempty"`
 }
 
 type Track struct {
@@ -136,7 +138,7 @@ func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
 	if err := validateClip(c, a, VideoTrack); err != nil {
 		return a, media.Edit{}, err
 	}
-	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Duration()), Trim: c.In != 0 || c.Out != a.Duration}
+	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Duration()), Trim: c.In != 0 || c.Out != a.Duration, Silent: c.AudioDetached}
 	if c.Crop != nil {
 		e.Crop = &media.Crop{X: c.Crop.X, Y: c.Crop.Y, Width: c.Crop.Width, Height: c.Crop.Height}
 	}

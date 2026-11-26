@@ -194,10 +194,6 @@ func (e *editor) previewActive() bool {
 }
 
 func (e *editor) togglePreview() error {
-	if e.audioTrack() {
-		e.tell("Select a video track for preview; independent audio playback is not yet available.")
-		return nil
-	}
 	if e.playing() {
 		return e.pausePreview()
 	}
@@ -212,7 +208,7 @@ func (e *editor) togglePreview() error {
 		e.playhead = marker
 		e.refreshPlaybackMarker()
 		e.checkpoint()
-		e.tell("No footage ahead of the playhead.")
+		e.tell("No clips ahead of the playhead on the active track.")
 		return nil
 	}
 	c := e.track().Clips[index]

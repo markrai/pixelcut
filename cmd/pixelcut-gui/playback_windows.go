@@ -18,11 +18,22 @@ func (e *editor) previewTarget(at int64, advance bool) (int, int64, bool, error)
 		}
 		e.composition, e.compositionFingerprint = compiled, fingerprint
 	}
-	layer, target, ok := e.composition.VideoTarget(e.trackID(), at, advance)
+	var ref project.ClipRef
+	var target int64
+	var ok bool
+	if e.audioTrack() {
+		var audio composition.AudioContribution
+		audio, target, ok = e.composition.AudioTarget(e.trackID(), at, advance)
+		ref = audio.Ref
+	} else {
+		var layer composition.VideoLayer
+		layer, target, ok = e.composition.VideoTarget(e.trackID(), at, advance)
+		ref = layer.Ref
+	}
 	if !ok {
 		return -1, at, false, nil
 	}
-	_, index, ok := e.model.Project().ClipIndex(layer.Ref)
+	_, index, ok := e.model.Project().ClipIndex(ref)
 	if !ok {
 		return -1, at, false, project.ErrClipNotFound
 	}
@@ -106,7 +117,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		t = end
 	}
 	index := -1
-	if e.audioTrack() || t == end {
+	if t == end {
 		for i, c := range e.track().Clips {
 			if c.Contains(t) || (t == end && t == c.End()) {
 				index = i
@@ -126,18 +137,10 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		e.playhead = t
 		e.selectClip(-1)
 		e.refreshPlaybackMarker()
-		e.tell("No video at this timeline position.")
+		e.tell("No clip on the active track at this timeline position.")
 		return
 	}
 	c := e.track().Clips[index]
-	if e.audioTrack() {
-		e.stopPreview()
-		e.playhead = t
-		e.selectClip(index)
-		e.refreshPlaybackMarker()
-		e.tell("Audio track editing; mixed playback is not yet available.")
-		return
-	}
 	if a, ok := e.model.Project().Asset(c.AssetID); !ok || !project.SourceAvailable(a.Path) {
 		e.stopPreview()
 		e.playhead = t

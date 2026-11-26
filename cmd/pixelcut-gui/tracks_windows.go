@@ -47,7 +47,7 @@ func (e *editor) switchTrack(id string) {
 	e.stopPreview()
 	e.model.SwitchTrack(id)
 	e.refresh()
-	e.tell("Editing " + id + ". Preview is isolated to the active video track.")
+	e.tell("Editing " + id + ". Preview is isolated to the active track.")
 }
 
 func trackMenuItems(p project.Project, active string, selected []string) []menuItem {

@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
+	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/timeline"
 )
 
@@ -21,6 +22,8 @@ const (
 	menuSelectAsset
 	menuRelinkClip
 	menuReplaceClip
+	menuDetachAudio
+	menuReattachAudio
 )
 
 type menuItem struct {
@@ -36,6 +39,7 @@ func separator() menuItem { return menuItem{} }
 
 type timelineMenuState struct {
 	count                                                            int
+	detachAudio, reattachAudio                                       bool
 	audioTrack                                                       bool
 	frameSnap                                                        bool
 	offline                                                          bool
@@ -54,6 +58,9 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 			item(idDelete, "Delete\tDel", true), item(idRippleDelete, "Ripple delete\tShift+Del", true), separator(),
 			item(menuSelectAsset, "Select source in media bin", single), item(menuRevealClip, "Show source in Explorer", single && !s.offline),
 			item(menuRelinkClip, "Relink source...", single && s.offline), item(menuReplaceClip, "Replace source...", single))
+		if single && !s.audioTrack {
+			items = append(items, separator(), item(menuDetachAudio, "Detach source audio", s.detachAudio), item(menuReattachAudio, "Reattach matching audio", s.reattachAudio))
+		}
 	} else {
 		items = append(items, item(menuPasteHere, "Paste here", s.pasteHere), item(idPaste, "Paste at playhead\tCtrl+V", s.paste),
 			item(menuGapHere, "Remove gap here", s.gap), separator(),
@@ -213,6 +220,8 @@ func (e *editor) timelineContext(lp uintptr) {
 			s.split = e.playhead > c.Start && e.playhead < c.Start+(c.Out-c.In)
 			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
+				s.detachAudio = a.HasAudio && !c.AudioDetached
+				s.reattachAudio = c.AudioDetached && len(e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})) > 0
 			}
 		}
 		e.checkpoint()

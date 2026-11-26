@@ -122,6 +122,7 @@ type Edit struct {
 	Transform       *Transform
 	Start, Duration float64
 	Trim            bool
+	Silent          bool
 }
 
 func (e Edit) validate(v Stream) error {
@@ -141,7 +142,7 @@ func (e Edit) validate(v Stream) error {
 			return err
 		}
 	}
-	if !e.Trim && e.Crop == nil && e.Transform == nil {
+	if !e.Trim && e.Crop == nil && e.Transform == nil && !e.Silent {
 		return errors.New("no edit requested")
 	}
 	if e.Trim {
@@ -192,7 +193,16 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 	if edit.Trim {
 		args = append(args, "-ss", seconds(edit.Start), "-t", seconds(edit.Duration))
 	}
-	args = append(args, "-map", "0:v:0", "-map", "0:a:0?")
+	args = append(args, "-map", "0:v:0")
+	if edit.Silent {
+		args = append(args, "-an")
+	} else {
+		args = append(args, "-map", "0:a:0?")
+	}
+	expected := r
+	if edit.Silent {
+		expected.Streams = []Stream{v}
+	}
 	graph, w, h, err := VideoFilters(display.Width, display.Height, edit.Crop, edit.Transform)
 	if err != nil {
 		return err
@@ -220,7 +230,7 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 		if err != nil {
 			return err
 		}
-		if b.CodecName != "hevc" || out.audioCount() != r.audioCount() {
+		if b.CodecName != "hevc" || out.audioCount() != expected.audioCount() {
 			return errors.New("unexpected output codec or audio stream count")
 		}
 		if err = b.ValidateHLG(); err != nil {
@@ -230,7 +240,7 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 		if err != nil || rotation != 0 {
 			return errors.New("rendered video must have normalized orientation")
 		}
-		if err = out.verifyExportStreams(r, !edit.Trim); err != nil {
+		if err = out.verifyExportStreams(expected, !edit.Trim); err != nil {
 			return err
 		}
 		return verifyColor(v, b, w, h)
@@ -242,6 +252,14 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 }
 
 func (e Engine) Remux(ctx context.Context, input, output string) error {
+	return e.remux(ctx, input, output, false)
+}
+
+func (e Engine) RemuxVideoOnly(ctx context.Context, input, output string) error {
+	return e.remux(ctx, input, output, true)
+}
+
+func (e Engine) remux(ctx context.Context, input, output string, silent bool) error {
 	r, err := e.Inspect(ctx, input)
 	if err != nil {
 		return err
@@ -261,7 +279,15 @@ func (e Engine) Remux(ctx context.Context, input, output string) error {
 	if err != nil {
 		return err
 	}
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in, "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart"}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-i", in, "-map", "0:v:0"}
+	expected := r
+	if silent {
+		args = append(args, "-an")
+		expected.Streams = []Stream{v}
+	} else {
+		args = append(args, "-map", "0:a?")
+	}
+	args = append(args, "-c", "copy", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-movflags", "+faststart")
 	err = e.publish(ctx, output, args, func(out Report) error {
 		b, err := out.Video()
 		if err != nil {
@@ -274,7 +300,7 @@ func (e Engine) Remux(ctx context.Context, input, output string) error {
 		if err != nil || actual != rotation {
 			return errors.New("remux changed display orientation")
 		}
-		if err = out.verifyExportStreams(r, true); err != nil {
+		if err = out.verifyExportStreams(expected, true); err != nil {
 			return err
 		}
 		return verifyColor(v, b, v.Width, v.Height)

@@ -6,7 +6,7 @@ func commandRequirement(id int) editorstate.Requirement {
 	switch id {
 	case idApply, idSplit, menuSelectAsset, menuRevealClip, menuRelinkClip, menuReplaceClip:
 		return editorstate.SingleClip
-	case idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut:
+	case idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio:
 		return editorstate.VideoClip
 	case idCopy, idCut, idDuplicate, idDelete, idRippleDelete:
 		return editorstate.SelectedClips
