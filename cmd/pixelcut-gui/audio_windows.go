@@ -45,6 +45,9 @@ func (e *editor) syncPreviewLabel() {
 			} else if c.GainPercent() != 100 {
 				preview += fmt.Sprintf(" / clip gain %d%%", c.GainPercent())
 			}
+			if c.HasEnvelope() && c.EffectiveGainPercent() > 0 {
+				preview += " / envelope: composite only"
+			}
 			if c.HasFades() && c.EffectiveGainPercent() > 0 {
 				preview += " / fades: composite only"
 			}
@@ -66,6 +69,9 @@ func audioClipLabel(c project.Clip) string {
 	}
 	if c.HasFades() {
 		label += " / fade"
+	}
+	if c.HasEnvelope() {
+		label += " / env"
 	}
 	return label
 }

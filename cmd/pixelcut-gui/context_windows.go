@@ -89,7 +89,7 @@ func assetMenuItems(selected, offline, hasMissing bool) []menuItem {
 }
 
 func (e *editor) canOpenMenu() bool {
-	return !e.menuOpen && !e.busy && e.drag == nil && e.assetDrag == nil && e.marquee == nil && !e.scrubbing && e.cropSession == nil && e.transformSession == nil
+	return !e.menuOpen && !e.busy && e.drag == nil && e.envelopeDrag == nil && e.assetDrag == nil && e.marquee == nil && !e.scrubbing && e.cropSession == nil && e.transformSession == nil
 }
 
 func contextPoint(hwnd, lp uintptr, keyboard point) (point, point) {

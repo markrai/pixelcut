@@ -34,7 +34,7 @@ func (e *editor) placementAt(x, y int32) (*placementRequest, bool) {
 }
 
 func (e *editor) beginAssetDrag(hwnd uintptr, lp uintptr) bool {
-	if e.menuOpen || e.busy || e.marquee != nil || e.drag != nil || e.scrubbing || e.cropSession != nil || e.transformSession != nil {
+	if e.menuOpen || e.busy || e.marquee != nil || e.drag != nil || e.envelopeDrag != nil || e.scrubbing || e.cropSession != nil || e.transformSession != nil {
 		return false
 	}
 	r, _, _ := send.Call(hwnd, 0x01a9, 0, lp)

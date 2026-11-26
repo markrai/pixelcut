@@ -18,6 +18,8 @@ const (
 	clipFadeOutMenu = 9261
 	clipFadeReset   = 9262
 	clipFadeBase    = 9270
+	clipEnvClear    = 9290
+	clipEnvHelp     = 9291
 )
 
 var clipGainChoices = [...]int{0, 10, 25, 50, 75, 100, 125, 150, 200, 300, 400}
@@ -63,13 +65,18 @@ func clipAudioItems(c project.Clip) []menuItem {
 		item(clipGainUp, "Increase volume by 1 point", gain < project.MaxGainPercent), separator(),
 		item(clipFadeInMenu, fmt.Sprintf("Fade in: %s...", fadeLabel(c.FadeIn)), true),
 		item(clipFadeOutMenu, fmt.Sprintf("Fade out: %s...", fadeLabel(c.FadeOut)), true),
-		item(clipFadeReset, "Remove both fades", c.HasFades()))
+		item(clipFadeReset, "Remove both fades", c.HasFades()), separator(),
+		item(clipEnvHelp, "Volume envelope: Alt+click/drag audio lane", false),
+		item(clipEnvClear, "Remove volume envelope", c.HasEnvelope()))
 }
 
 func clipAudioChoice(p project.Project, ref project.ClipRef, id int) (project.Project, error) {
 	c, ok := p.Clip(ref)
 	if !ok {
 		return p, project.ErrClipNotFound
+	}
+	if id == clipEnvClear {
+		return p.SetClipEnvelope(ref, nil)
 	}
 	if id == clipFadeReset {
 		return p.SetClipFades(ref, 0, 0)
@@ -200,6 +207,9 @@ func (e *editor) clipAudioAction(id int, screen point) error {
 	}
 	if c.HasFades() {
 		status += fmt.Sprintf(" Fade in %s / out %s. Use composite playback to hear fades.", fadeLabel(c.FadeIn), fadeLabel(c.FadeOut))
+	}
+	if c.HasEnvelope() {
+		status += " Volume envelope active; use composite playback."
 	}
 	e.tell(status)
 	return nil

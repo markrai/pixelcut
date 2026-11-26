@@ -80,7 +80,7 @@ func (e *editor) updatePlaybackClock() {
 		e.updatePlayButton(true)
 		e.tell("Playback IPC unavailable; reopen the preview to seek.")
 	}
-	if e.scrubbing || e.drag != nil {
+	if e.scrubbing || e.drag != nil || e.envelopeDrag != nil {
 		return
 	}
 	if s := e.clock.transport.Status(); s.Confirmed {

@@ -221,6 +221,7 @@ type editor struct {
 	zoom                    float64
 	origin, playhead        int64
 	drag                    *timelineDrag
+	envelopeDrag            *volumeDrag
 	clock                   *previewClock
 	scrubbing, scrubPlaying bool
 	cropSession             *cropSession
@@ -589,7 +590,7 @@ func (e *editor) command(id, notification int) error {
 		}
 		return fmt.Errorf("media operation in progress")
 	}
-	if e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing {
+	if e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.envelopeDrag != nil || e.scrubbing {
 		return fmt.Errorf("finish the active drag first")
 	}
 	if e.transformSession != nil && id != idTransformApply && id != idTransformCancel && id != idTransformReset && id != idRotateLeft && id != idRotateRight && id != idFlipH && id != idFlipV {
@@ -938,6 +939,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			return 0
 		}
 		ui.cancelAssetDrag()
+		ui.endEnvelopeDrag(true)
 		ui.endMarquee(true)
 		if ui.drag != nil {
 			ui.cancelTimelineDrag()
