@@ -71,5 +71,9 @@ func (c Clip) Clone() Clip {
 		v := *c.Transform
 		c.Transform = &v
 	}
+	if c.Opacity != nil {
+		v := *c.Opacity
+		c.Opacity = &v
+	}
 	return c
 }

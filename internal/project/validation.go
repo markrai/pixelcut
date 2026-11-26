@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -36,6 +36,14 @@ func validTrackKind(kind string) bool {
 func validateTrackLayout(p Project) error {
 	if !SupportedVersion(p.Version) {
 		return fmt.Errorf("%w %d", ErrUnsupportedVersion, p.Version)
+	}
+	if p.CanvasWidth != 0 || p.CanvasHeight != 0 {
+		if p.Version < Version {
+			return fmt.Errorf("%w: composition canvas requires version %d", ErrUnsupportedVersion, Version)
+		}
+		if err := (media.CanvasSize{Width: p.CanvasWidth, Height: p.CanvasHeight}).Validate(); err != nil {
+			return err
+		}
 	}
 	if len(p.Tracks) < 2 || len(p.Tracks) > MaxTracks || p.Tracks[0].ID != "V1" || p.Tracks[0].Kind != VideoTrack || p.Tracks[1].ID != "A1" || p.Tracks[1].Kind != AudioTrack {
 		return fmt.Errorf("%w: unsupported editor track layout", ErrInvalidTrack)
@@ -62,6 +70,9 @@ func validateClip(c Clip, a Asset, kind string) error {
 	}
 	if c.AudioDetached && (kind != VideoTrack || !a.HasAudio) {
 		return fmt.Errorf("%w %q: invalid detached audio state", ErrInvalidClip, c.ID)
+	}
+	if c.Opacity != nil && (kind != VideoTrack || *c.Opacity < 0 || *c.Opacity > 100) {
+		return fmt.Errorf("%w %q: opacity requires a video clip and a value from 0 to 100", ErrInvalidClip, c.ID)
 	}
 	if kind == AudioTrack && (!a.HasAudio || c.Crop != nil || c.Transform != nil) {
 		return fmt.Errorf("%w %q: invalid audio clip", ErrInvalidClip, c.ID)
@@ -109,8 +120,8 @@ func (p Project) Validate() error {
 		if t.Hidden && t.Kind != VideoTrack {
 			return fmt.Errorf("%w: only video tracks support visibility", ErrInvalidTrack)
 		}
-		if p.Version < Version && (t.Hidden || t.Muted || t.Solo || t.Locked) {
-			return fmt.Errorf("%w: track controls require version %d", ErrUnsupportedVersion, Version)
+		if p.Version < ControlsVersion && (t.Hidden || t.Muted || t.Solo || t.Locked) {
+			return fmt.Errorf("%w: track controls require version %d", ErrUnsupportedVersion, ControlsVersion)
 		}
 		tracks[t.ID] = true
 		ordered := append([]Clip(nil), t.Clips...)
@@ -123,6 +134,9 @@ func (p Project) Validate() error {
 			}
 			if c.AudioDetached && p.Version < AudioVersion {
 				return fmt.Errorf("%w: detached audio requires version %d", ErrUnsupportedVersion, AudioVersion)
+			}
+			if c.Opacity != nil && p.Version < Version {
+				return fmt.Errorf("%w: opacity requires version %d", ErrUnsupportedVersion, Version)
 			}
 			if err := validateClip(c, a, t.Kind); err != nil {
 				return err

@@ -22,6 +22,7 @@ type VideoLayer struct {
 	Contribution
 	Crop      *project.Crop
 	Transform *media.Transform
+	Opacity   int
 }
 
 type AudioContribution struct {
@@ -50,6 +51,7 @@ type track struct {
 
 type Evaluator struct {
 	duration   int64
+	canvas     media.CanvasSize
 	tracks     []track
 	boundaries []int64
 }
@@ -58,7 +60,7 @@ func Compile(p project.Project) (*Evaluator, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	e := &Evaluator{duration: p.EndTime(), boundaries: []int64{0}}
+	e := &Evaluator{duration: p.EndTime(), canvas: p.CompositionCanvas(), boundaries: []int64{0}}
 	assets := make(map[string]project.Asset, len(p.Assets))
 	for _, a := range p.Assets {
 		assets[a.ID] = a
@@ -120,7 +122,7 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 		}
 		if t.policy.Video {
 			c = c.Clone()
-			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform})
+			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform, Opacity: c.OpacityPercent()})
 		}
 		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached {
 			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack})
