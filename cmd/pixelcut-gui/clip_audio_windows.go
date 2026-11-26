@@ -14,6 +14,10 @@ const (
 	clipGainDownTen = 9252
 	clipGainUpTen   = 9253
 	clipGainHeader  = 9254
+	clipFadeInMenu  = 9260
+	clipFadeOutMenu = 9261
+	clipFadeReset   = 9262
+	clipFadeBase    = 9270
 )
 
 var clipGainChoices = [...]int{0, 10, 25, 50, 75, 100, 125, 150, 200, 300, 400}
@@ -56,13 +60,19 @@ func clipAudioItems(c project.Clip) []menuItem {
 		item(clipGainDownTen, "Decrease volume by 10 points", gain > 0),
 		item(clipGainUpTen, "Increase volume by 10 points", gain < project.MaxGainPercent),
 		item(clipGainDown, "Decrease volume by 1 point", gain > 0),
-		item(clipGainUp, "Increase volume by 1 point", gain < project.MaxGainPercent))
+		item(clipGainUp, "Increase volume by 1 point", gain < project.MaxGainPercent), separator(),
+		item(clipFadeInMenu, fmt.Sprintf("Fade in: %s...", fadeLabel(c.FadeIn)), true),
+		item(clipFadeOutMenu, fmt.Sprintf("Fade out: %s...", fadeLabel(c.FadeOut)), true),
+		item(clipFadeReset, "Remove both fades", c.HasFades()))
 }
 
 func clipAudioChoice(p project.Project, ref project.ClipRef, id int) (project.Project, error) {
 	c, ok := p.Clip(ref)
 	if !ok {
 		return p, project.ErrClipNotFound
+	}
+	if id == clipFadeReset {
+		return p.SetClipFades(ref, 0, 0)
 	}
 	if id == menuClipMute {
 		return p.SetClipMuted(ref, !c.AudioMuted)
@@ -149,7 +159,34 @@ func (e *editor) clipAudioAction(id int, screen point) error {
 	if e.model.Count() != 1 || e.trackID() != ref.TrackID || e.model.PrimaryID() != ref.ClipID || e.model.Fingerprint() != p.Fingerprint() {
 		return fmt.Errorf("selection changed; reopen the clip audio menu")
 	}
-	q, err := clipAudioChoice(p, ref, id)
+	var q project.Project
+	var err error
+	if id == clipFadeInMenu || id == clipFadeOutMenu {
+		in, out := c.FadeIn, c.FadeOut
+		current := in
+		if id == clipFadeOutMenu {
+			current = out
+		}
+		choice := e.popup(fadeItems(current, c.Duration()), screen)
+		if choice == 0 {
+			return nil
+		}
+		if e.model.Fingerprint() != p.Fingerprint() || e.model.Count() != 1 || e.trackID() != ref.TrackID || e.model.PrimaryID() != ref.ClipID {
+			return fmt.Errorf("selection changed; reopen the clip audio menu")
+		}
+		value, ok := fadeChoice(choice)
+		if !ok {
+			return fmt.Errorf("invalid fade choice")
+		}
+		if id == clipFadeInMenu {
+			in = value
+		} else {
+			out = value
+		}
+		q, err = p.SetClipFades(ref, in, out)
+	} else {
+		q, err = clipAudioChoice(p, ref, id)
+	}
 	if err != nil {
 		return err
 	}
@@ -161,6 +198,38 @@ func (e *editor) clipAudioAction(id int, screen point) error {
 	if c.AudioMuted {
 		status += " Muted; volume retained."
 	}
+	if c.HasFades() {
+		status += fmt.Sprintf(" Fade in %s / out %s. Use composite playback to hear fades.", fadeLabel(c.FadeIn), fadeLabel(c.FadeOut))
+	}
 	e.tell(status)
 	return nil
+}
+
+var clipFadeChoices = [...]int64{0, 100000, 250000, 500000, 1000000, 2000000, 3000000, 5000000, 10000000, 30000000, 60000000}
+
+func fadeLabel(ticks int64) string {
+	if ticks == 0 {
+		return "Off"
+	}
+	return fmt.Sprintf("%g s", project.Seconds(ticks))
+}
+
+func fadeItems(current, duration int64) []menuItem {
+	items := make([]menuItem, 0, len(clipFadeChoices))
+	for i, ticks := range clipFadeChoices {
+		label := fadeLabel(ticks)
+		if ticks > duration {
+			label += " (limited to clip)"
+		}
+		items = append(items, menuItem{id: clipFadeBase + i, label: label, enabled: true, checked: current == ticks})
+	}
+	return items
+}
+
+func fadeChoice(id int) (int64, bool) {
+	i := id - clipFadeBase
+	if i < 0 || i >= len(clipFadeChoices) {
+		return 0, false
+	}
+	return clipFadeChoices[i], true
 }
