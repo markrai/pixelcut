@@ -22,6 +22,7 @@ type projectExportJob struct {
 	mu       sync.Mutex
 	progress projectexport.Progress
 	warnings []string
+	levels   media.AudioLevels
 	cancel   context.CancelFunc
 	stopping bool
 	lastPoll time.Time
@@ -33,6 +34,9 @@ func (j *projectExportJob) observe(p projectexport.Progress) {
 	if len(p.Warnings) > 0 {
 		j.warnings = append([]string(nil), p.Warnings...)
 	}
+	if p.AudioLevels.Frames > 0 {
+		j.levels = p.AudioLevels
+	}
 	j.progress = p
 }
 
@@ -40,6 +44,12 @@ func (j *projectExportJob) snapshot() (projectexport.Progress, []string) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	return j.progress, append([]string(nil), j.warnings...)
+}
+
+func (j *projectExportJob) audioLevels() media.AudioLevels {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return j.levels
 }
 
 func exportStatus(p projectexport.Progress, warnings int) string {
@@ -67,6 +77,9 @@ func exportStatus(p projectexport.Progress, warnings int) string {
 		status = "Export published; finishing cleanup..."
 	default:
 		status = "Checking project and source media..."
+	}
+	if p.Stage == projectexport.StageAudio && p.AudioLevels.ClipCount() > 0 {
+		status += fmt.Sprintf(" | CLIP: %d channel samples", p.AudioLevels.ClipCount())
 	}
 	if warnings > 0 {
 		status += fmt.Sprintf(" | %d preflight warning(s)", warnings)
@@ -181,6 +194,9 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 		message := "Project export complete: " + path
 		if len(warnings) != 0 {
 			message += fmt.Sprintf(" (%d preflight warning(s); use plan-export for details)", len(warnings))
+		}
+		if levels := job.audioLevels(); err == nil && levels.Frames > 0 {
+			message = fmt.Sprintf("PCM peak L %s / R %s dBFS; clipped channel samples: %d | ", media.PeakLabel(levels.Peak[0]), media.PeakLabel(levels.Peak[1]), levels.ClipCount()) + message
 		}
 		return result{err: err, message: message}
 	}, func() { post.Call(hwnd, wmDone, 0, 0) })

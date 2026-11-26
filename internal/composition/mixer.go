@@ -92,6 +92,10 @@ func (m *PCMMixer) AddContribution(samples []int16, a AudioContribution, start, 
 }
 
 func (m *PCMMixer) Finish(dst []int16) error {
+	return m.FinishObserved(dst, nil)
+}
+
+func (m *PCMMixer) FinishObserved(dst []int16, levels *media.AudioLevels) error {
 	if len(m.sum) == 0 || len(dst) != len(m.sum) {
 		return errors.New("invalid PCM destination")
 	}
@@ -102,6 +106,16 @@ func (m *PCMMixer) Finish(dst []int16) error {
 			value = (value + mixScale/2) / mixScale
 		}
 		dst[i] = int16(max(-32768, min(32767, value)))
+		if levels != nil {
+			ch := i % media.PCMChannels
+			levels.Peak[ch] = max(levels.Peak[ch], uint32(max(int64(dst[i]), -int64(dst[i]))))
+			if value < -32768 || value > 32767 {
+				levels.Clipped[ch]++
+			}
+		}
+	}
+	if levels != nil {
+		levels.Frames += int64(len(dst) / media.PCMChannels)
 	}
 	return nil
 }

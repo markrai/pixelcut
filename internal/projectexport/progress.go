@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/markrai/pixelcut/internal/media"
 )
 
 type Stage string
@@ -22,10 +24,11 @@ const (
 )
 
 type Progress struct {
-	Stage     Stage
-	Completed int64
-	Total     int64
-	Warnings  []string
+	Stage       Stage
+	Completed   int64
+	Total       int64
+	Warnings    []string
+	AudioLevels media.AudioLevels
 }
 
 type Observer func(Progress)

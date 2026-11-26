@@ -138,3 +138,56 @@ func TestProjectOutputRequiresExactAudioPresentationInterval(t *testing.T) {
 		t.Fatal("missing video start accepted")
 	}
 }
+
+func TestOfflineLevelsMatchPreviewAndCountPadding(t *testing.T) {
+	p := exportFixture(t)
+	plan, err := Build(p, "hlg", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	var measured media.AudioLevels
+	d := &testAudio{next: make(map[string]int64), opens: make(map[string]int)}
+	err = mixAudioObserved(context.Background(), plan, d, &out, func(v media.AudioLevels) {
+		if v.Frames <= measured.Frames || v.Frames*4 != int64(out.Len()) {
+			t.Fatal("meter advanced without a complete PCM write")
+		}
+		measured = v
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measured.Frames != plan.OutputAudioFrames || measured.Peak != [2]uint32{32767, 32767} || measured.Clipped != [2]int64{960, 960} {
+		t.Fatalf("incorrect export levels: %+v", measured)
+	}
+	e, err := composition.Compile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var preview media.AudioLevels
+	decoder := parityPCM{reads: make(map[string]int)}
+	for pos := int64(0); pos < plan.ContentAudioFrames; {
+		n := int(min(int64(1379), plan.ContentAudioFrames-pos))
+		b, err := composition.MixPCM(context.Background(), e, decoder, 0, pos, n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		preview.Merge(b.Levels)
+		pos += int64(n)
+	}
+	preview.Frames += plan.OutputAudioFrames - plan.ContentAudioFrames
+	if preview != measured {
+		t.Fatalf("preview/export levels differ: %+v != %+v", preview, measured)
+	}
+	var reports int
+	d = &testAudio{next: make(map[string]int64), opens: make(map[string]int)}
+	if err := mixAudioObserved(context.Background(), plan, d, rejectPCMWrite{}, func(media.AudioLevels) { reports++ }); err == nil || reports != 0 {
+		t.Fatal("failed PCM write reported levels")
+	}
+}
+
+type rejectPCMWrite struct{}
+
+func (rejectPCMWrite) Write([]byte) (int, error) {
+	return 0, errors.New("write failed")
+}

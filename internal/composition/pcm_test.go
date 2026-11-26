@@ -62,6 +62,9 @@ func TestMixPCMBoundariesPoliciesAndSaturation(t *testing.T) {
 			t.Fatalf("frame %d: %d, want %d", tc.frame, block.Samples[tc.frame*2], tc.want)
 		}
 	}
+	if block.Levels.Frames != 2400 || block.Levels.Peak != [2]uint32{32767, 32767} || block.Levels.Clipped != [2]int64{481, 481} {
+		t.Fatalf("incorrect mixed block levels: %+v", block.Levels)
+	}
 	if len(d.calls) != 4 || d.calls[0].Offset != 481 || d.calls[0].Tick != 2019 || d.calls[2].ClipID != "audio" {
 		t.Fatalf("wrong source mapping: %+v", d.calls)
 	}
@@ -75,6 +78,9 @@ func TestMixPCMBoundariesPoliciesAndSaturation(t *testing.T) {
 	block, err = MixPCM(context.Background(), e, d, 0, 0, 2400)
 	if err != nil || len(d.calls) != 0 {
 		t.Fatalf("suppressed audio decoded: %v", err)
+	}
+	if block.Levels != (media.AudioLevels{Frames: 2400}) {
+		t.Fatal("silence reported nonzero peaks or clipping")
 	}
 	for _, sample := range block.Samples {
 		if sample != 0 {

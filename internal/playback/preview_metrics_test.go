@@ -41,3 +41,26 @@ func TestPreviewMetricsConcurrentAndRetired(t *testing.T) {
 		t.Fatal("diagnostic report misrepresents clock-relative timing")
 	}
 }
+
+func TestConfirmedAudioLevelsAreRunScoped(t *testing.T) {
+	m := NewPreviewMetrics()
+	if latest, total, at := m.AudioMeter(); latest.Frames != 0 || total.Frames != 0 || !at.IsZero() {
+		t.Fatal("new run has stale levels")
+	}
+	first := media.AudioLevels{Frames: 2400, Peak: [2]uint32{32767, 1000}, Clipped: [2]int64{7, 0}}
+	second := media.AudioLevels{Frames: 2400, Peak: [2]uint32{200, 32768}, Clipped: [2]int64{0, 3}}
+	m.ConfirmAudio(first)
+	m.ConfirmAudio(second)
+	latest, total, at := m.AudioMeter()
+	if latest != second || total.Frames != 4800 || total.Peak != [2]uint32{32767, 32768} || total.ClipCount() != 10 || at.IsZero() {
+		t.Fatalf("incorrect confirmed meter: %+v %+v", latest, total)
+	}
+	m.Cancelled()
+	m.Finished(4800)
+	if m.Snapshot().Levels != total {
+		t.Fatal("retirement lost confirmed peaks")
+	}
+	if next := NewPreviewMetrics().Snapshot().Levels; next.Frames != 0 || next.ClipCount() != 0 {
+		t.Fatal("new run inherited clipping")
+	}
+}

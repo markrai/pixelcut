@@ -5,6 +5,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/projectexport"
 )
@@ -65,5 +66,19 @@ func TestExportProgressSnapshotAndLabels(t *testing.T) {
 	}
 	if !strings.Contains(exportStatus(projectexport.Progress{Stage: projectexport.StageAudio, Completed: 1200, Total: 2400}, 0), "50%") {
 		t.Fatal("audio percentage incorrect")
+	}
+}
+
+func TestExportLevelSummarySurvivesStageChange(t *testing.T) {
+	j := &projectExportJob{}
+	levels := media.AudioLevels{Frames: 4800, Peak: [2]uint32{32767, 5000}, Clipped: [2]int64{12, 0}}
+	p := projectexport.Progress{Stage: projectexport.StageAudio, Completed: 4800, Total: 4800, AudioLevels: levels}
+	j.observe(p)
+	if !strings.Contains(exportStatus(p, 0), "CLIP: 12 channel samples") {
+		t.Fatal("missing clipping warning")
+	}
+	j.observe(projectexport.Progress{Stage: projectexport.StageDone, Completed: 1, Total: 1})
+	if j.audioLevels() != levels {
+		t.Fatal("final export stage erased audio statistics")
 	}
 }

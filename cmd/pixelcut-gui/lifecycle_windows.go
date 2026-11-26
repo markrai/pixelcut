@@ -165,6 +165,7 @@ func (e *editor) switchProject(path string, closing bool) error {
 		return err
 	}
 	e.stopPreview()
+	e.lastCompositeMetrics = nil
 	e.clipboard = project.ClipClipboard{}
 	e.projectEpoch++
 	e.model = editorstate.New(q)
