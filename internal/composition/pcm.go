@@ -28,6 +28,7 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 		return PCMBlock{}, errors.New("audio request outside timeline")
 	}
 	out := PCMBlock{Offset: offset, Frames: frames, Samples: make([]int16, frames*media.PCMChannels)}
+	var mixer PCMMixer
 	for pos := offset; pos < offset+int64(frames); {
 		if err := ctx.Err(); err != nil {
 			return PCMBlock{}, err
@@ -49,21 +50,21 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 			return PCMBlock{}, err
 		}
 		n := int(next - pos)
-		sum := make([]int32, n*media.PCMChannels)
+		if err := mixer.Reset(n); err != nil {
+			return PCMBlock{}, err
+		}
 		for _, a := range f.Audio {
 			samples, err := decoder.DecodePCM(ctx, media.PCMRequest{ClipID: a.Ref.ClipID, Path: a.Asset.Path, Tick: a.SourceTime, Offset: pos, Frames: n})
 			if err != nil {
 				return PCMBlock{}, fmt.Errorf("audio %s/%s: %w", a.Ref.TrackID, a.Ref.ClipID, err)
 			}
-			if len(samples) != len(sum) {
-				return PCMBlock{}, errors.New("invalid decoded PCM block")
-			}
-			for i, value := range samples {
-				sum[i] += int32(value)
+			if err := mixer.Add(samples, a.GainPercent); err != nil {
+				return PCMBlock{}, err
 			}
 		}
-		for i, value := range sum {
-			out.Samples[int(pos-offset)*media.PCMChannels+i] = int16(max(-32768, min(32767, value)))
+		first := int(pos-offset) * media.PCMChannels
+		if err := mixer.Finish(out.Samples[first : first+n*media.PCMChannels]); err != nil {
+			return PCMBlock{}, err
 		}
 		pos = next
 	}

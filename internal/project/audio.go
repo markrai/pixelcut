@@ -28,7 +28,8 @@ func (p Project) DetachAudio(video ClipRef, target, id string) (Project, error) 
 	q := p.Clone()
 	q.Version = Version
 	q.Tracks[ti].Clips[ci].AudioDetached = true
-	q.Tracks[dst].Clips = append(q.Tracks[dst].Clips, Clip{ID: id, AssetID: c.AssetID, Start: c.Start, In: c.In, Out: c.Out})
+	q.Tracks[ti].Clips[ci].Gain = nil
+	q.Tracks[dst].Clips = append(q.Tracks[dst].Clips, Clip{ID: id, AssetID: c.AssetID, Start: c.Start, In: c.In, Out: c.Out, Gain: c.Clone().Gain})
 	if err := q.Validate(); err != nil {
 		return p, err
 	}
@@ -80,6 +81,7 @@ func (p Project) ReattachAudio(video, audio ClipRef) (Project, error) {
 	}
 	q := p.Clone()
 	q.Tracks[vi].Clips[vc].AudioDetached = false
+	q.Tracks[vi].Clips[vc].Gain = a.Clone().Gain
 	clips := q.Tracks[ai].Clips
 	q.Tracks[ai].Clips = append(clips[:ac], clips[ac+1:]...)
 	if err := q.Validate(); err != nil {

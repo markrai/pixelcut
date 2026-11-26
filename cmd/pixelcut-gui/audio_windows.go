@@ -36,6 +36,15 @@ func (e *editor) syncPreviewLabel() {
 	} else if c, ok := e.selected(); ok && c.OpacityPercent() != 100 {
 		preview += " / layer opacity not applied"
 	}
+	if !e.stillActive && e.compositeRun == nil && e.layerPlan == nil && !e.compositeResume {
+		if c, ok := e.selected(); ok && c.GainPercent() != 100 {
+			if c.GainPercent() == 0 {
+				preview += " / clip silent"
+			} else {
+				preview += " / source gain unchanged (use composite)"
+			}
+		}
+	}
 	change(e.previewLabel, preview)
 }
 
