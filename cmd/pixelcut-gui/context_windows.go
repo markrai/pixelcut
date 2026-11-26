@@ -182,7 +182,7 @@ func (e *editor) timelineContext(lp uintptr) {
 	if !keyboard && local.X < trackHeader {
 		if lane, ok := e.timelineStack().At(local.Y); ok {
 			e.selectTimelineLane(lane.TrackID)
-			id := e.popup(trackControlItems(e.track()), screen)
+			id := e.popup(trackControlItems(*e.track()), screen)
 			if err := e.toggleTrackControl(id); err != nil {
 				e.tell(err.Error())
 			}
