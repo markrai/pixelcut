@@ -192,8 +192,12 @@ type editor struct {
 	stillFingerprint        string
 	stillTime               int64
 	stillError              string
+	stillDue                time.Time
+	compositeResume         bool
 	compositeRun            *compositePreviewRun
 	compositeFrameTime      int64
+	compositeFrameUntil     int64
+	compositeFrameEnd       bool
 	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]

@@ -15,10 +15,10 @@ type SequentialDecoder interface {
 }
 
 type CompositeFrame struct {
-	Time    int64
-	Frame   media.StillFrame
-	Sources map[string]mediacache.Source
-	End     bool
+	Time, ValidUntil int64
+	Frame            media.StillFrame
+	Sources          map[string]mediacache.Source
+	End              bool
 }
 
 const CompositePreviewSide = 640
@@ -102,7 +102,7 @@ func renderCompositeFrame(ctx context.Context, e *Evaluator, decoder SequentialD
 			return CompositeFrame{}, errors.New("source changed during composite frame")
 		}
 	}
-	return CompositeFrame{Time: at, Frame: frame, Sources: sources, End: at == e.Duration()}, nil
+	return CompositeFrame{Time: at, ValidUntil: e.NextVideoBoundary(at), Frame: frame, Sources: sources, End: at == e.Duration()}, nil
 }
 
 func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder, start int64, clock func() int64, present func(context.Context, CompositeFrame) error) error {
@@ -119,7 +119,7 @@ func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder Sequential
 		if now == e.Duration() {
 			at = now
 		} else {
-			at = max(at, start+(now-start)/media.CompositeStep*media.CompositeStep)
+			at = max(at, e.VideoSampleAt(start, now))
 		}
 		frame, err := renderCompositeFrame(ctx, e, decoder, at, identities)
 		if err != nil {
@@ -134,7 +134,7 @@ func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder Sequential
 			case <-timer.C:
 			}
 		}
-		if at == e.Duration() || clock()-at <= 2*media.CompositeStep {
+		if frame.CurrentAt(clock()) {
 			if err := present(ctx, frame); err != nil {
 				return err
 			}
@@ -142,6 +142,6 @@ func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder Sequential
 		if at == e.Duration() {
 			return nil
 		}
-		at = NextCompositeTick(at, e.Duration())
+		at = e.NextVideoSample(start, at)
 	}
 }

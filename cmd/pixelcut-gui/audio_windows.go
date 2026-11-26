@@ -25,7 +25,9 @@ func (e *editor) syncPreviewLabel() {
 			preview += " / muted"
 		}
 	}
-	if e.compositeRun != nil {
+	if e.compositeResume {
+		preview = "Composite playback / SDR / seeking"
+	} else if e.compositeRun != nil {
 		preview = "Composite playback / SDR / audio master / 10 fps target"
 	} else if e.stillActive {
 		preview = "Composite frame / SDR / paused"

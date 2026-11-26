@@ -60,32 +60,81 @@ func newStillWorker(engine media.Engine) *service.Latest[stillPreviewRequest, st
 	})
 }
 
+const compositeSeekDelay = 80 * time.Millisecond
+
 func (e *editor) showCompositeStill() error {
 	e.stopPreview()
-	compiled, err := composition.Compile(e.model.Project())
-	if err != nil {
+	if err := e.prepareCompositeView(e.playhead); err != nil {
 		return err
 	}
-	plan, err := compiled.PlanLayers(e.playhead)
-	if err != nil {
-		return err
-	}
+	return e.submitCompositeStill()
+}
+
+func (e *editor) prepareCompositeView(at int64) error {
 	if e.layerSurface == 0 {
 		return fmt.Errorf("composite preview surface unavailable")
+	}
+	wasActive := e.stillActive
+	e.cancelCompositeRun()
+	if e.stillCancel != nil {
+		e.stillCancel()
+		e.stillCancel = nil
+	}
+	e.stillSequence = 0
+	e.stillDue = time.Time{}
+	e.compositeResume = false
+	e.stillFrame = nil
+	e.stillSources = nil
+	e.stillError = ""
+	e.stillActive = true
+	e.stillTime, e.playhead = at, at
+	e.stillFingerprint = e.model.Fingerprint()
+	if !wasActive {
+		user.NewProc("ShowWindow").Call(e.layerSurface, 5)
+		user.NewProc("SetWindowPos").Call(e.layerSurface, 0, 0, 0, 0, 0x0013)
+	}
+	user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
+	e.syncPreviewLabel()
+	e.updatePlayButton(true)
+	e.refreshPlaybackMarker()
+	return nil
+}
+
+func (e *editor) seekComposite(at int64, resume bool) error {
+	if e.stillActive && e.compositeRun == nil && !e.compositeResume && !resume && e.stillTime == at && e.stillFingerprint == e.model.Fingerprint() && (e.stillFrame != nil || e.stillSequence != 0 || !e.stillDue.IsZero()) {
+		return nil
+	}
+	if err := e.prepareCompositeView(at); err != nil {
+		return err
+	}
+	e.compositeResume = resume && at < e.endTime()
+	e.stillDue = time.Now().Add(compositeSeekDelay)
+	if e.compositeResume {
+		e.updatePlayButton(false)
+		e.syncPreviewLabel()
+		e.tell("Seeking composite playback...")
+	} else {
+		e.tell("Seeking composite frame...")
+	}
+	return nil
+}
+
+func (e *editor) submitCompositeStill() error {
+	compiled, err := e.compiledComposition()
+	if err != nil {
+		return err
+	}
+	plan, err := compiled.PlanLayers(e.stillTime)
+	if err != nil {
+		return err
 	}
 	if e.stillWorker == nil {
 		e.stillWorker = newStillWorker(e.engine)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	e.stillCancel = cancel
-	e.stillActive = true
-	e.stillTime = e.playhead
-	e.stillFingerprint = e.model.Fingerprint()
 	e.stillSequence = e.stillWorker.Submit(stillPreviewRequest{ctx: ctx, plan: plan})
-	user.NewProc("ShowWindow").Call(e.layerSurface, 5)
-	user.NewProc("SetWindowPos").Call(e.layerSurface, 0, 0, 0, 0, 0, 0x0013)
-	user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
-	e.syncPreviewLabel()
+	e.stillDue = time.Time{}
 	e.tell("Rendering composite frame (SDR). First source indexing may take time.")
 	return nil
 }
@@ -97,6 +146,8 @@ func (e *editor) cancelCompositeStill() {
 		e.stillCancel = nil
 	}
 	e.stillActive = false
+	e.stillDue = time.Time{}
+	e.compositeResume = false
 	e.stillSequence = 0
 	e.stillFrame = nil
 	e.stillSources = nil
@@ -111,6 +162,28 @@ func (e *editor) updateCompositeStill() {
 	if e.stillFingerprint != e.model.Fingerprint() || e.stillTime != e.playhead {
 		e.hideLayerLayout()
 		return
+	}
+	if e.compositeResume {
+		if time.Now().Before(e.stillDue) || e.scrubbing || e.drag != nil || e.marquee != nil || e.menuOpen || e.busy || !e.compositeRetired() || !e.sourcePreviewRetired() {
+			return
+		}
+		e.compositeResume = false
+		if err := e.startCompositePlayback(); err != nil {
+			e.stillError = err.Error()
+			e.updatePlayButton(true)
+			e.syncPreviewLabel()
+			e.tell(err.Error())
+			user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
+		}
+		return
+	}
+	if !e.stillDue.IsZero() && !time.Now().Before(e.stillDue) && e.drag == nil && e.marquee == nil && e.compositeRetired() && e.sourcePreviewRetired() {
+		e.stillDue = time.Time{}
+		if err := e.submitCompositeStill(); err != nil {
+			e.stillError = err.Error()
+			e.tell(err.Error())
+			user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
+		}
 	}
 	if e.stillSequence != 0 && e.stillWorker != nil {
 		r := e.stillWorker.Result()
@@ -127,6 +200,7 @@ func (e *editor) updateCompositeStill() {
 			e.tell("Composite frame failed: " + e.stillError)
 		} else {
 			e.stillFrame = &r.Value.frame
+			e.compositeFrameTime = e.stillTime
 			e.stillSources = r.Value.sources
 			e.tell("Composite frame (SDR, paused). Play starts composite playback with audio; seek to inspect another frame.")
 		}
@@ -146,7 +220,9 @@ func (e *editor) drawCompositeStill(d drawItem) {
 	f := e.stillFrame
 	if f == nil || !f.Valid() {
 		message := "Rendering composite frame..."
-		if e.compositeRun != nil {
+		if e.compositeResume {
+			message = "Seeking synchronized playback..."
+		} else if e.compositeRun != nil {
 			message = "Waiting for synchronized video..."
 		}
 		if e.stillError != "" {
