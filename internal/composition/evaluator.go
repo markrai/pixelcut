@@ -50,10 +50,11 @@ type track struct {
 }
 
 type Evaluator struct {
-	duration   int64
-	canvas     media.CanvasSize
-	tracks     []track
-	boundaries []int64
+	duration        int64
+	canvas          media.CanvasSize
+	tracks          []track
+	boundaries      []int64
+	videoBoundaries []int64
 }
 
 func Compile(p project.Project) (*Evaluator, error) {
@@ -71,6 +72,9 @@ func Compile(p project.Project) (*Evaluator, error) {
 		for _, c := range t.Clips {
 			indexed.clips = append(indexed.clips, entry{clip: c.Clone(), asset: assets[c.AssetID]})
 			e.boundaries = append(e.boundaries, c.Start, c.End())
+			if indexed.policy.Video && c.OpacityPercent() > 0 {
+				e.videoBoundaries = append(e.videoBoundaries, c.Start, c.End())
+			}
 		}
 		sort.Slice(indexed.clips, func(i, j int) bool {
 			return indexed.clips[i].clip.Start < indexed.clips[j].clip.Start
@@ -85,6 +89,7 @@ func Compile(p project.Project) (*Evaluator, error) {
 		}
 	}
 	e.boundaries = unique
+	sort.Slice(e.videoBoundaries, func(i, j int) bool { return e.videoBoundaries[i] < e.videoBoundaries[j] })
 	return e, nil
 }
 
