@@ -160,7 +160,9 @@ func (e *editor) resize() {
 		case p.h == e.status:
 			y += dy
 			ww += dx
-		case p.id == idExportMenu || p.id == idZoomIn || p.id == idZoomOut || p.id == idFit || p.id == idSnap || (p.x >= 825 && p.y >= 50):
+		case p.id == idExportMenu:
+			x = mainToolbarX(p.id, x, ww, w)
+		case p.id == idZoomIn || p.id == idZoomOut || p.id == idFit || p.id == idSnap || (p.x >= 825 && p.y >= 50):
 			x += dx
 		case p.h == e.host || p.h == e.layerSurface || p.h == e.audioMeter:
 			ww += dx
