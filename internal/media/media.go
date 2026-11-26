@@ -33,6 +33,9 @@ type Stream struct {
 	SampleRate        string            `json:"sample_rate,omitempty"`
 	Channels          int               `json:"channels,omitempty"`
 	Duration          string            `json:"duration"`
+	TimeBase          string            `json:"time_base,omitempty"`
+	StartPTS          *int64            `json:"start_pts,omitempty"`
+	DurationTS        *int64            `json:"duration_ts,omitempty"`
 	Tags              map[string]string `json:"tags,omitempty"`
 	SideData          []map[string]any  `json:"side_data_list,omitempty"`
 	Disposition       map[string]int    `json:"disposition,omitempty"`
