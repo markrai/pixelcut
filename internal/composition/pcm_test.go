@@ -65,7 +65,7 @@ func TestMixPCMBoundariesPoliciesAndSaturation(t *testing.T) {
 	if block.Levels.Frames != 2400 || block.Levels.Peak != [2]uint32{32767, 32767} || block.Levels.Clipped != [2]int64{481, 481} {
 		t.Fatalf("incorrect mixed block levels: %+v", block.Levels)
 	}
-	if len(d.calls) != 4 || d.calls[0].Offset != 481 || d.calls[0].Tick != 2019 || d.calls[2].ClipID != "audio" {
+	if len(d.calls) != 4 || d.calls[0].Offset != 481 || d.calls[0].Tick != 2019 || d.calls[0].SourceFrame != 96 || d.calls[0].SourceEnd != 1056 || d.calls[2].ClipID != "audio" {
 		t.Fatalf("wrong source mapping: %+v", d.calls)
 	}
 	p.Tracks[0].Clips[0].AudioDetached = true

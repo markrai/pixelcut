@@ -48,3 +48,32 @@ func TestPCMDecoderPersistentStereoAndRetirement(t *testing.T) {
 		t.Fatal("canceled request accepted")
 	}
 }
+
+func TestPCMDecoderCanonicalEndAndSourceDiscontinuity(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	path := filepath.Join(t.TempDir(), "tone.m4a")
+	runFF(t, "-v", "error", "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=44100:duration=0.25", "-c:a", "aac", path)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	d := NewPCMDecoder(ctx, Default())
+	defer d.Close()
+	req := PCMRequest{ClipID: "tone", Path: path, Frames: 100, SourceFrame: 2400, SourceEnd: 2700}
+	if _, err := d.DecodePCM(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	old := d.streams["tone"]
+	req.Offset = 100
+	req.SourceFrame = 2600
+	if _, err := d.DecodePCM(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if old.cmd.ProcessState == nil || len(d.streams) != 0 || d.Stats().Opened != 2 || d.Stats().Retired != 2 {
+		t.Fatalf("discontinuous or completed source interval was not retired: %+v", d.Stats())
+	}
+	req.SourceEnd = req.SourceFrame
+	if _, err := d.DecodePCM(ctx, req); err == nil {
+		t.Fatal("empty source interval accepted")
+	}
+}
