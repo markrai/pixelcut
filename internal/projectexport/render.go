@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/media"
@@ -222,24 +221,21 @@ func verifyProjectOutput(plan Plan, report media.Report) error {
 }
 
 func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, discardAudio bool, output string) error {
-	return renderProject(ctx, engine, p, color, fps, false, discardAudio, output)
+	return renderProject(ctx, engine, p, color, fps, false, discardAudio, output, nil)
 }
 
 func RenderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, output string) error {
-	return renderProject(ctx, engine, p, color, fps, true, false, output)
+	return RenderProjectObserved(ctx, engine, p, color, fps, output, nil)
 }
 
-func renderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string) error {
-	out, err := filepath.Abs(output)
+func RenderProjectObserved(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, output string, observe Observer) error {
+	return renderProject(ctx, engine, p, color, fps, true, false, output, observe)
+}
+
+func renderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer) error {
+	emit(observe, StagePreflight, 0, 0)
+	out, err := ValidateDestination(output)
 	if err != nil {
-		return err
-	}
-	if !strings.EqualFold(filepath.Ext(out), ".mp4") {
-		return errors.New("output must have an .mp4 extension")
-	}
-	if _, err := os.Lstat(out); err == nil {
-		return errors.New("output already exists")
-	} else if !os.IsNotExist(err) {
 		return err
 	}
 	prepared, err := Prepare(ctx, engine, p, color, fps)
@@ -247,6 +243,9 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		return err
 	}
 	plan := prepared.Plan
+	if observe != nil {
+		observe(Progress{Stage: StagePreflight, Warnings: append([]string(nil), plan.Warnings...)})
+	}
 	if err := validateVideo(plan, discardAudio || includeAudio); err != nil {
 		return err
 	}
@@ -282,17 +281,21 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	black := black444(c)
 	frame := make([]byte, len(black))
 	indexes := &renderIndexes{}
+	emit(observe, StageVideo, 0, plan.VideoFrames)
+	writer := &progressWriter{dst: stdin, observe: observe, stage: StageVideo, unitBytes: int64(len(frame)), total: plan.VideoFrames}
 	for _, span := range plan.Spans {
-		if err := renderSpan(ctx, engine, indexes, sources, plan, span, stdin, black, frame); err != nil {
+		if err := renderSpan(ctx, engine, indexes, sources, plan, span, writer, black, frame); err != nil {
 			return fmt.Errorf("render span [%d,%d): %w", span.Start, span.End, err)
 		}
 	}
+	emit(observe, StageVideoWait, 0, 0)
 	if err := stdin.Close(); err != nil {
 		return err
 	}
 	if err := encoder.wait(); err != nil {
 		return err
 	}
+	emit(observe, StageVerify, 0, 0)
 	report, err := engine.Inspect(ctx, name)
 	if err != nil {
 		return err
@@ -313,9 +316,10 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		if err := muxed.Close(); err != nil {
 			return err
 		}
-		if err := muxAudio(ctx, engine, plan, sources, name, muxName); err != nil {
+		if err := muxAudioObserved(ctx, engine, plan, sources, name, muxName, observe); err != nil {
 			return fmt.Errorf("mux project audio: %w", err)
 		}
+		emit(observe, StageVerify, 0, 0)
 		report, err := engine.Inspect(ctx, muxName)
 		if err != nil {
 			return err
@@ -328,11 +332,13 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	if err := prepared.VerifySources(ctx); err != nil {
 		return err
 	}
+	emit(observe, StagePublish, 0, 0)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if err := os.Link(name, out); err != nil {
 		return fmt.Errorf("publish output (requires filesystem hard-link support): %w", err)
 	}
+	emit(observe, StageDone, 1, 1)
 	return nil
 }

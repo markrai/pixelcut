@@ -102,7 +102,7 @@ func drawButton(lp uintptr) bool {
 		return false
 	}
 	c, fg := palette.button, palette.text
-	if int(d.ID) == idExport {
+	if int(d.ID) == idExportMenu {
 		c, fg = palette.accent, palette.black
 	}
 	if d.State&1 != 0 {
@@ -160,7 +160,7 @@ func (e *editor) resize() {
 		case p.h == e.status:
 			y += dy
 			ww += dx
-		case p.id == idExport || p.id == idZoomIn || p.id == idZoomOut || p.id == idFit || p.id == idSnap || (p.x >= 825 && p.y >= 50):
+		case p.id == idExportMenu || p.id == idZoomIn || p.id == idZoomOut || p.id == idFit || p.id == idSnap || (p.x >= 825 && p.y >= 50):
 			x += dx
 		case p.h == e.host || p.h == e.layerSurface:
 			ww += dx
