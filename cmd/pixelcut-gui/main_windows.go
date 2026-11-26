@@ -183,6 +183,18 @@ type editor struct {
 	status, host            uintptr
 	layerSurface            uintptr
 	layerPlan               *composition.LayerPlan
+	stillWorker             *service.Latest[stillPreviewRequest, stillPreviewResult]
+	stillCancel             context.CancelFunc
+	stillSequence           uint64
+	stillActive             bool
+	stillFrame              *media.StillFrame
+	stillSources            map[string]mediacache.Source
+	stillFingerprint        string
+	stillTime               int64
+	stillError              string
+	compositeRun            *compositePreviewRun
+	compositeFrameTime      int64
+	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]
 	jobFingerprint          string
@@ -411,6 +423,9 @@ func (e *editor) setControlsEnabled(enabled bool) {
 }
 
 func (e *editor) startJob(fn func(context.Context) result) {
+	if e.stillActive {
+		e.stopPreview()
+	}
 	hwnd := mainWindow
 	if err := e.jobs.Start(e.projectEpoch, fn, func() { post.Call(hwnd, wmDone, 0, 0) }); err != nil {
 		e.tell(err.Error())
@@ -508,6 +523,9 @@ func (e *editor) startPreview(paused bool) error {
 		return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 	}
 	e.stopPreview()
+	if !e.compositeRetired() {
+		return fmt.Errorf("composite audio and video decoders are closing; retry Play")
+	}
 	if e.retiringPreview != nil {
 		timer := time.NewTimer(250 * time.Millisecond)
 		defer timer.Stop()
@@ -633,7 +651,7 @@ func (e *editor) command(id, notification int) error {
 		if err = e.commitPlacement(r); err != nil {
 			return err
 		}
-		e.tell("Clip added to " + e.trackID() + ".")
+		e.tell(placementStatus(*e.track()))
 	case idApply:
 		c, ok := e.selected()
 		if !ok {
@@ -858,6 +876,8 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.updateThumbnails()
 			ui.updateWaveforms()
 			ui.checkSourceVersions(false)
+			ui.updateCompositePlayback()
+			ui.updateCompositeStill()
 			ui.checkpointView()
 			return 0
 		}
@@ -917,6 +937,9 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 	case 0x0002:
 		user.NewProc("KillTimer").Call(hwnd, playbackTimer)
 		ui.stopPreview()
+		if ui.stillWorker != nil {
+			ui.stillWorker.Close()
+		}
 		ui.retireMediaWorkers()
 		ui.jobs.Cancel()
 		if ui.sourceScanner != nil {

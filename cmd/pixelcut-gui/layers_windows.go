@@ -17,6 +17,9 @@ const (
 	menuLayerCanvas
 	menuLayerLayout
 	layerSurfaceID
+	menuCompositeStill
+	menuCompositePlay
+	menuSourcePlay
 	layerOpacityBase = 2320
 	layerPresetBase  = 2340
 	layerCanvasBase  = 2360
@@ -66,6 +69,16 @@ func (e *editor) layerAction(id int, screen point) error {
 	if id == menuLayerLayout {
 		return e.showLayerLayout()
 	}
+	if id == menuCompositeStill {
+		return e.showCompositeStill()
+	}
+	if id == menuCompositePlay {
+		return e.startCompositePlayback()
+	}
+	if id == menuSourcePlay {
+		e.stopPreview()
+		return e.togglePreview()
+	}
 	p := e.model.Project()
 	if id == menuLayerCanvas {
 		var items []menuItem
@@ -83,7 +96,7 @@ func (e *editor) layerAction(id int, screen point) error {
 		if err = e.commit(q); err != nil {
 			return err
 		}
-		return e.showLayerLayout()
+		return e.showCompositeStill()
 	}
 	c, ok := e.selected()
 	if !ok || e.model.Count() != 1 || e.audioTrack() {
@@ -121,7 +134,7 @@ func (e *editor) layerAction(id int, screen point) error {
 	if err = e.commit(q); err != nil {
 		return err
 	}
-	return e.showLayerLayout()
+	return e.showCompositeStill()
 }
 
 func (e *editor) showLayerLayout() error {
@@ -147,9 +160,10 @@ func (e *editor) showLayerLayout() error {
 }
 
 func (e *editor) hideLayerLayout() {
-	if e.layerPlan == nil {
+	if e.layerPlan == nil && !e.stillActive {
 		return
 	}
+	e.cancelCompositeStill()
 	e.layerPlan = nil
 	if e.layerSurface != 0 {
 		user.NewProc("ShowWindow").Call(e.layerSurface, 0)
@@ -168,6 +182,10 @@ func (e *editor) drawLayerLayout(lp uintptr) bool {
 		return false
 	}
 	fill(d.DC, d.Rect, palette.black)
+	if e.stillActive {
+		e.drawCompositeStill(d)
+		return true
+	}
 	plan := e.layerPlan
 	if plan == nil {
 		return true
