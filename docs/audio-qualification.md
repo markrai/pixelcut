@@ -2,7 +2,7 @@
 
 ## Status and evidence
 
-2E.1–2E.5 are merged; PR #22 standard CI 45860773291 and performance qualification 45860773375 passed. 2E.6 merged via PR #23; standard CI 45871806630 and paired performance qualification 45871806823 passed. no physical Windows audio-device or Pixel acceptance is claimed. Existing 2D HDR physical acceptance also remains open.
+2E.1–2E.5 are merged; PR #22 standard CI 45860773291 and performance qualification 45860773375 passed. 2E.6 merged via PR #23; standard CI 45871806630 and paired performance qualification 45871806823 passed. No physical Windows audio-device or Pixel acceptance is claimed. Existing 2D HDR physical acceptance also remains open.
 
 ### Local command-level evidence
 

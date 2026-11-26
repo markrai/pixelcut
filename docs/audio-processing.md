@@ -97,7 +97,7 @@ Local arithmetic check (Go 1.23.2, isolated reproduction, not repository suite):
 
 ## Phase 2E.6
 
-Status: implementation and automated qualification tests committed; candidate CI and physical acceptance pending. PR #22 merged with standard CI 45860773291 and paired performance 45860773375 passing.
+Status: merged via PR #23; automated CI 45871806630 and paired performance qualification 45871806823 passed. Physical acceptance pending. PR #22 merged with standard CI 45860773291 and paired performance 45860773375 passing.
 
 The previous preview seek-first and offline origin-resample adapters were not guaranteed to produce identical decoded PCM. Both now use the same canonical sample-index mapping and FFmpeg command. Origin-based decode keeps resampling phase and delayed audio handling consistent; the cost is potentially slower late seeks, especially for long sources and multiple simultaneous clips. Playback retains its existing 30-second per-block timeout and bounded queue. No silent fallback to approximate decoding. Source audition remains distinct. Exact sample-grid-aligned seek comparison is supported; off-grid seek starts use a run-relative sample grid. AAC remains lossy.
 
