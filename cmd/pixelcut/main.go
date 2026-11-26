@@ -20,6 +20,7 @@ const usage = `PixelCut - source-aware video editing foundation
 
 Usage:
   pixelcut gpu-info [-probe-devices]
+  pixelcut gpu-decode-check [-start-frame N] [-frames N] INPUT
   pixelcut inspect INPUT
   pixelcut remux INPUT OUTPUT.mp4
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
@@ -39,6 +40,27 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	switch args[0] {
+	case "gpu-decode-check":
+		fs := flag.NewFlagSet("gpu-decode-check", flag.ContinueOnError)
+		fs.SetOutput(stdout)
+		first := fs.Int("start-frame", 0, "first source frame ordinal (zero based)")
+		count := fs.Int("frames", 120, "number of consecutive frames (1–300)")
+		if err := fs.Parse(args[1:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil
+			}
+			return err
+		}
+		if fs.NArg() != 1 {
+			return errors.New("usage: pixelcut gpu-decode-check [-start-frame N] [-frames N] INPUT")
+		}
+		report, err := e.CheckHEVCDecode(ctx, fs.Arg(0), *first, *count)
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if writeErr := enc.Encode(report); writeErr != nil {
+			return writeErr
+		}
+		return err
 	case "gpu-info":
 		fs := flag.NewFlagSet("gpu-info", flag.ContinueOnError)
 		fs.SetOutput(stdout)

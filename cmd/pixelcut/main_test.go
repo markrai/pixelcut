@@ -41,3 +41,17 @@ func TestGPUInfoCommandArguments(t *testing.T) {
 		t.Fatal("unexpected GPU info argument accepted")
 	}
 }
+
+func TestGPUDecodeCheckCommandArguments(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"gpu-decode-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") {
+		t.Fatalf("decode check help: %v", err)
+	}
+	if err := run(context.Background(), []string{"gpu-decode-check"}, &out); err == nil {
+		t.Fatal("missing source accepted")
+	}
+	out.Reset()
+	if err := run(context.Background(), []string{"gpu-decode-check", "-frames", "301", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") {
+		t.Fatal("invalid frame count did not return a failed report")
+	}
+}
