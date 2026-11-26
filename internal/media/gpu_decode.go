@@ -36,6 +36,10 @@ type decodeFrameHash struct {
 }
 
 func hevcDecodeCheckArgs(path string, first, count int, cuda bool) ([]string, error) {
+	return hevcFrameCheckArgs(path, first, count, cuda, nil)
+}
+
+func hevcFrameCheckArgs(path string, first, count int, cuda bool, scale *scaleCheckSize) ([]string, error) {
 	if path == "" || first < 0 || count < 1 || count > MaxDecodeCheckFrames || first > MaxIndexedFrames-count {
 		return nil, errors.New("invalid HEVC decode check interval")
 	}
@@ -46,6 +50,12 @@ func hevcDecodeCheckArgs(path string, first, count int, cuda bool) ([]string, er
 		graph = cudaDownloadFilter
 	} else {
 		args = append(args, "-hwaccel", "none")
+	}
+	if scale != nil {
+		if err := scale.validate(); err != nil {
+			return nil, err
+		}
+		graph = scale.filter(cuda)
 	}
 	graph += fmt.Sprintf(",select=between(n\\,%d\\,%d)", first, first+count-1)
 	if !cuda {
@@ -107,7 +117,11 @@ func parseDecodeFrameHashes(raw string, width, height, count int) ([]decodeFrame
 }
 
 func (e Engine) decodeCheckFrames(ctx context.Context, path string, v Stream, first, count int, cuda bool) ([]decodeFrameHash, error) {
-	args, err := hevcDecodeCheckArgs(path, first, count, cuda)
+	return e.frameCheckFrames(ctx, path, v, first, count, cuda, nil)
+}
+
+func (e Engine) frameCheckFrames(ctx context.Context, path string, v Stream, first, count int, cuda bool, scale *scaleCheckSize) ([]decodeFrameHash, error) {
+	args, err := hevcFrameCheckArgs(path, first, count, cuda, scale)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +140,11 @@ func (e Engine) decodeCheckFrames(ctx context.Context, path string, v Stream, fi
 		}
 		return nil, fmt.Errorf("HEVC decode failed: %v %s", err, detail)
 	}
-	return parseDecodeFrameHashes(string(stdout.data), v.Width, v.Height, count)
+	width, height := v.Width, v.Height
+	if scale != nil {
+		width, height = scale.width, scale.height
+	}
+	return parseDecodeFrameHashes(string(stdout.data), width, height, count)
 }
 
 func compareDecodeHashes(cpu, gpu []decodeFrameHash, ticks []int64, first int) (int, error) {
@@ -144,14 +162,18 @@ func compareDecodeHashes(cpu, gpu []decodeFrameHash, ticks []int64, first int) (
 	return len(cpu), nil
 }
 
-func (e Engine) CheckHEVCDecode(ctx context.Context, path string, first, count int) (r DecodeCheckReport, err error) {
+func (e Engine) CheckHEVCDecode(ctx context.Context, path string, first, count int) (DecodeCheckReport, error) {
+	return e.checkHEVCFrames(ctx, path, first, count, nil)
+}
+
+func (e Engine) checkHEVCFrames(ctx context.Context, path string, first, count int, scale *scaleCheckSize) (r DecodeCheckReport, err error) {
 	r = DecodeCheckReport{Backend: "cuda", Source: path, FirstFrame: first, Frames: count, Status: "failed"}
 	defer func() {
 		if err != nil {
 			r.Failure = err.Error()
 		}
 	}()
-	if _, err := hevcDecodeCheckArgs(path, first, count, true); err != nil {
+	if _, err := hevcFrameCheckArgs(path, first, count, true, scale); err != nil {
 		return r, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
@@ -183,7 +205,7 @@ func (e Engine) CheckHEVCDecode(ctx context.Context, path string, first, count i
 		return r, fmt.Errorf("requested frame interval exceeds %d indexed frames", index.Count())
 	}
 	started := time.Now()
-	cpu, err := e.decodeCheckFrames(ctx, identity.Path, v, first, count, false)
+	cpu, err := e.frameCheckFrames(ctx, identity.Path, v, first, count, false, scale)
 	r.CPUSeconds = time.Since(started).Seconds()
 	if err != nil {
 		return r, err
@@ -192,7 +214,7 @@ func (e Engine) CheckHEVCDecode(ctx context.Context, path string, first, count i
 		return r, errors.New("source changed after CPU decode")
 	}
 	started = time.Now()
-	gpu, err := e.decodeCheckFrames(ctx, identity.Path, v, first, count, true)
+	gpu, err := e.frameCheckFrames(ctx, identity.Path, v, first, count, true, scale)
 	r.GPUSeconds = time.Since(started).Seconds()
 	if err != nil {
 		return r, err

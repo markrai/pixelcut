@@ -65,3 +65,17 @@ func TestExportDecodeBackendArguments(t *testing.T) {
 		t.Fatalf("decode flag missing from export help: %v", err)
 	}
 }
+
+func TestGPUScaleCheckCommandArguments(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"gpu-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "width") || !strings.Contains(out.String(), "height") {
+		t.Fatalf("scale check help: %v", err)
+	}
+	if err := run(context.Background(), []string{"gpu-scale-check"}, &out); err == nil {
+		t.Fatal("missing source accepted")
+	}
+	out.Reset()
+	if err := run(context.Background(), []string{"gpu-scale-check", "-width", "31", "-height", "24", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") || !strings.Contains(out.String(), "output dimensions") {
+		t.Fatal("invalid dimensions did not return a failed report")
+	}
+}

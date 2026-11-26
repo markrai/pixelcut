@@ -64,7 +64,7 @@ from a build alone.
 | 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.6 merged to main via PR #11; native qualification remains open |
 | 2D | Whole-project export and explicit output color contracts | 2D.1–2D.6 merged; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45843280827); physical acceptance pending |
 | 2E | Audio envelopes, fades, levels and mixing | 2E.1–2E.6 merged and CI passed; physical acceptance pending |
-| 3A | GPU acceleration | In progress; 3A.1 merged and CI passed; 3A.2 decode-check merged; 240/240 physical frame parity on user 1080p source; experimental renderer integration implemented; CI pending |
+| 3A | GPU acceleration | In progress; 3A.1 merged and CI passed; 3A.2 decode-check merged; 240/240 physical frame parity on user 1080p source; experimental renderer integration merged; CI passed; physical acceptance pending |
 | 3B | Transitions, keyframes, speed effects, titles and subtitles | Pending |
 | 4A | Packaging and distribution | Pending |
 
@@ -129,12 +129,12 @@ See [audio processing contract](docs/audio-processing.md). The shared mixer cons
 | Slice | Scope | Status |
 | --- | --- | --- |
 | 3A.1 | Bounded capability inventory, optional device initialization and CPU-first stage policy | Merged via PR #24; CI passed; Windows CUDA/D3D11VA/D3D12VA/Vulkan initialization observed |
-| 3A.2 | Hardware HEVC decode, exact frame selection and CPU-readable 10-bit parity | PR #27 merged; CI passed; user 240/240 frame parity; experimental renderer integration pending CI and physical acceptance |
-| 3A.3 | GPU geometry, scaling and transfer boundaries | Pending |
+| 3A.2 | Hardware HEVC decode, exact frame selection and CPU-readable 10-bit parity | PR #27 merged; CI passed; user 240/240 frame parity; experimental renderer integration merged via PR #28; CI and performance passed; physical acceptance pending |
+| 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a bounded CUDA nearest-neighbor scaling qualification implemented; CI and physical parity pending; 3A.3b renderer integration and remaining geometry pending |
 | 3A.4 | GPU layer compositing with explicit HLG linear-light contract | Pending |
 | 3A.5 | Hardware HEVC Main 10 encode with verified color/timing/publication | Pending |
 | 3A.6 | GPU/CPU parity, fallback, performance and physical qualification | Pending |
 
 See [GPU architecture and qualification](docs/gpu-architecture.md). Capability advertisement, successful device initialization and qualified rendering are independent gates. The CPU reference remains mandatory and no GPU stage is selectable in 3A.1.
 
-See [CUDA decode qualification](docs/gpu-decode-qualification.md). Ordinary preview/export defaults to CPU; explicit experimental CUDA mode applies to composite preview and whole-project export. GPU geometry is not yet implemented.
+See [CUDA decode qualification](docs/gpu-decode-qualification.md). Ordinary preview/export defaults to CPU; explicit experimental CUDA mode applies to composite preview and whole-project export. [CUDA geometry qualification](docs/gpu-geometry-qualification.md) begins with an explicit scale check. Product geometry remains CPU-only.
