@@ -55,7 +55,16 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 			return PCMBlock{}, err
 		}
 		for _, a := range f.Audio {
-			samples, err := decoder.DecodePCM(ctx, media.PCMRequest{ClipID: a.Ref.ClipID, Path: a.Asset.Path, Tick: a.SourceTime, Offset: pos, Frames: n})
+			first, err := media.PCMSourceFrame(a.SourceInterval.Start, a.Timeline.Start, start, pos)
+			if err != nil {
+				return PCMBlock{}, err
+			}
+			end := media.PCMFramesForTicks(a.Timeline.End - start)
+			last, err := media.PCMSourceFrame(a.SourceInterval.Start, a.Timeline.Start, start, end)
+			if err != nil {
+				return PCMBlock{}, err
+			}
+			samples, err := decoder.DecodePCM(ctx, media.PCMRequest{ClipID: a.Ref.ClipID, Path: a.Asset.Path, Tick: a.SourceTime, Offset: pos, Frames: n, SourceFrame: first, SourceEnd: last})
 			if err != nil {
 				return PCMBlock{}, fmt.Errorf("audio %s/%s: %w", a.Ref.TrackID, a.Ref.ClipID, err)
 			}

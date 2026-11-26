@@ -18,7 +18,7 @@ func TestPCMDecoderPersistentStereoAndRetirement(t *testing.T) {
 	defer cancel()
 	d := NewPCMDecoder(ctx, Default())
 	defer d.Close()
-	req := PCMRequest{ClipID: "tone", Path: path, Tick: 250000, Frames: PCMBlockFrames}
+	req := PCMRequest{ClipID: "tone", Path: path, Tick: 250000, Frames: PCMBlockFrames, SourceFrame: 12000, SourceEnd: 48000}
 	first, err := d.DecodePCM(ctx, req)
 	if err != nil || len(first) != PCMBlockFrames*PCMChannels {
 		t.Fatalf("PCM decode: %v", err)
@@ -33,6 +33,7 @@ func TestPCMDecoderPersistentStereoAndRetirement(t *testing.T) {
 	stream := d.streams["tone"]
 	req.Offset += PCMBlockFrames
 	req.Tick += 50000
+	req.SourceFrame += PCMBlockFrames
 	if _, err = d.DecodePCM(ctx, req); err != nil || d.streams["tone"] != stream {
 		t.Fatalf("PCM stream not reused: %v", err)
 	}

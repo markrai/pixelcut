@@ -37,23 +37,28 @@ func PCMTicksForFrames(frames int64) int64 {
 }
 
 type PCMRequest struct {
-	ClipID, Path string
-	Tick, Offset int64
-	Frames       int
+	ClipID, Path           string
+	Tick, Offset           int64
+	Frames                 int
+	SourceFrame, SourceEnd int64
 }
 
 type pcmStream struct {
-	identity mediacache.Source
-	next     int64
-	cancel   context.CancelFunc
-	cmd      *exec.Cmd
-	pipe     io.ReadCloser
+	identity              mediacache.Source
+	next, sourceNext, end int64
+	cancel                context.CancelFunc
+	cmd                   *exec.Cmd
+	pipe                  io.ReadCloser
+	waited                bool
 }
 
 func (s *pcmStream) close() {
 	s.cancel()
 	_ = s.pipe.Close()
-	_ = s.cmd.Wait()
+	if !s.waited {
+		_ = s.cmd.Wait()
+		s.waited = true
+	}
 }
 
 type PCMDecoder struct {
@@ -102,8 +107,12 @@ func (d *PCMDecoder) Close() {
 }
 
 func (d *PCMDecoder) open(req PCMRequest, identity mediacache.Source) (*pcmStream, error) {
+	args, err := PCMDecodeArgs(identity.Path, req.SourceFrame, req.SourceEnd)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithCancel(d.ctx)
-	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, "-v", "error", "-nostdin", "-threads", "2", "-ss", seconds(float64(req.Tick)/1000000), "-i", identity.Path, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "aresample=48000:async=1:first_pts=0,apad", "-ac", "2", "-ar", "48000", "-c:a", "pcm_s16le", "-f", "s16le", "-")
+	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, args...)
 	cmd.WaitDelay = 2 * time.Second
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -115,7 +124,7 @@ func (d *PCMDecoder) open(req PCMRequest, identity mediacache.Source) (*pcmStrea
 		_ = pipe.Close()
 		return nil, err
 	}
-	return &pcmStream{identity: identity, next: req.Offset, cancel: cancel, cmd: cmd, pipe: pipe}, nil
+	return &pcmStream{identity: identity, next: req.Offset, sourceNext: req.SourceFrame, end: req.SourceEnd, cancel: cancel, cmd: cmd, pipe: pipe}, nil
 }
 
 func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, error) {
@@ -125,7 +134,7 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 	if err := d.ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.ClipID == "" || req.Path == "" || req.Tick < 0 || req.Offset < 0 || req.Frames < 1 || req.Frames > PCMBlockFrames || req.Offset > math.MaxInt64-int64(req.Frames) {
+	if req.ClipID == "" || req.Path == "" || req.Tick < 0 || req.Offset < 0 || req.Frames < 1 || req.Frames > PCMBlockFrames || req.Offset > math.MaxInt64-int64(req.Frames) || req.SourceFrame < 0 || req.SourceEnd <= req.SourceFrame || int64(req.Frames) > req.SourceEnd-req.SourceFrame {
 		return nil, errors.New("invalid PCM request")
 	}
 	identity, err := mediacache.Identify(req.Path)
@@ -137,7 +146,7 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 	}
 	d.identities[identity.Path] = identity
 	s := d.streams[req.ClipID]
-	if s != nil && (s.identity != identity || s.next != req.Offset) {
+	if s != nil && (s.identity != identity || s.next != req.Offset || s.sourceNext != req.SourceFrame || s.end != req.SourceEnd) {
 		d.retire(req.ClipID)
 		s = nil
 	}
@@ -155,6 +164,15 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 	stop := context.AfterFunc(ctx, s.cancel)
 	raw := make([]byte, req.Frames*PCMChannels*2)
 	_, err = io.ReadFull(s.pipe, raw)
+	if err == nil && req.SourceFrame+int64(req.Frames) == req.SourceEnd {
+		var extra [1]byte
+		if n, readErr := s.pipe.Read(extra[:]); n != 0 || readErr != io.EOF {
+			err = errors.New("unexpected extra or incomplete PCM source data")
+		} else {
+			err = s.cmd.Wait()
+			s.waited = true
+		}
+	}
 	stop()
 	if ctx.Err() != nil {
 		err = ctx.Err()
@@ -173,6 +191,10 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 		out[i] = int16(binary.LittleEndian.Uint16(raw[i*2:]))
 	}
 	s.next += int64(req.Frames)
+	s.sourceNext += int64(req.Frames)
 	d.stats.Units += int64(req.Frames)
+	if s.waited {
+		d.retire(req.ClipID)
+	}
 	return out, nil
 }
