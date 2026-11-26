@@ -176,7 +176,7 @@ func (e *editor) pollClose(hwnd uintptr) {
 		return
 	}
 	e.pollRecovery()
-	if e.recoveryDone < e.recoveryRequest && time.Now().Before(e.closeDeadline) {
+	if (e.recoveryDone < e.recoveryRequest || !e.compositeRetired()) && time.Now().Before(e.closeDeadline) {
 		return
 	}
 	e.closeDeadline = time.Time{}

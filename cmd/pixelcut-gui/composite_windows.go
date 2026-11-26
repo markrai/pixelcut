@@ -105,14 +105,14 @@ func (e *editor) cancelCompositeStill() {
 }
 
 func (e *editor) updateCompositeStill() {
-	if !e.stillActive || e.compositeRun != nil || e.stillWorker == nil {
+	if !e.stillActive || e.compositeRun != nil {
 		return
 	}
 	if e.stillFingerprint != e.model.Fingerprint() || e.stillTime != e.playhead {
 		e.hideLayerLayout()
 		return
 	}
-	if e.stillSequence != 0 {
+	if e.stillSequence != 0 && e.stillWorker != nil {
 		r := e.stillWorker.Result()
 		if r.Sequence != e.stillSequence {
 			return
