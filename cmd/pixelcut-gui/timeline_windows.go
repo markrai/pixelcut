@@ -250,7 +250,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				fill(dc, rect{right - 3, laneTop, right, laneBottom}, palette.accent)
 			}
 			if right-left > 20 {
-				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs%s", filepath.Base(a.Path), project.Seconds(c.Out-c.In), audioClipLabel(c)), palette.text, 4)
+				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs%s", filepath.Base(a.Path), project.Seconds(c.Out-c.In), audioClipLabel(c)+layerClipLabel(c)), palette.text, 4)
 			}
 			if geometry.LinkedAudio {
 				audioColor := palette.audio

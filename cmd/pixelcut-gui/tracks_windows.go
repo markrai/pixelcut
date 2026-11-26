@@ -129,7 +129,7 @@ func trackMenuItems(p project.Project, active string, selected []string) []menuI
 			items = append(items, item(trackMenuMove+j, "Move selection to "+strings.ReplaceAll(t.ID, "&", "&&"), err == nil))
 		}
 	}
-	return items
+	return append(items, separator(), item(menuLayerCanvas, "Composition canvas...", true), item(menuLayerLayout, "Show layer layout at playhead", true))
 }
 
 func (e *editor) showTracks() error {
@@ -147,6 +147,9 @@ func (e *editor) showTracks() error {
 	if id >= trackMenuSelect && id < trackMenuSelect+len(e.model.Project().Tracks) {
 		e.switchTrack(e.model.Project().Tracks[id-trackMenuSelect].ID)
 		return nil
+	}
+	if id == menuLayerCanvas || id == menuLayerLayout {
+		return e.layerAction(id, point{r.Left, r.Bottom})
 	}
 	if id >= trackMenuHide && id <= trackMenuLock {
 		return e.toggleTrackControl(id)
