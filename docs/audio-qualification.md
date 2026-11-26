@@ -2,7 +2,7 @@
 
 ## Status and evidence
 
-2E.1–2E.5 are merged; PR #22 standard CI 45860773291 and performance qualification 45860773375 passed. 2E.6 automated tests and canonical decoder correction are committed. Candidate CI is pending; no physical Windows audio-device or Pixel acceptance is claimed. Existing 2D HDR physical acceptance also remains open.
+2E.1–2E.5 are merged; PR #22 standard CI 45860773291 and performance qualification 45860773375 passed. 2E.6 merged via PR #23; standard CI 45871806630 and paired performance qualification 45871806823 passed. no physical Windows audio-device or Pixel acceptance is claimed. Existing 2D HDR physical acceptance also remains open.
 
 ### Local command-level evidence
 
@@ -15,7 +15,7 @@ Synthetic 64x48 HLG/AAC fixtures (delayed 44.1 kHz stereo and independent 48 kHz
 - Delayed source leading window: zero peak.
 - Independent Python reference mix with gain/fades/envelope and AAC 192 kbps round-trip: normalized correlation 0.999980608; reference sample peaks 7440/5562. This is a command-level/reference experiment, not execution of the Go mixer or complete product exporter.
 
-Git checkout was attempted and failed DNS resolution. The full Go repository suite and Windows physical acceptance were not run locally. Local timings are one-off short-fixture observations, not latency guarantees.
+Git checkout was attempted and failed DNS resolution. The full Go repository suite and Windows physical acceptance were not run locally. The merged CI passed the automated gates. Local timings are one-off short-fixture observations, not latency guarantees.
 
 ## Automated gates
 

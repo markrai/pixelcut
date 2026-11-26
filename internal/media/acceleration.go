@@ -118,12 +118,24 @@ var knownHEVCEncoders = []string{"libx265", "hevc_nvenc", "hevc_qsv", "hevc_amf"
 
 var knownGPUFilters = []string{"hwupload", "hwupload_cuda", "hwdownload", "hwmap", "scale_cuda", "scale_npp", "scale_qsv", "vpp_qsv", "scale_vaapi", "scale_vulkan", "scale_d3d11", "overlay_cuda", "overlay_qsv", "overlay_vaapi", "overlay_vulkan", "libplacebo", "tonemap_cuda", "tonemap_vaapi", "tonemap_opencl"}
 
+func validCapabilityFlags(flags string) bool {
+	if len(flags) != 3 && len(flags) != 6 {
+		return false
+	}
+	for _, c := range flags {
+		if c != '.' && (c < 'A' || c > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
 func listedNames(output string, known []string, table bool) []string {
 	names := make([]string, 0)
 	for _, line := range strings.Split(output, "\n") {
 		fields := strings.Fields(line)
 		var name string
-		if table && len(fields) >= 3 {
+		if table && len(fields) >= 3 && validCapabilityFlags(fields[0]) {
 			name = fields[1]
 		} else if !table && len(fields) == 1 {
 			name = fields[0]
@@ -189,6 +201,9 @@ func probeAcceleration(ctx context.Context, run capabilityRunner, devices bool) 
 				}
 				if p.Detail == "" {
 					p.Detail = err.Error()
+					if len(p.Detail) > 512 {
+						p.Detail = p.Detail[:512]
+					}
 				}
 			}
 		}

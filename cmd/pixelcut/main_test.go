@@ -31,3 +31,13 @@ func TestExportProjectCommandRequiresDestination(t *testing.T) {
 		t.Fatalf("missing project export destination not rejected: %v", err)
 	}
 }
+
+func TestGPUInfoCommandArguments(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"gpu-info", "-h"}, &out); err != nil || !strings.Contains(out.String(), "probe-devices") {
+		t.Fatalf("GPU diagnostics help: %v", err)
+	}
+	if err := run(context.Background(), []string{"gpu-info", "unexpected"}, &out); err == nil {
+		t.Fatal("unexpected GPU info argument accepted")
+	}
+}

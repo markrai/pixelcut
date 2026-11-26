@@ -71,3 +71,10 @@ func TestLoadEditingPreferences(t *testing.T) {
 		t.Fatal("editing toggle not persisted")
 	}
 }
+
+func TestGPUInfoPreferenceAction(t *testing.T) {
+	v, ok := findMenuItem(preferenceItems(session.DefaultPreferences()), prefGPUInfo)
+	if !ok || !v.enabled {
+		t.Fatal("GPU diagnostics unavailable")
+	}
+}
