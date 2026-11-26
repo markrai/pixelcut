@@ -46,9 +46,12 @@ type Report struct {
 	Format  map[string]any `json:"format"`
 }
 
-type Engine struct{ FFmpeg, FFprobe, MPV string }
+type Engine struct {
+	FFmpeg, FFprobe, MPV string
+	DecodeBackend        Backend
+}
 
-func Default() Engine { return Engine{"ffmpeg", "ffprobe", "mpv"} }
+func Default() Engine { return Engine{FFmpeg: "ffmpeg", FFprobe: "ffprobe", MPV: "mpv"} }
 
 func (e Engine) Inspect(ctx context.Context, path string) (Report, error) {
 	var r Report

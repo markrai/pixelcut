@@ -22,7 +22,7 @@ func (e *editor) showGPUInfo() error {
 }
 
 func (e *editor) presentGPUInfo(report media.AccelerationReport) {
-	e.tell("GPU diagnostics complete. CPU reference rendering remains active.")
+	e.tell("GPU diagnostics complete. See selected decode backend in the report.")
 	message := report.String() + "\n\nCtrl+C copies this dialog."
 	user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(message))), uintptr(unsafe.Pointer(u("PixelCut GPU diagnostics"))), 0x40)
 }

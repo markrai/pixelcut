@@ -77,7 +77,17 @@ func openLayer(ctx context.Context, engine media.Engine, indexes *renderIndexes,
 	if err != nil {
 		return nil, err
 	}
-	process := newExportProcess(ctx, engine.FFmpeg, "-v", "error", "-xerror", "-nostdin", "-threads", "2", "-filter_threads", "1", "-noautorotate", "-i", source.Identity.Path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", graph, "-fps_mode", "passthrough", "-frames:v", strconv.Itoa(last-first+1), "-c:v", "rawvideo", "-pix_fmt", "yuv444p10le", "-threads", "1", "-f", "rawvideo", "-")
+	input, graph, err := engine.VideoDecodePipeline(source.video, graph, false)
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-filter_threads", "1"}
+	if engine.DecodeBackend != media.BackendCUDA {
+		args = append(args, "-noautorotate")
+	}
+	args = append(args, input...)
+	args = append(args, "-i", source.Identity.Path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", graph, "-fps_mode", "passthrough", "-frames:v", strconv.Itoa(last-first+1), "-c:v", "rawvideo", "-pix_fmt", "yuv444p10le", "-threads", "1", "-f", "rawvideo", "-")
+	process := newExportProcess(ctx, engine.FFmpeg, args...)
 	reader, err := process.cmd.StdoutPipe()
 	if err != nil {
 		process.close()
@@ -141,7 +151,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		}
 		decoder, err := openLayer(ctx, engine, indexes, source, layer, span, plan)
 		if err != nil {
-			return fmt.Errorf("clip %s: %w", layer.Layer.Ref.ClipID, err)
+			return fmt.Errorf("clip %s (%s decode): %w", layer.Layer.Ref.ClipID, engine.DecodeBackendName(), err)
 		}
 		decoders = append(decoders, decoder)
 	}
@@ -157,7 +167,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		for i, d := range decoders {
 			pixels, err := d.frame(sourceTick(d.layer, tick, span.Start))
 			if err != nil {
-				return err
+				return fmt.Errorf("%s decode: %w", engine.DecodeBackendName(), err)
 			}
 			layers[i] = layerFrame{Pixels: pixels, Bounds: d.layer.Geometry.Bounds, Opacity: d.layer.Layer.Opacity}
 		}
@@ -243,6 +253,9 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		return err
 	}
 	plan := prepared.Plan
+	if engine.DecodeBackend == media.BackendCUDA {
+		plan.Warnings = append(plan.Warnings, "Experimental CUDA video decoding requested; geometry, compositing and encoding remain CPU")
+	}
 	if observe != nil {
 		observe(Progress{Stage: StagePreflight, Warnings: append([]string(nil), plan.Warnings...)})
 	}

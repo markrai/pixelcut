@@ -55,3 +55,13 @@ func TestGPUDecodeCheckCommandArguments(t *testing.T) {
 		t.Fatal("invalid frame count did not return a failed report")
 	}
 }
+
+func TestExportDecodeBackendArguments(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"export-project", "-decode", "bogus", "-color", "hlg", "-fps", "30", "project.pixelcut.json", "out.mp4"}, &out); err == nil || !strings.Contains(err.Error(), "unknown decode backend") {
+		t.Fatal("invalid decode backend accepted")
+	}
+	if err := run(context.Background(), []string{"export-video", "-h"}, &out); err != nil || !strings.Contains(out.String(), "experimental cuda") {
+		t.Fatalf("decode flag missing from export help: %v", err)
+	}
+}

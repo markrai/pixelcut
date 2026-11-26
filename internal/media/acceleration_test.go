@@ -80,7 +80,12 @@ func TestVideoBackendPolicyFailsClosed(t *testing.T) {
 				t.Fatalf("CPU policy: %+v %v", d, err)
 			}
 		}
-		if d, err := SelectVideoBackend(stage, "cuda"); err == nil || d.Selected != "" {
+		d, err := SelectVideoBackend(stage, BackendCUDA)
+		if stage == StageDecode {
+			if err != nil || d.Selected != BackendCUDA {
+				t.Fatal("explicit experimental decode rejected")
+			}
+		} else if err == nil || d.Selected != "" {
 			t.Fatal("unqualified forced GPU silently accepted")
 		}
 	}

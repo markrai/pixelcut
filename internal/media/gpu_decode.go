@@ -42,13 +42,16 @@ func hevcDecodeCheckArgs(path string, first, count int, cuda bool) ([]string, er
 	args := []string{"-v", "error", "-xerror", "-nostdin", "-threads", "2", "-filter_threads", "1", "-copyts", "-start_at_zero", "-noautorotate"}
 	graph := "format=yuv420p10le"
 	if cuda {
-		args = append(args, "-hwaccel", "cuda", "-hwaccel_output_format", "cuda")
-		graph = "hwdownload,format=p010le,format=yuv420p10le"
+		args = append(args, cudaDecodeInput()...)
+		graph = cudaDownloadFilter
 	} else {
 		args = append(args, "-hwaccel", "none")
 	}
 	graph += fmt.Sprintf(",select=between(n\\,%d\\,%d)", first, first+count-1)
-	return append(args, "-c:v", "hevc", "-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", graph, "-fps_mode", "passthrough", "-frames:v", strconv.Itoa(count), "-c:v", "rawvideo", "-pix_fmt", "yuv420p10le", "-threads", "1", "-enc_time_base", "1:1000000", "-f", "framehash", "-hash", "sha256", "-"), nil
+	if !cuda {
+		args = append(args, "-c:v", "hevc")
+	}
+	return append(args, "-i", path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", graph, "-fps_mode", "passthrough", "-frames:v", strconv.Itoa(count), "-c:v", "rawvideo", "-pix_fmt", "yuv420p10le", "-threads", "1", "-enc_time_base", "1:1000000", "-f", "framehash", "-hash", "sha256", "-"), nil
 }
 
 func parseDecodeFrameHashes(raw string, width, height, count int) ([]decodeFrameHash, error) {
@@ -168,8 +171,8 @@ func (e Engine) CheckHEVCDecode(ctx context.Context, path string, first, count i
 	if err = v.ValidateHLG(); err != nil {
 		return r, err
 	}
-	if v.CodecName != "hevc" || v.Profile != "Main 10" || v.Width > 8192 || v.Height > 8192 || int64(v.Width)*int64(v.Height) > 33554432 {
-		return r, errors.New("decode check requires bounded HEVC Main 10 HLG source")
+	if err = validateCUDADecodeSource(v); err != nil {
+		return r, err
 	}
 	r.Width, r.Height = v.Width, v.Height
 	index, err := e.ExportFrames(ctx, identity.Path)

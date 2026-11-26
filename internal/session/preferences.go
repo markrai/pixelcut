@@ -21,6 +21,7 @@ type Preferences struct {
 	FFmpeg         string  `json:"ffmpeg,omitempty"`
 	FFprobe        string  `json:"ffprobe,omitempty"`
 	MPV            string  `json:"mpv,omitempty"`
+	DecodeBackend  string  `json:"decode_backend,omitempty"`
 }
 
 func DefaultPreferences() Preferences {
@@ -40,6 +41,11 @@ func (p Preferences) Validate() error {
 	case 1, 5, 15:
 	default:
 		return errors.New("invalid view checkpoint interval")
+	}
+	switch p.DecodeBackend {
+	case "", "cpu", "auto", "cuda":
+	default:
+		return errors.New("invalid video decode backend")
 	}
 	for _, path := range []string{p.FFmpeg, p.FFprobe, p.MPV} {
 		if path != "" && (!filepath.IsAbs(path) || strings.ContainsRune(path, 0) || len(path) > 131072) {

@@ -25,6 +25,7 @@ type previewStream struct {
 	cancel   context.CancelFunc
 	cmd      *exec.Cmd
 	pipe     io.ReadCloser
+	stderr   *capabilityOutput
 }
 
 func (s *previewStream) close() {
@@ -105,8 +106,32 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	engine := d.indexer.engine
+	args := []string{"-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1"}
+	filter := streamFilter(graph, req.Tick-at)
+	if engine.DecodeBackend == BackendCUDA {
+		ordinal, ok := source.index.OrdinalAtOrBefore(req.Tick)
+		if !ok {
+			return nil, errors.New("missing CUDA source ordinal")
+		}
+		input, cudaFilter, err := engine.VideoDecodePipeline(source.raw, fmt.Sprintf("select=gte(n\\,%d),%s", ordinal, filter), true)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "-xerror", "-copyts", "-start_at_zero")
+		args = append(args, input...)
+		filter = cudaFilter
+	} else {
+		args = append(args, "-ss", seconds(float64(at)/1000000))
+	}
+	args = append(args, "-i", req.Path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", filter, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
 	run, cancel := context.WithCancel(d.ctx)
-	cmd := exec.CommandContext(run, d.indexer.engine.FFmpeg, "-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1", "-ss", seconds(float64(at)/1000000), "-i", req.Path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", streamFilter(graph, req.Tick-at), "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
+	cmd := exec.CommandContext(run, engine.FFmpeg, args...)
+	var stderr *capabilityOutput
+	if engine.DecodeBackend == BackendCUDA {
+		stderr = &capabilityOutput{}
+		cmd.Stderr = stderr
+	}
 	cmd.WaitDelay = 2 * time.Second
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -118,7 +143,7 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 		_ = pipe.Close()
 		return nil, err
 	}
-	return &previewStream{identity: identity, graph: graph, width: req.OutputWidth, height: req.OutputHeight, next: req.Tick, cancel: cancel, cmd: cmd, pipe: pipe}, nil
+	return &previewStream{identity: identity, graph: graph, width: req.OutputWidth, height: req.OutputHeight, next: req.Tick, cancel: cancel, cmd: cmd, pipe: pipe, stderr: stderr}, nil
 }
 
 func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame, error) {
@@ -170,7 +195,11 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 	if err != nil || !unchanged(req.Path, identity) {
 		d.retire(req.ClipID)
 		if err != nil {
-			return StillFrame{}, fmt.Errorf("continuous decoder: %w", err)
+			if s.stderr != nil && len(s.stderr.data) > 0 {
+				detail := string(s.stderr.data[:min(len(s.stderr.data), 1024)])
+				return StillFrame{}, fmt.Errorf("CUDA continuous decoder: %w: %s", err, detail)
+			}
+			return StillFrame{}, fmt.Errorf("%s continuous decoder: %w", d.indexer.engine.DecodeBackendName(), err)
 		}
 		return StillFrame{}, errors.New("source changed during frame decode")
 	}

@@ -35,6 +35,9 @@ const (
 	prefAutoTools
 	prefReset
 	prefGPUInfo
+	prefDecodeCPU
+	prefDecodeAuto
+	prefDecodeCUDA
 )
 
 func engineForPreferences(p session.Preferences) media.Engine {
@@ -48,6 +51,7 @@ func engineForPreferences(p session.Preferences) media.Engine {
 	if p.MPV != "" {
 		e.MPV = p.MPV
 	}
+	e.DecodeBackend = media.Backend(p.DecodeBackend)
 	return e
 }
 
@@ -172,7 +176,10 @@ func preferenceItems(p session.Preferences) []menuItem {
 		item(prefFFprobe, toolLabel("FFprobe", p.FFprobe)+"...", true),
 		item(prefMPV, toolLabel("mpv", p.MPV)+"...", true),
 		item(prefAutoTools, "Use automatic tool discovery", true),
-		separator(), item(prefGPUInfo, "GPU capabilities / device diagnostics...", true),
+		separator(), prefChecked(prefDecodeCPU, "Video decode: CPU (reference)", p.DecodeBackend == "" || p.DecodeBackend == "cpu"),
+		prefChecked(prefDecodeAuto, "Video decode: Automatic (currently CPU)", p.DecodeBackend == "auto"),
+		prefChecked(prefDecodeCUDA, "Video decode: NVIDIA CUDA (experimental)", p.DecodeBackend == "cuda"),
+		item(prefGPUInfo, "GPU capabilities / device diagnostics...", true),
 		separator(), item(prefReset, "Reset preferences to defaults...", true))
 	return items
 }
@@ -223,6 +230,18 @@ func (e *editor) showPreferences() error {
 		p.FFmpeg = ""
 		p.FFprobe = ""
 		p.MPV = ""
+	case prefDecodeCPU:
+		p.DecodeBackend = ""
+	case prefDecodeAuto:
+		p.DecodeBackend = "auto"
+	case prefDecodeCUDA:
+		if p.DecodeBackend != "cuda" {
+			msg := "Experimental CUDA decoding applies to composite preview and whole-project export. HEVC Main 10 HLG only. Geometry, compositing and encoding remain CPU. CUDA failures stop the operation; select CPU to recover. Enable CUDA decoding?"
+			if r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(msg))), uintptr(unsafe.Pointer(u("Experimental CUDA decode"))), 0x134); r != 6 {
+				return nil
+			}
+		}
+		p.DecodeBackend = "cuda"
 	case prefGPUInfo:
 		return e.showGPUInfo()
 	case prefReset:

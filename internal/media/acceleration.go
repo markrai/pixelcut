@@ -45,7 +45,12 @@ func SelectVideoBackend(stage VideoStage, requested Backend) (BackendDecision, e
 	case BackendCPU:
 		d.Selected, d.Reason = BackendCPU, "explicit CPU reference"
 	case BackendAuto:
-		d.Selected, d.Reason = BackendCPU, "no qualified GPU implementation for this stage"
+		d.Selected, d.Reason = BackendCPU, "automatic GPU selection awaits broader qualification"
+	case BackendCUDA:
+		if stage != StageDecode {
+			return d, fmt.Errorf("backend %q is not qualified for %s", requested, stage)
+		}
+		d.Selected, d.Reason = BackendCUDA, "explicit experimental HEVC Main 10 decode; no silent fallback"
 	default:
 		return d, fmt.Errorf("backend %q is not qualified for %s", requested, stage)
 	}
@@ -107,7 +112,16 @@ func (e Engine) ProbeAcceleration(ctx context.Context, devices bool) (Accelerati
 		}
 		return string(out.data), err
 	}
-	return probeAcceleration(ctx, run, devices)
+	r, err := probeAcceleration(ctx, run, devices)
+	if err != nil {
+		return r, err
+	}
+	backend, err := ParseDecodeBackend(string(e.DecodeBackend))
+	if err != nil {
+		return r, err
+	}
+	r.Decisions[0], err = SelectVideoBackend(StageDecode, backend)
+	return r, err
 }
 
 var knownDevices = []string{"cuda", "d3d11va", "dxva2", "qsv", "vaapi", "vulkan", "videotoolbox", "d3d12va", "amf", "vdpau", "drm", "opencl", "mediacodec"}
@@ -238,6 +252,11 @@ func (r AccelerationReport) String() string {
 	for _, d := range r.Decisions {
 		fmt.Fprintf(&b, "\n%s: %s (%s)", d.Stage, d.Selected, d.Reason)
 	}
-	b.WriteString("\n\nDevice initialization does not establish Main 10, HDR, frame timing, rendering or encoding support. Rendering remains CPU-only in phase 3A.1.")
+	b.WriteString("\n\nDevice initialization does not establish Main 10, HDR, frame timing, rendering or encoding support.")
+	if len(r.Decisions) > 0 && r.Decisions[0].Selected == BackendCUDA {
+		b.WriteString(" Experimental CUDA decode requested for composite preview and project export. Other rendering stages remain CPU.")
+	} else {
+		b.WriteString(" Rendering remains CPU-only.")
+	}
 	return b.String()
 }
