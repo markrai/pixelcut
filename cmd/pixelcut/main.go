@@ -24,6 +24,7 @@ Usage:
   pixelcut crop [-start SECONDS -duration SECONDS] -x X -y Y -width W -height H INPUT OUTPUT.mp4
   pixelcut preview [-hdr] INPUT
   pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json
+  pixelcut export-video -color hlg -fps FPS [-discard-audio] PROJECT.pixelcut.json OUTPUT.mp4
 
 Trim and crop currently support only explicitly tagged 10-bit HLG footage.
 Preview requires mpv. Export requires FFmpeg with libx265.`
@@ -35,23 +36,34 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	switch args[0] {
-	case "plan-export":
+	case "plan-export", "export-video":
 		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		fs.SetOutput(stdout)
 		color := fs.String("color", "", "required output color contract: hlg")
 		fps := fs.Int("fps", 0, "required CFR: 24, 25, 30, 50 or 60")
+		var discardAudio bool
+		if args[0] == "export-video" {
+			fs.BoolVar(&discardAudio, "discard-audio", false, "explicitly omit enabled project audio until offline mixing is implemented")
+		}
 		if err := fs.Parse(args[1:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return nil
 			}
 			return err
 		}
-		if fs.NArg() != 1 {
+		if args[0] == "export-video" {
+			if fs.NArg() != 2 {
+				return errors.New("usage: pixelcut export-video -color hlg -fps FPS [-discard-audio] PROJECT.pixelcut.json OUTPUT.mp4")
+			}
+		} else if fs.NArg() != 1 {
 			return errors.New("usage: pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json")
 		}
 		p, err := project.Load(fs.Arg(0))
 		if err != nil {
 			return err
+		}
+		if args[0] == "export-video" {
+			return projectexport.RenderVideo(ctx, e, p, *color, *fps, discardAudio, fs.Arg(1))
 		}
 		prepared, err := projectexport.Prepare(ctx, e, p, *color, *fps)
 		if err != nil {
