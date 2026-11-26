@@ -107,6 +107,7 @@ func validateVideo(plan Plan, discardAudio bool) error {
 	if plan.Contract.Audio && !discardAudio {
 		return errors.New("project contains enabled audio; use export-project or pass -discard-audio to explicitly export video only")
 	}
+	sampled := false
 	for _, s := range plan.Spans {
 		if s.FirstFrame == s.EndFrame {
 			continue
@@ -121,6 +122,7 @@ func validateVideo(plan Plan, discardAudio bool) error {
 			if layer.Geometry.Bounds.Width == 0 || layer.Geometry.Bounds.Height == 0 {
 				continue
 			}
+			sampled = sampled || layer.Layer.Opacity > 0
 			asset := layer.Layer.Asset
 			if asset.Range == "" {
 				asset.Range = "tv"
@@ -129,6 +131,9 @@ func validateVideo(plan Plan, discardAudio bool) error {
 				return err
 			}
 		}
+	}
+	if !sampled {
+		return errors.New("no visible video pixels sampled on the selected CFR grid")
 	}
 	return nil
 }
