@@ -14,7 +14,8 @@ const ControlsVersion = 4
 const LayerVersion = 5
 const GainVersion = 6
 const MuteVersion = 7
-const Version = 8
+const FadeVersion = 8
+const Version = 9
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -47,6 +48,7 @@ type Clip struct {
 	AudioMuted    bool             `json:"audio_muted,omitempty"`
 	FadeIn        int64            `json:"audio_fade_in_us,omitempty"`
 	FadeOut       int64            `json:"audio_fade_out_us,omitempty"`
+	Envelope      *VolumeEnvelope  `json:"audio_envelope,omitempty"`
 }
 
 type Track struct {
@@ -167,6 +169,9 @@ func (p Project) MediaEditWithMute(c Clip, muted bool) (Asset, media.Edit, error
 		return a, media.Edit{}, errors.New("layer opacity requires project composition; selected-clip export cannot apply it")
 	}
 	silent := muted || c.AudioDetached || c.EffectiveGainPercent() == 0
+	if !silent && c.HasEnvelope() {
+		return a, media.Edit{}, errors.New("clip audio envelopes require whole-project export")
+	}
 	if !silent && c.HasFades() {
 		return a, media.Edit{}, errors.New("clip audio fades require whole-project export")
 	}

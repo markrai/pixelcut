@@ -31,6 +31,7 @@ type AudioContribution struct {
 	GainPercent int
 	FadeIn      int64
 	FadeOut     int64
+	Envelope    *project.VolumeEnvelope
 }
 
 type Evaluation struct {
@@ -133,7 +134,7 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform, Opacity: c.OpacityPercent()})
 		}
 		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.EffectiveGainPercent() > 0 {
-			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack, GainPercent: c.EffectiveGainPercent(), FadeIn: c.FadeIn, FadeOut: c.FadeOut})
+			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack, GainPercent: c.EffectiveGainPercent(), FadeIn: c.FadeIn, FadeOut: c.FadeOut, Envelope: c.Envelope.Clone()})
 		}
 	}
 	return f, nil

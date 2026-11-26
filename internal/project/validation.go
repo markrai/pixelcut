@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == FadeVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -82,6 +82,9 @@ func validateClip(c Clip, a Asset, kind string) error {
 	}
 	if !ValidAudioFades(c.FadeIn, c.FadeOut) || (c.HasFades() && (!a.HasAudio || c.AudioDetached)) {
 		return fmt.Errorf("%w %q: invalid audio fades", ErrInvalidClip, c.ID)
+	}
+	if c.Envelope != nil && (!a.HasAudio || c.AudioDetached || !c.Envelope.Valid(a.Duration)) {
+		return fmt.Errorf("%w %q: invalid audio envelope", ErrInvalidClip, c.ID)
 	}
 	if kind == AudioTrack && (!a.HasAudio || c.Crop != nil || c.Transform != nil) {
 		return fmt.Errorf("%w %q: invalid audio clip", ErrInvalidClip, c.ID)
@@ -153,8 +156,11 @@ func (p Project) Validate() error {
 			if c.AudioMuted && p.Version < MuteVersion {
 				return fmt.Errorf("%w: clip mute requires version %d", ErrUnsupportedVersion, MuteVersion)
 			}
-			if c.HasFades() && p.Version < Version {
-				return fmt.Errorf("%w: audio fades require version %d", ErrUnsupportedVersion, Version)
+			if c.HasFades() && p.Version < FadeVersion {
+				return fmt.Errorf("%w: audio fades require version %d", ErrUnsupportedVersion, FadeVersion)
+			}
+			if c.Envelope != nil && p.Version < Version {
+				return fmt.Errorf("%w: audio envelopes require version %d", ErrUnsupportedVersion, Version)
 			}
 			if err := validateClip(c, a, t.Kind); err != nil {
 				return err

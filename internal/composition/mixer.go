@@ -7,7 +7,7 @@ import (
 	"github.com/markrai/pixelcut/internal/project"
 )
 
-const fadeScale int64 = 1000000
+const fadeScale int64 = project.EnvelopeScale
 const mixScale = 100 * fadeScale
 
 type PCMMixer struct {
@@ -58,11 +58,14 @@ func fadeFactor(interval project.Interval, fadeIn, fadeOut, at int64) int64 {
 }
 
 func (m *PCMMixer) AddContribution(samples []int16, a AudioContribution, start, offset int64) error {
-	if a.FadeIn == 0 && a.FadeOut == 0 {
+	if a.FadeIn == 0 && a.FadeOut == 0 && a.Envelope == nil {
 		return m.Add(samples, a.GainPercent)
 	}
 	if len(m.sum) == 0 || len(samples) != len(m.sum) || a.GainPercent < 0 || a.GainPercent > project.MaxGainPercent || m.inputs >= media.MaxAudioStreams || !a.Timeline.Valid() || !project.ValidAudioFades(a.FadeIn, a.FadeOut) || start < 0 || offset < 0 {
 		return errors.New("invalid PCM fade contribution")
+	}
+	if a.Envelope != nil && (!a.Envelope.Valid(a.Asset.Duration) || !a.SourceInterval.Valid() || a.SourceInterval.End-a.SourceInterval.Start != a.Timeline.End-a.Timeline.Start || a.SourceInterval.End > a.Asset.Duration) {
+		return errors.New("invalid PCM volume envelope")
 	}
 	frames := len(samples) / media.PCMChannels
 	if offset > media.PCMFramesForTicks(a.Timeline.End) || start > a.Timeline.End || media.PCMTicksForFrames(offset) > a.Timeline.End-start {
@@ -73,7 +76,11 @@ func (m *PCMMixer) AddContribution(samples []int16, a AudioContribution, start, 
 		tick := media.PCMTicksForFrames(offset + int64(i))
 		factor := int64(0)
 		if tick < a.Timeline.End-start {
-			factor = fadeFactor(a.Timeline, a.FadeIn, a.FadeOut, start+tick)
+			at := start + tick
+			factor = fadeFactor(a.Timeline, a.FadeIn, a.FadeOut, at)
+			if a.Envelope != nil && a.Timeline.Contains(at) {
+				factor = (factor*a.Envelope.Factor(a.SourceInterval.Start+(at-a.Timeline.Start)) + fadeScale/2) / fadeScale
+			}
 		}
 		gain := int64(a.GainPercent) * factor
 		for ch := 0; ch < media.PCMChannels; ch++ {

@@ -79,5 +79,6 @@ func (c Clip) Clone() Clip {
 		v := *c.Gain
 		c.Gain = &v
 	}
+	c.Envelope = c.Envelope.Clone()
 	return c
 }
