@@ -128,7 +128,7 @@ func (e *editor) updateCompositeStill() {
 		} else {
 			e.stillFrame = &r.Value.frame
 			e.stillSources = r.Value.sources
-			e.tell("Composite frame (SDR, paused). Play starts silent composite playback; seek to inspect another frame.")
+			e.tell("Composite frame (SDR, paused). Play starts composite playback with audio; seek to inspect another frame.")
 		}
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
 	}
@@ -146,6 +146,9 @@ func (e *editor) drawCompositeStill(d drawItem) {
 	f := e.stillFrame
 	if f == nil || !f.Valid() {
 		message := "Rendering composite frame..."
+		if e.compositeRun != nil {
+			message = "Waiting for synchronized video..."
+		}
 		if e.stillError != "" {
 			message = "Composite frame unavailable; see status."
 		}

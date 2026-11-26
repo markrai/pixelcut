@@ -26,7 +26,7 @@ func (e *editor) syncPreviewLabel() {
 		}
 	}
 	if e.compositeRun != nil {
-		preview = "Composite playback / SDR / silent / 10 fps target"
+		preview = "Composite playback / SDR / audio master / 10 fps target"
 	} else if e.stillActive {
 		preview = "Composite frame / SDR / paused"
 	} else if e.layerPlan != nil {

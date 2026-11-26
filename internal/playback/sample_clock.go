@@ -20,7 +20,7 @@ func NewSampleClock(start, end int64) (*SampleClock, error) {
 	return &SampleClock{start: start, end: end, total: media.PCMFramesForTicks(end - start)}, nil
 }
 
-func (c *SampleClock) Total() int64 { return c.total }
+func (c *SampleClock) Total() int64  { return c.total }
 func (c *SampleClock) Played() int64 { return c.played.Load() }
 
 func (c *SampleClock) Confirm(frames int64) bool {

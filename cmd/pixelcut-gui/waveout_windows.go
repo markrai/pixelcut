@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"syscall"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -17,6 +18,7 @@ const waveQueueLimit = 3
 const waveHeaderDone = 0x00000001
 
 var winmm = syscall.NewLazyDLL("winmm.dll")
+var waveDeviceFault atomic.Bool
 
 type waveFormat struct {
 	Tag, Channels         uint16
@@ -100,25 +102,37 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 	case <-ready:
 	}
 	format := waveFormat{Tag: 1, Channels: media.PCMChannels, Rate: media.PCMRate, BytesPerSecond: media.PCMRate * media.PCMChannels * 2, BlockAlign: media.PCMChannels * 2, Bits: 16}
+	if waveDeviceFault.Load() {
+		return fmt.Errorf("audio device cleanup previously failed; restart PixelCut")
+	}
 	var handle uintptr
-	err = waveCall("waveOutOpen", uintptr(unsafe.Pointer(&handle)), 0xffffffff, uintptr(unsafe.Pointer(&format)), 0, 0, 0)
+	code, _, _ := winmm.NewProc("waveOutOpen").Call(uintptr(unsafe.Pointer(&handle)), 0xffffffff, uintptr(unsafe.Pointer(&format)), 0, 0, 0)
 	runtime.KeepAlive(&format)
 	runtime.KeepAlive(&handle)
-	if err != nil {
-		return err
+	if code != 0 {
+		return fmt.Errorf("waveOutOpen: Windows multimedia error %d", code)
 	}
 	var queued []queuedWave
 	defer func() {
-		if resetErr := waveCall("waveOutReset", handle); resetErr != nil && err == nil {
-			err = resetErr
-		}
-		for _, q := range queued {
-			if releaseErr := releaseWave(handle, q); releaseErr != nil && err == nil {
-				err = releaseErr
+		if resetErr := waveCall("waveOutReset", handle); resetErr != nil {
+			waveDeviceFault.Store(true)
+			if err == nil {
+				err = resetErr
 			}
 		}
-		if closeErr := waveCall("waveOutClose", handle); closeErr != nil && err == nil {
-			err = closeErr
+		for _, q := range queued {
+			if releaseErr := releaseWave(handle, q); releaseErr != nil {
+				waveDeviceFault.Store(true)
+				if err == nil {
+					err = releaseErr
+				}
+			}
+		}
+		if closeErr := waveCall("waveOutClose", handle); closeErr != nil {
+			waveDeviceFault.Store(true)
+			if err == nil {
+				err = closeErr
+			}
 		}
 	}()
 	if err = waveCall("waveOutPause", handle); err != nil {
@@ -128,6 +142,7 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 	defer ticker.Stop()
 	var submitted int64
 	started, closed := false, false
+	lastProgress := time.Now()
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -138,6 +153,7 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 				return err
 			}
 			queued = queued[1:]
+			lastProgress = time.Now()
 			if !clock.Confirm(q.end) {
 				return fmt.Errorf("invalid audio completion position")
 			}
@@ -153,6 +169,10 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 				return err
 			}
 			started = true
+			lastProgress = time.Now()
+		}
+		if started && len(queued) > 0 && time.Since(lastProgress) > 5*time.Second {
+			return fmt.Errorf("audio device stopped completing buffers")
 		}
 		var input <-chan composition.PCMBlock
 		if !closed && len(queued) < waveQueueLimit {
@@ -172,6 +192,9 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 			}
 			q, err := queueWave(handle, block)
 			if q.header != 0 {
+				if len(queued) == 0 {
+					lastProgress = time.Now()
+				}
 				queued = append(queued, q)
 			}
 			if err != nil {

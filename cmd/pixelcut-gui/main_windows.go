@@ -193,6 +193,7 @@ type editor struct {
 	stillTime               int64
 	stillError              string
 	compositeRun            *compositePreviewRun
+	compositeFrameTime      int64
 	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]
@@ -522,6 +523,9 @@ func (e *editor) startPreview(paused bool) error {
 		return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 	}
 	e.stopPreview()
+	if !e.compositeRetired() {
+		return fmt.Errorf("composite audio and video decoders are closing; retry Play")
+	}
 	if e.retiringPreview != nil {
 		timer := time.NewTimer(250 * time.Millisecond)
 		defer timer.Stop()
