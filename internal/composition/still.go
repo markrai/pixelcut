@@ -61,7 +61,7 @@ func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limi
 		if c := layer.Crop; c != nil {
 			crop = &media.Crop{X: c.X, Y: c.Y, Width: c.Width, Height: c.Height}
 		}
-		frame, err := decoder.Decode(ctx, media.StillRequest{Path: layer.Asset.Path, Tick: layer.SourceTime, Width: layer.Asset.Width, Height: layer.Asset.Height, Range: layer.Asset.Range, Canvas: plan.Canvas, Crop: crop, Transform: layer.Transform, OutputWidth: right - left, OutputHeight: bottom - top})
+		frame, err := decoder.Decode(ctx, media.StillRequest{Path: layer.Asset.Path, ClipID: layer.Ref.ClipID, Tick: layer.SourceTime, SourceEnd: layer.Asset.Duration, Width: layer.Asset.Width, Height: layer.Asset.Height, Range: layer.Asset.Range, Canvas: plan.Canvas, Crop: crop, Transform: layer.Transform, OutputWidth: right - left, OutputHeight: bottom - top})
 		if err != nil {
 			return media.StillFrame{}, fmt.Errorf("layer %s/%s: %w", layer.Ref.TrackID, layer.Ref.ClipID, err)
 		}

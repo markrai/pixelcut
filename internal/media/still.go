@@ -17,7 +17,9 @@ const stillCacheEntries = 64
 
 type StillRequest struct {
 	Path          string
+	ClipID        string
 	Tick          int64
+	SourceEnd     int64
 	Width, Height int
 	Range         string
 	Canvas        CanvasSize
