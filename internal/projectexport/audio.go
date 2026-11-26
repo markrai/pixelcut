@@ -165,7 +165,7 @@ func writePCM(dst io.Writer, raw []byte) error {
 }
 
 func validateAudio(plan Plan) error {
-	if !plan.Contract.Audio || plan.ContentAudioFrames != media.PCMFramesForTicks(plan.Duration) || plan.OutputAudioFrames != plan.VideoFrames*int64(media.PCMRate/plan.Contract.FPS) || plan.OutputAudioFrames < plan.ContentAudioFrames {
+	if plan.Contract.Validate() != nil || plan.Duration <= 0 || plan.Duration > MaxDuration || plan.VideoFrames != frameCeiling(plan.Duration, plan.Contract.FPS) || !plan.Contract.Audio || plan.ContentAudioFrames != media.PCMFramesForTicks(plan.Duration) || plan.OutputAudioFrames != plan.VideoFrames*int64(media.PCMRate/plan.Contract.FPS) || plan.OutputAudioFrames < plan.ContentAudioFrames {
 		return errors.New("invalid offline audio duration")
 	}
 	for _, span := range plan.Spans {
