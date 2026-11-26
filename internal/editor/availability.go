@@ -20,12 +20,14 @@ const (
 )
 
 type Availability struct {
-	ClipCount      int
-	AudioTrack     bool
-	AssetSelected  bool
-	ClipboardReady bool
-	CanUndo        bool
-	CanRedo        bool
+	ClipCount       int
+	AudioTrack      bool
+	TrackLocked     bool
+	VideoSuppressed bool
+	AssetSelected   bool
+	ClipboardReady  bool
+	CanUndo         bool
+	CanRedo         bool
 }
 
 func (a Availability) Check(requirement Requirement) error {
@@ -67,11 +69,13 @@ func (a Availability) Check(requirement Requirement) error {
 func (s *State) Availability(clipboardReady bool) Availability {
 	i := s.TrackIndex()
 	return Availability{
-		ClipCount:      s.Count(),
-		AudioTrack:     i >= 0 && s.p.Tracks[i].Kind == project.AudioTrack,
-		AssetSelected:  s.AssetIndex() >= 0,
-		ClipboardReady: clipboardReady,
-		CanUndo:        s.CanUndo(),
-		CanRedo:        s.CanRedo(),
+		ClipCount:       s.Count(),
+		AudioTrack:      i >= 0 && s.p.Tracks[i].Kind == project.AudioTrack,
+		TrackLocked:     i >= 0 && s.p.Tracks[i].Locked,
+		VideoSuppressed: !s.p.TrackPolicies()[s.TrackID()].Video,
+		AssetSelected:   s.AssetIndex() >= 0,
+		ClipboardReady:  clipboardReady,
+		CanUndo:         s.CanUndo(),
+		CanRedo:         s.CanRedo(),
 	}
 }

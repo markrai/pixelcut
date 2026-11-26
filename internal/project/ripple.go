@@ -21,6 +21,9 @@ func (p Project) RippleDelete(trackID string, ids []string) (Project, error) {
 	if err = p.Validate(); err != nil {
 		return p, err
 	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
+		return p, err
+	}
 	q := p.Clone()
 	ordered := append([]Clip(nil), q.Tracks[ti].Clips...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Start < ordered[j].Start })
@@ -58,6 +61,9 @@ func (p Project) RemoveGap(trackID string, at int64) (Project, int64, error) {
 	for i, t := range p.Tracks {
 		if t.ID != trackID {
 			continue
+		}
+		if err := p.RequireEditableTrack(trackID); err != nil {
+			return p, 0, err
 		}
 		var left, right int64
 		found := false
@@ -102,6 +108,9 @@ func (p Project) RippleTrim(trackID, clipID, mode string, delta, marker, toleran
 	}
 	ti, _, err := p.selectedTrack(trackID, []string{clipID})
 	if err != nil {
+		return result, err
+	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
 		return result, err
 	}
 	var original Clip

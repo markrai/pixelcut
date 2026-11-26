@@ -45,6 +45,7 @@ type entry struct {
 type track struct {
 	id, kind string
 	clips    []entry
+	policy   project.TrackPolicy
 }
 
 type Evaluator struct {
@@ -62,8 +63,9 @@ func Compile(p project.Project) (*Evaluator, error) {
 	for _, a := range p.Assets {
 		assets[a.ID] = a
 	}
+	policies := p.TrackPolicies()
 	for _, t := range p.Tracks {
-		indexed := track{id: t.ID, kind: t.Kind, clips: make([]entry, 0, len(t.Clips))}
+		indexed := track{id: t.ID, kind: t.Kind, clips: make([]entry, 0, len(t.Clips)), policy: policies[t.ID]}
 		for _, c := range t.Clips {
 			indexed.clips = append(indexed.clips, entry{clip: c.Clone(), asset: assets[c.AssetID]})
 			e.boundaries = append(e.boundaries, c.Start, c.End())
@@ -116,15 +118,42 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 			SourceInterval: c.SourceInterval(),
 			SourceTime:     sourceTime,
 		}
-		if t.kind == project.VideoTrack {
+		if t.policy.Video {
 			c = c.Clone()
 			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform})
 		}
-		if item.asset.HasAudio && !c.AudioDetached {
+		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached {
 			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack})
 		}
 	}
 	return f, nil
+}
+
+func (e *Evaluator) AuditionTarget(trackID string, at int64, advance bool) (project.ClipRef, int64, bool) {
+	if at < 0 || at >= e.duration {
+		return project.ClipRef{}, at, false
+	}
+	for _, t := range e.tracks {
+		if t.id != trackID || (!t.policy.Video && !t.policy.Audio) {
+			continue
+		}
+		i := sort.Search(len(t.clips), func(i int) bool { return t.clips[i].clip.End() > at })
+		for ; i < len(t.clips); i++ {
+			item := t.clips[i]
+			c := item.clip
+			if c.Start > at && !advance {
+				break
+			}
+			if t.policy.Video || (t.policy.Audio && item.asset.HasAudio && !c.AudioDetached) {
+				return project.ClipRef{TrackID: t.id, ClipID: c.ID}, max(at, c.Start), true
+			}
+			if !advance {
+				break
+			}
+		}
+		break
+	}
+	return project.ClipRef{}, at, false
 }
 
 func (e *Evaluator) AudioTarget(trackID string, at int64, advance bool) (AudioContribution, int64, bool) {

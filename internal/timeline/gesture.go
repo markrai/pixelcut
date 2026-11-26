@@ -38,6 +38,9 @@ func EvaluateDrag(p project.Project, req DragRequest) DragResult {
 		return result
 	}
 	result.Clip = original
+	if p.RequireEditableTrack(req.Ref.TrackID) != nil || (req.TargetTrack != "" && p.RequireEditableTrack(req.TargetTrack) != nil) {
+		return result
+	}
 	raw := max(-1e15, min(1e15, float64(req.Pixels)/req.Scale*float64(project.TicksPerSecond)))
 	delta := int64(math.Round(raw/10000)) * 10000
 	tolerance := SnapTolerance(req.Scale, req.Magnetic && !req.Bypass)

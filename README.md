@@ -164,7 +164,7 @@ Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or exper
 
 ### Multitrack foundation (2C.1)
 
-The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lanes and independent audio audition are implemented; simultaneous audio mixing and compositing follow in later phases. New projects use format version 3; versions 1 and 2 remain readable.
+The Track menu switches the active editing track, adds video/audio tracks, transfers clips between compatible tracks and removes empty additional tracks. Independent audio clips can reference an imported video's audio stream. Each track uses the same timeline timebase; editing and preview currently operate on one active track, and video preview/export are isolated to a selected video clip. Stacked lanes and independent audio audition are implemented; simultaneous audio mixing and compositing follow in later phases. New projects use format version 4; versions 1 through 3 remain readable.
 
 ## Development and architectural stabilization
 
@@ -174,3 +174,8 @@ Feature work is paused for the 2C.R refactoring milestone. See [Architecture](AR
 ### Independent audio preview (2C.3)
 
 Select an audio track to audition it using the existing playback controls. Right-click a video clip to detach source audio into an independent audio track, or reattach a uniquely aligned matching audio clip. The detached video previews and exports without its source audio. Independent audio and video preview remain isolated; simultaneous composition and mixing are future phases.
+
+
+### Track controls (2C.4)
+
+Right-click a lane header or use the Track menu to hide video, mute audio, solo or lock the active track. H, M, S and L in the header identify its settings. Hide suppresses video but not its attached audio; mute suppresses audio but not video; solo includes only soloed tracks (multiple solos are allowed). Hide and mute still take precedence. Locked tracks allow selection, copy and preview, but reject edits, transfers, placement, and source changes. Toggle controls again to restore normal operation. Settings persist and are undoable. Preview remains active-track only; selected-clip export honors mute and detached audio but ignores timeline hide/solo.

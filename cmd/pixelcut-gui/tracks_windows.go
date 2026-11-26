@@ -15,12 +15,67 @@ const (
 	trackMenuVideo  = 6200
 	trackMenuAudio  = 6201
 	trackMenuRemove = 6202
+	trackMenuHide   = 6203
+	trackMenuMute   = 6204
+	trackMenuSolo   = 6205
+	trackMenuLock   = 6206
 )
 
 func (e *editor) trackIndex() int { return e.model.TrackIndex() }
 
 func (e *editor) trackID() string  { return e.model.TrackID() }
 func (e *editor) audioTrack() bool { return e.track().Kind == "audio" }
+
+func trackStatus(t project.Track) string {
+	var status []string
+	if t.Hidden {
+		status = append(status, "H")
+	}
+	if t.Muted {
+		status = append(status, "M")
+	}
+	if t.Solo {
+		status = append(status, "S")
+	}
+	if t.Locked {
+		status = append(status, "L")
+	}
+	return strings.Join(status, " ")
+}
+
+func trackControlItems(t project.Track) []menuItem {
+	return []menuItem{
+		{id: trackMenuHide, label: "Hide video", enabled: t.Kind == project.VideoTrack, checked: t.Hidden},
+		{id: trackMenuMute, label: "Mute audio", enabled: true, checked: t.Muted},
+		{id: trackMenuSolo, label: "Solo track", enabled: true, checked: t.Solo},
+		{id: trackMenuLock, label: "Lock edits", enabled: true, checked: t.Locked},
+	}
+}
+
+func (e *editor) toggleTrackControl(id int) error {
+	var control project.TrackControl
+	switch id {
+	case trackMenuHide:
+		control = project.Visibility
+	case trackMenuMute:
+		control = project.Mute
+	case trackMenuSolo:
+		control = project.Solo
+	case trackMenuLock:
+		control = project.Lock
+	default:
+		return nil
+	}
+	q, err := e.model.Project().ToggleTrackControl(e.trackID(), control)
+	if err != nil {
+		return err
+	}
+	if err = e.commit(q); err != nil {
+		return err
+	}
+	e.tell("Track controls updated. Ctrl+Z to undo.")
+	return nil
+}
 
 func (e *editor) syncTrackUI() {
 	e.syncPreviewLabel()
@@ -59,7 +114,11 @@ func trackMenuItems(p project.Project, active string, selected []string) []menuI
 	}
 	items = append(items, separator(), item(trackMenuVideo, "Add video track", len(p.Tracks) < project.MaxTracks), item(trackMenuAudio, "Add audio track", len(p.Tracks) < project.MaxTracks))
 	i := p.TrackIndex(active)
-	items = append(items, item(trackMenuRemove, "Remove active empty track", i >= 2 && len(p.Tracks[i].Clips) == 0))
+	items = append(items, item(trackMenuRemove, "Remove active empty track", i >= 2 && len(p.Tracks[i].Clips) == 0 && !p.Tracks[i].Locked))
+	if i >= 0 {
+		items = append(items, separator())
+		items = append(items, trackControlItems(p.Tracks[i])...)
+	}
 	if i >= 0 && len(selected) > 0 {
 		items = append(items, separator())
 		for j, t := range p.Tracks {
@@ -88,6 +147,9 @@ func (e *editor) showTracks() error {
 	if id >= trackMenuSelect && id < trackMenuSelect+len(e.model.Project().Tracks) {
 		e.switchTrack(e.model.Project().Tracks[id-trackMenuSelect].ID)
 		return nil
+	}
+	if id >= trackMenuHide && id <= trackMenuLock {
+		return e.toggleTrackControl(id)
 	}
 	var q project.Project
 	var err error

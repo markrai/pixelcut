@@ -17,6 +17,9 @@ func (p Project) dragClip(trackID, clipID, mode string, delta int64) (Clip, erro
 	if !ok {
 		return Clip{}, ErrClipNotFound
 	}
+	if err := p.RequireEditableTrack(trackID); err != nil {
+		return Clip{}, err
+	}
 	c := p.Tracks[ti].Clips[ci].Clone()
 	a, _ := p.Asset(c.AssetID)
 	switch mode {

@@ -176,7 +176,17 @@ func (e *editor) timelineContext(lp uintptr) {
 		}
 	}
 	screen, local := contextPoint(e.timeline, lp, pos)
-	if local.X < trackHeader || local.X >= w {
+	if local.X >= w || local.X < 0 {
+		return
+	}
+	if !keyboard && local.X < trackHeader {
+		if lane, ok := e.timelineStack().At(local.Y); ok {
+			e.selectTimelineLane(lane.TrackID)
+			id := e.popup(trackControlItems(*e.track()), screen)
+			if err := e.toggleTrackControl(id); err != nil {
+				e.tell(err.Error())
+			}
+		}
 		return
 	}
 	if !keyboard {
@@ -221,7 +231,8 @@ func (e *editor) timelineContext(lp uintptr) {
 			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
 				s.detachAudio = a.HasAudio && !c.AudioDetached
-				s.reattachAudio = c.AudioDetached && len(e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})) == 1
+				matches := e.model.Project().MatchingAudio(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})
+				s.reattachAudio = c.AudioDetached && len(matches) == 1 && e.model.Project().RequireEditableTrack(matches[0].TrackID) == nil
 			}
 		}
 		e.checkpoint()

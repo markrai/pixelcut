@@ -53,6 +53,9 @@ func (p Project) RemoveTrack(id string) (Project, error) {
 	if i < 2 {
 		return p, errors.New("base tracks V1 and A1 cannot be removed")
 	}
+	if err := p.RequireEditableTrack(id); err != nil {
+		return p, err
+	}
 	if len(p.Tracks[i].Clips) != 0 {
 		return p, errors.New("remove or move the track's clips first")
 	}
@@ -72,6 +75,12 @@ func (p Project) TransferClips(from, to string, ids []string) (Project, error) {
 	dst := p.TrackIndex(to)
 	if dst < 0 || src == dst || p.Tracks[src].Kind != p.Tracks[dst].Kind {
 		return p, errors.New("select a different track of the same kind")
+	}
+	if err := p.RequireEditableTrack(from); err != nil {
+		return p, err
+	}
+	if err := p.RequireEditableTrack(to); err != nil {
+		return p, err
 	}
 	q := p.Clone()
 	q.Version = Version

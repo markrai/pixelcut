@@ -36,6 +36,9 @@ func (p Project) RelinkAsset(id string, candidate Asset, replace bool) (Project,
 	if !ok {
 		return p, ErrAssetNotFound
 	}
+	if err := p.RequireEditableAsset(id); err != nil {
+		return p, err
+	}
 	if !replace && SourceAvailable(old.Path) {
 		return p, errors.New("original source is available; use Replace source instead")
 	}

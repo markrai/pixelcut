@@ -18,18 +18,7 @@ func (e *editor) previewTarget(at int64, advance bool) (int, int64, bool, error)
 		}
 		e.composition, e.compositionFingerprint = compiled, fingerprint
 	}
-	var ref project.ClipRef
-	var target int64
-	var ok bool
-	if e.audioTrack() {
-		var audio composition.AudioContribution
-		audio, target, ok = e.composition.AudioTarget(e.trackID(), at, advance)
-		ref = audio.Ref
-	} else {
-		var layer composition.VideoLayer
-		layer, target, ok = e.composition.VideoTarget(e.trackID(), at, advance)
-		ref = layer.Ref
-	}
+	ref, target, ok := e.composition.AuditionTarget(e.trackID(), at, advance)
 	if !ok {
 		return -1, at, false, nil
 	}
@@ -135,9 +124,15 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 	if index < 0 {
 		e.stopPreview()
 		e.playhead = t
-		e.selectClip(-1)
+		for i, c := range e.track().Clips {
+			if c.Contains(t) {
+				index = i
+				break
+			}
+		}
+		e.selectClip(index)
 		e.refreshPlaybackMarker()
-		e.tell("No clip on the active track at this timeline position.")
+		e.tell("No enabled video or audio at this position on the active track.")
 		return
 	}
 	c := e.track().Clips[index]
