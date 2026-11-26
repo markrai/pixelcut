@@ -191,6 +191,15 @@ func (p *previewCheckChild) finish(width, height, count int) ([]decodeFrameHash,
 	return parseFrameHashes(string(p.hashes.data), width, height, count, 4)
 }
 
+func (p *previewCheckChild) readFrame(pixels []byte) error {
+	if _, err := io.ReadFull(p.pipe, pixels); err != nil {
+		p.close()
+		detail := string(p.hashes.data[:min(len(p.hashes.data), 1024)])
+		return fmt.Errorf("%w: %s", err, detail)
+	}
+	return nil
+}
+
 func (p *previewCheckChild) close() {
 	_ = p.pipe.Close()
 	if !p.waited {
@@ -225,10 +234,10 @@ func (e Engine) comparePreviewScale(ctx context.Context, v Stream, req StillRequ
 	ch, gh := make([][32]byte, len(ticks)), make([][32]byte, len(ticks))
 	var quality previewQualityAccumulator
 	for i := range ticks {
-		if _, err := io.ReadFull(cpu.pipe, c); err != nil {
+		if err := cpu.readFrame(c); err != nil {
 			return quality.quality, i, fmt.Errorf("CPU preview frame %d: %w", first+i, err)
 		}
-		if _, err := io.ReadFull(gpu.pipe, g); err != nil {
+		if err := gpu.readFrame(g); err != nil {
 			return quality.quality, i, fmt.Errorf("candidate preview frame %d: %w", first+i, err)
 		}
 		ch[i], gh[i] = sha256.Sum256(c), sha256.Sum256(g)

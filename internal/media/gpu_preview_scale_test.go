@@ -2,8 +2,11 @@ package media
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestPreviewScaleCandidatePolicy(t *testing.T) {
@@ -51,5 +54,69 @@ func TestPreviewScaleRejectsInvalidRequest(t *testing.T) {
 	r, err := Default().CheckCUDAPreviewScale(context.Background(), "missing.mp4", 0, 121, 960, 540)
 	if err == nil || r.Status != "failed" || r.Failure == "" {
 		t.Fatalf("invalid request accepted: %+v %v", r, err)
+	}
+}
+
+func TestExperimentalCUDAPreviewScale(t *testing.T) {
+	if os.Getenv("PIXELCUT_QUALIFY_CUDA_PREVIEW_SCALE") != "1" {
+		t.Skip("set PIXELCUT_QUALIFY_CUDA_PREVIEW_SCALE=1 on a CUDA workstation")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	path := filepath.Join(t.TempDir(), "source.mp4")
+	runFF(t, "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=192x144:r=10:d=1,format=yuv420p10le,geq=lum='128+2*X+2*Y+8*N':cb='400+X':cr='400+Y',setsar=1", "-c:v", "libx265", "-x265-params", "pools=1:frame-threads=1:log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited:chromaloc=0", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv", "-chroma_sample_location", "left", "-tag:v", "hvc1", path)
+	cpu, gpu := Default(), Default()
+	gpu.DecodeBackend = BackendCUDA
+	report, err := gpu.CheckCUDAPreviewScale(ctx, path, 0, 10, 96, 72)
+	if err != nil {
+		t.Fatalf("Lanczos qualification: %+v %v", report, err)
+	}
+	t.Logf("Lanczos qualification: %+v", report)
+	req := StillRequest{Path: path, ClipID: "one", SourceEnd: 1000000, Width: 192, Height: 144, Range: "tv", Canvas: CanvasSize{192, 144}, OutputWidth: 96, OutputHeight: 72}
+	cpuStill, gpuStill := NewStillDecoder(cpu), NewStillDecoder(gpu)
+	gpuStill.previewScale = true
+	cpuStream, gpuStream := NewStreamDecoder(ctx, cpu), NewStreamDecoder(ctx, gpu)
+	gpuStream.indexer.previewScale = true
+	defer cpuStream.Close()
+	defer gpuStream.Close()
+	var stillQuality, streamQuality previewQualityAccumulator
+	var cpuTime, gpuTime time.Duration
+	for _, tick := range []int64{0, 100000, 200000, 650000, 750000} {
+		req.Tick = tick
+		c, err := cpuStill.Decode(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		g, err := gpuStill.Decode(ctx, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := stillQuality.add(c.Pixels, g.Pixels); err != nil {
+			t.Fatal(err)
+		}
+		started := time.Now()
+		c, err = cpuStream.Decode(ctx, req)
+		cpuTime += time.Since(started)
+		if err != nil {
+			t.Fatal(err)
+		}
+		started = time.Now()
+		g, err = gpuStream.Decode(ctx, req)
+		gpuTime += time.Since(started)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := streamQuality.add(c.Pixels, g.Pixels); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gpuStream.Close()
+	stats := gpuStream.Stats()
+	t.Logf("still=%+v stream=%+v cpu stream=%s gpu stream=%s stats=%+v", stillQuality.quality, streamQuality.quality, cpuTime, gpuTime, stats)
+	if !stillQuality.quality.withinLimits() || !streamQuality.quality.withinLimits() {
+		t.Fatal("candidate preview quality exceeds limits")
+	}
+	if stats.Opened != 2 || stats.Opened != stats.Retired || stats.Peak != 1 {
+		t.Fatalf("candidate stream lifecycle: %+v", stats)
 	}
 }

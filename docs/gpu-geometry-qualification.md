@@ -56,3 +56,13 @@ pixelcut gpu-preview-scale-check -width 640 -height 360 -frames 120 "test-media\
 ```
 
 Run the raw nearest/decode checks first. Record output for real landscape, portrait without rotation metadata, detailed edges, gradients, motion and UHD footage. Candidate CI and physical Lanczos parity are pending. Normal renderer activation, persistent decoder measurements, remaining geometry and HDR export remain outstanding. Do not treat status within_limits as blanket GPU qualification.
+
+For opt-in integration testing on a CUDA workstation, including actual still and persistent stream decoding with discontinuity retirement:
+
+```cmd
+set PIXELCUT_QUALIFY_CUDA_PREVIEW_SCALE=1
+go test -count=1 -v ./internal/media -run "^TestExperimentalCUDAPreviewScale$"
+set PIXELCUT_QUALIFY_CUDA_PREVIEW_SCALE=
+```
+
+The small fixture reports aggregate sequential stream call timings including startup, seek and transfer; this is not sustained playback throughput. Ordinary CI compares two software preview processes on the existing VFR fixture. Local FFmpeg 7.1.5 command-level CPU check on that fixture produced four 3072-byte BGRA frames at 100000, 133333, 200000 and 233333 microseconds; all raw SHA-256 hashes matched the simultaneous framehash stream and alpha was opaque. Local repository checkout remains blocked by DNS; this is not candidate Go suite or CUDA evidence.
