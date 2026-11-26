@@ -106,6 +106,15 @@ func renderCompositeFrame(ctx context.Context, e *Evaluator, decoder SequentialD
 }
 
 func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder, start int64, clock func() int64, present func(context.Context, CompositeFrame) error) error {
+	return RenderClockedSequenceObserved(ctx, e, decoder, start, clock, present, nil)
+}
+
+type FrameObservation struct {
+	DecodeTime time.Duration
+	Eligible   bool
+}
+
+func RenderClockedSequenceObserved(ctx context.Context, e *Evaluator, decoder SequentialDecoder, start int64, clock func() int64, present func(context.Context, CompositeFrame) error, observe func(FrameObservation)) error {
 	if e == nil || decoder == nil || clock == nil || present == nil || start < 0 || start >= e.Duration() {
 		return errors.New("invalid clocked preview request")
 	}
@@ -121,7 +130,9 @@ func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder Sequential
 		} else {
 			at = max(at, e.VideoSampleAt(start, now))
 		}
+		started := time.Now()
 		frame, err := renderCompositeFrame(ctx, e, decoder, at, identities)
+		elapsed := time.Since(started)
 		if err != nil {
 			return err
 		}
@@ -134,7 +145,11 @@ func RenderClockedSequence(ctx context.Context, e *Evaluator, decoder Sequential
 			case <-timer.C:
 			}
 		}
-		if frame.CurrentAt(clock()) {
+		eligible := frame.CurrentAt(clock())
+		if observe != nil {
+			observe(FrameObservation{DecodeTime: elapsed, Eligible: eligible})
+		}
+		if eligible {
 			if err := present(ctx, frame); err != nil {
 				return err
 			}

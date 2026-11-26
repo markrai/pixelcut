@@ -61,10 +61,21 @@ type PCMDecoder struct {
 	engine     Engine
 	streams    map[string]*pcmStream
 	identities map[string]mediacache.Source
+	stats      PreviewDecoderStats
 }
 
 func NewPCMDecoder(ctx context.Context, engine Engine) *PCMDecoder {
 	return &PCMDecoder{ctx: ctx, engine: engine, streams: make(map[string]*pcmStream), identities: make(map[string]mediacache.Source)}
+}
+
+func (d *PCMDecoder) Stats() PreviewDecoderStats { return d.stats }
+
+func (d *PCMDecoder) retire(id string) {
+	if s := d.streams[id]; s != nil {
+		s.close()
+		delete(d.streams, id)
+		d.stats.Retired++
+	}
 }
 
 func (d *PCMDecoder) Retain(ids []string) error {
@@ -78,10 +89,9 @@ func (d *PCMDecoder) Retain(ids []string) error {
 	if len(keep) > MaxAudioStreams {
 		return fmt.Errorf("composite preview supports at most %d simultaneous audio contributions", MaxAudioStreams)
 	}
-	for id, s := range d.streams {
+	for id := range d.streams {
 		if !keep[id] {
-			s.close()
-			delete(d.streams, id)
+			d.retire(id)
 		}
 	}
 	return nil
@@ -128,8 +138,7 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 	d.identities[identity.Path] = identity
 	s := d.streams[req.ClipID]
 	if s != nil && (s.identity != identity || s.next != req.Offset) {
-		s.close()
-		delete(d.streams, req.ClipID)
+		d.retire(req.ClipID)
 		s = nil
 	}
 	if s == nil {
@@ -141,6 +150,7 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 			return nil, err
 		}
 		d.streams[req.ClipID] = s
+		d.stats.opened(len(d.streams))
 	}
 	stop := context.AfterFunc(ctx, s.cancel)
 	raw := make([]byte, req.Frames*PCMChannels*2)
@@ -152,8 +162,7 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 		err = d.ctx.Err()
 	}
 	if err != nil || !unchanged(req.Path, identity) {
-		s.close()
-		delete(d.streams, req.ClipID)
+		d.retire(req.ClipID)
 		if err != nil {
 			return nil, fmt.Errorf("audio decoder: %w", err)
 		}
@@ -164,5 +173,6 @@ func (d *PCMDecoder) DecodePCM(ctx context.Context, req PCMRequest) ([]int16, er
 		out[i] = int16(binary.LittleEndian.Uint16(raw[i*2:]))
 	}
 	s.next += int64(req.Frames)
+	d.stats.Units += int64(req.Frames)
 	return out, nil
 }

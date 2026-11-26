@@ -37,10 +37,25 @@ type StreamDecoder struct {
 	ctx     context.Context
 	indexer *StillDecoder
 	streams map[string]*previewStream
+	stats   PreviewDecoderStats
 }
 
 func NewStreamDecoder(ctx context.Context, engine Engine) *StreamDecoder {
-	return &StreamDecoder{ctx: ctx, indexer: NewStillDecoder(engine), streams: make(map[string]*previewStream)}
+	return NewStreamDecoderWithCache(ctx, engine, nil)
+}
+
+func NewStreamDecoderWithCache(ctx context.Context, engine Engine, disk *mediacache.Cache) *StreamDecoder {
+	return &StreamDecoder{ctx: ctx, indexer: NewStillDecoderWithCache(engine, disk), streams: make(map[string]*previewStream)}
+}
+
+func (d *StreamDecoder) Stats() PreviewDecoderStats { return d.stats }
+
+func (d *StreamDecoder) retire(id string) {
+	if s := d.streams[id]; s != nil {
+		s.close()
+		delete(d.streams, id)
+		d.stats.Retired++
+	}
 }
 
 func (d *StreamDecoder) Retain(ids []string) error {
@@ -54,19 +69,17 @@ func (d *StreamDecoder) Retain(ids []string) error {
 	if len(keep) > MaxCompositeStreams {
 		return fmt.Errorf("continuous preview supports at most %d simultaneous video layers", MaxCompositeStreams)
 	}
-	for id, s := range d.streams {
+	for id := range d.streams {
 		if !keep[id] {
-			s.close()
-			delete(d.streams, id)
+			d.retire(id)
 		}
 	}
 	return nil
 }
 
 func (d *StreamDecoder) Close() {
-	for id, s := range d.streams {
-		s.close()
-		delete(d.streams, id)
+	for id := range d.streams {
+		d.retire(id)
 	}
 }
 
@@ -131,8 +144,7 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 		return StillFrame{}, errors.New("source changed during continuous preview")
 	}
 	if s != nil && (s.next != req.Tick || s.graph != graph || s.width != req.OutputWidth || s.height != req.OutputHeight) {
-		s.close()
-		delete(d.streams, req.ClipID)
+		d.retire(req.ClipID)
 		s = nil
 	}
 	if s == nil {
@@ -144,6 +156,7 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 			return StillFrame{}, err
 		}
 		d.streams[req.ClipID] = s
+		d.stats.opened(len(d.streams))
 	}
 	stop := context.AfterFunc(ctx, s.cancel)
 	pixels := make([]byte, s.width*s.height*4)
@@ -155,8 +168,7 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 		err = d.ctx.Err()
 	}
 	if err != nil || !unchanged(req.Path, identity) {
-		s.close()
-		delete(d.streams, req.ClipID)
+		d.retire(req.ClipID)
 		if err != nil {
 			return StillFrame{}, fmt.Errorf("continuous decoder: %w", err)
 		}
@@ -167,5 +179,6 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 	} else {
 		s.next += CompositeStep
 	}
+	d.stats.Units++
 	return StillFrame{Width: s.width, Height: s.height, Pixels: pixels}, nil
 }
