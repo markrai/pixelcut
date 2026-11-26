@@ -53,6 +53,9 @@ func (e *editor) syncPreviewLabel() {
 			}
 		}
 	}
+	if e.stillActive || e.compositeRun != nil || e.compositeResume {
+		preview += " / " + e.engine.DecodeBackendName() + " decode"
+	}
 	change(e.previewLabel, preview)
 }
 

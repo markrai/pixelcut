@@ -253,6 +253,9 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		return err
 	}
 	plan := prepared.Plan
+	if engine.DecodeBackend == media.BackendCUDA {
+		plan.Warnings = append(plan.Warnings, "Experimental CUDA video decoding requested; geometry, compositing and encoding remain CPU")
+	}
 	if observe != nil {
 		observe(Progress{Stage: StagePreflight, Warnings: append([]string(nil), plan.Warnings...)})
 	}

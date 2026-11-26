@@ -48,7 +48,7 @@ type Report struct {
 
 type Engine struct {
 	FFmpeg, FFprobe, MPV string
-	DecodeBackend       Backend
+	DecodeBackend        Backend
 }
 
 func Default() Engine { return Engine{FFmpeg: "ffmpeg", FFprobe: "ffprobe", MPV: "mpv"} }

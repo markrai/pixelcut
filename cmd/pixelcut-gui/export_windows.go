@@ -191,7 +191,7 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 			return result{message: "Project export canceled. No output published."}
 		}
 		_, warnings := job.snapshot()
-		message := "Project export complete: " + path
+		message := "Project export complete (" + engine.DecodeBackendName() + " decode): " + path
 		if len(warnings) != 0 {
 			message += fmt.Sprintf(" (%d preflight warning(s); use plan-export for details)", len(warnings))
 		}

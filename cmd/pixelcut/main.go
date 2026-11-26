@@ -27,8 +27,8 @@ Usage:
   pixelcut crop [-start SECONDS -duration SECONDS] -x X -y Y -width W -height H INPUT OUTPUT.mp4
   pixelcut preview [-hdr] INPUT
   pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json
-  pixelcut export-project -color hlg -fps FPS [-progress] PROJECT.pixelcut.json OUTPUT.mp4
-  pixelcut export-video -color hlg -fps FPS [-discard-audio] PROJECT.pixelcut.json OUTPUT.mp4
+  pixelcut export-project -color hlg -fps FPS [-progress] [-decode cpu|auto|cuda] PROJECT.pixelcut.json OUTPUT.mp4
+  pixelcut export-video -color hlg -fps FPS [-discard-audio] [-decode cpu|auto|cuda] PROJECT.pixelcut.json OUTPUT.mp4
 
 Trim and crop currently support only explicitly tagged 10-bit HLG footage.
 Preview requires mpv. Export requires FFmpeg with libx265.`
@@ -87,6 +87,10 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		color := fs.String("color", "", "required output color contract: hlg")
 		fps := fs.Int("fps", 0, "required CFR: 24, 25, 30, 50 or 60")
 		var progress, discardAudio bool
+		var decode string
+		if args[0] != "plan-export" {
+			fs.StringVar(&decode, "decode", "cpu", "video decode backend: cpu, auto or experimental cuda")
+		}
 		if args[0] == "export-project" {
 			fs.BoolVar(&progress, "progress", false, "print export stage and submitted frame/sample counts")
 		}
@@ -109,6 +113,13 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 			}
 		} else if fs.NArg() != 1 {
 			return errors.New("usage: pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json")
+		}
+		if args[0] != "plan-export" {
+			backend, err := media.ParseDecodeBackend(decode)
+			if err != nil {
+				return err
+			}
+			e.DecodeBackend = backend
 		}
 		p, err := project.Load(fs.Arg(0))
 		if err != nil {
