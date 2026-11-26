@@ -100,7 +100,6 @@ func TestPreviewAndOfflineGainParity(t *testing.T) {
 	}
 }
 
-
 func TestMutedClipOfflinePlanPreservesVideo(t *testing.T) {
 	p := exportFixture(t)
 	var err error
