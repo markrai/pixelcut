@@ -17,17 +17,17 @@ import (
 const MaxDecodeCheckFrames = 300
 
 type DecodeCheckReport struct {
-	Backend       string  `json:"backend"`
-	Source        string  `json:"source"`
-	Width         int     `json:"width"`
-	Height        int     `json:"height"`
-	FirstFrame    int     `json:"first_frame"`
-	Frames        int     `json:"frames"`
-	Matched       int     `json:"matched"`
-	CPUSeconds    float64 `json:"cpu_seconds"`
-	GPUSeconds    float64 `json:"gpu_seconds"`
-	Status        string  `json:"status"`
-	Failure       string  `json:"failure,omitempty"`
+	Backend    string  `json:"backend"`
+	Source     string  `json:"source"`
+	Width      int     `json:"width"`
+	Height     int     `json:"height"`
+	FirstFrame int     `json:"first_frame"`
+	Frames     int     `json:"frames"`
+	Matched    int     `json:"matched"`
+	CPUSeconds float64 `json:"cpu_seconds"`
+	GPUSeconds float64 `json:"gpu_seconds"`
+	Status     string  `json:"status"`
+	Failure    string  `json:"failure,omitempty"`
 }
 
 type decodeFrameHash struct {

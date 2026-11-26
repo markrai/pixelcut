@@ -278,3 +278,7 @@ Composite playback and whole-project export now share the same timestamp normali
 ### GPU diagnostics (3A.1)
 
 Use Settings > GPU capabilities / device diagnostics, or run `.\pixelcut.exe gpu-info` for the FFmpeg inventory and `.\pixelcut.exe gpu-info -probe-devices` to attempt device initialization. On Windows, `run.bat` rebuilds both the CLI and GUI before opening the editor. After pulling changes, rebuild the binaries; `where pixelcut` helps diagnose an older executable on PATH. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. Rendering remains CPU-only; a successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
+
+### CUDA HEVC decode qualification (3A.2)
+
+Run `pixelcut gpu-decode-check -frames 120 INPUT` to compare a bounded window of actual CUDA-decoded Main 10 HLG frames against software decoding. Use `-start-frame N` for a zero-based interior source ordinal, and choose a frame count that fits the recording (1–300). The report compares per-frame SHA-256 of the CPU-readable 10-bit planes, source timestamps, dimensions and counts, and reports decode wall times. It exits nonzero on unavailable CUDA, invalid source or mismatch. No project or source is modified and no GPU rendering preference is activated. See [CUDA decode qualification](docs/gpu-decode-qualification.md).
