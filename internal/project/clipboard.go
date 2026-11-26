@@ -90,7 +90,7 @@ func (p Project) PasteClips(trackID string, b ClipClipboard, at int64, ids []str
 	for i, c := range b.clips {
 		c = c.Clone()
 		c.ID = ids[i]
-		if c.AudioDetached || c.Opacity != nil || c.Gain != nil || c.AudioMuted || c.HasFades() {
+		if c.AudioDetached || c.Opacity != nil || c.Gain != nil || c.AudioMuted || c.HasFades() || c.HasEnvelope() {
 			q.Version = Version
 		}
 		c.Start += at

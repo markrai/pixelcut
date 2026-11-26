@@ -252,6 +252,9 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			if right-left > 20 {
 				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs%s", filepath.Base(a.Path), project.Seconds(c.Out-c.In), audioClipLabel(c)+layerClipLabel(c)), palette.text, 4)
 			}
+			if audioTrack && a.HasAudio {
+				e.paintVolumeEnvelope(dc, view, l.TrackID, c, geometry.Span, laneTop+18, laneBottom)
+			}
 			if geometry.LinkedAudio {
 				audioColor := palette.audio
 				if !policy.Audio || c.EffectiveGainPercent() == 0 {
@@ -267,6 +270,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				if offline && right-left > 48 {
 					textAt(dc, rect{left + 6, timeline.AudioTop, right - 5, timeline.AudioBottom}, "Offline audio", rgb(255, 166, 166), 4)
 				}
+				e.paintVolumeEnvelope(dc, view, l.TrackID, c, geometry.Span, timeline.AudioTop, timeline.AudioBottom)
 				if e.clipSelected(i, c) && e.model.Count() > 1 {
 					fill(dc, rect{left, timeline.AudioTop, right, timeline.AudioTop + 2}, palette.accent)
 				}
@@ -334,7 +338,7 @@ func (e *editor) selectClip(i int) {
 }
 
 func (e *editor) beginTimeline(x, y, w int32) {
-	if e.menuOpen || e.busy || e.marquee != nil || e.assetDrag != nil || e.cropSession != nil || e.transformSession != nil {
+	if e.menuOpen || e.busy || e.marquee != nil || e.assetDrag != nil || e.envelopeDrag != nil || e.cropSession != nil || e.transformSession != nil {
 		return
 	}
 	if x < trackHeader && y < timeline.TrackTop {
@@ -363,6 +367,9 @@ func (e *editor) beginTimeline(x, y, w int32) {
 		return
 	}
 	view := e.timelineView(w)
+	if keyPressed(0x12) && e.beginEnvelopeDrag(x, y, view, l) {
+		return
+	}
 	for i, c := range e.track().Clips {
 		geometry, visible := e.laneClipGeometry(view, c, l)
 		if !visible {
@@ -578,7 +585,9 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.beginTimeline(x, y, clientRect(hwnd).Right)
 		return 0
 	case 0x0200:
-		if ui.marquee != nil {
+		if ui.envelopeDrag != nil {
+			ui.moveEnvelopeDrag(x, y)
+		} else if ui.marquee != nil {
 			ui.moveMarquee(x, y, clientRect(hwnd).Right)
 		} else if ui.scrubbing {
 			ui.seekTimeline(ui.timeAt(x, clientRect(hwnd).Right), false)
@@ -588,7 +597,10 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.setTimelineCursor(x, y, clientRect(hwnd).Right)
 		return 0
 	case 0x0202:
-		if ui.marquee != nil {
+		if ui.envelopeDrag != nil {
+			ui.moveEnvelopeDrag(x, y)
+			ui.endEnvelopeDrag(false)
+		} else if ui.marquee != nil {
 			ui.moveMarquee(x, y, clientRect(hwnd).Right)
 			ui.endMarquee(false)
 		} else if ui.scrubbing {
@@ -604,6 +616,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.setTimelineCursor(x, y, clientRect(hwnd).Right)
 		return 0
 	case 0x0215:
+		ui.envelopeDrag = nil
 		ui.drag = nil
 		ui.scrubbing, ui.scrubPlaying = false, false
 		if ui.marquee != nil {
@@ -614,7 +627,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		ui.invalidateTimeline()
 		return 0
 	case 0x020a:
-		if ui.menuOpen || ui.busy || ui.assetDrag != nil || ui.marquee != nil || ui.scrubbing || (ui.drag != nil && (wp&4 == 0 || wp&8 != 0 || ui.drag.mode != "move")) {
+		if ui.menuOpen || ui.busy || ui.assetDrag != nil || ui.marquee != nil || ui.envelopeDrag != nil || ui.scrubbing || (ui.drag != nil && (wp&4 == 0 || wp&8 != 0 || ui.drag.mode != "move")) {
 			return 0
 		}
 		d := int16(wp >> 16)
@@ -680,6 +693,9 @@ func cursorForMode(mode string, invalid bool) uintptr {
 func (e *editor) timelineCursor(x, y, w int32) uintptr {
 	if e.busy {
 		return cursorArrow
+	}
+	if e.envelopeDrag != nil {
+		return cursorCross
 	}
 	if e.scrubbing || e.marquee != nil {
 		return cursorCross

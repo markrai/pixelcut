@@ -31,7 +31,8 @@ func (p Project) DetachAudio(video ClipRef, target, id string) (Project, error) 
 	q.Tracks[ti].Clips[ci].Gain = nil
 	q.Tracks[ti].Clips[ci].AudioMuted = false
 	q.Tracks[ti].Clips[ci].FadeIn, q.Tracks[ti].Clips[ci].FadeOut = 0, 0
-	q.Tracks[dst].Clips = append(q.Tracks[dst].Clips, Clip{ID: id, AssetID: c.AssetID, Start: c.Start, In: c.In, Out: c.Out, Gain: c.Clone().Gain, AudioMuted: c.AudioMuted, FadeIn: c.FadeIn, FadeOut: c.FadeOut})
+	q.Tracks[ti].Clips[ci].Envelope = nil
+	q.Tracks[dst].Clips = append(q.Tracks[dst].Clips, Clip{ID: id, AssetID: c.AssetID, Start: c.Start, In: c.In, Out: c.Out, Gain: c.Clone().Gain, AudioMuted: c.AudioMuted, FadeIn: c.FadeIn, FadeOut: c.FadeOut, Envelope: c.Envelope.Clone()})
 	if err := q.Validate(); err != nil {
 		return p, err
 	}
@@ -86,6 +87,7 @@ func (p Project) ReattachAudio(video, audio ClipRef) (Project, error) {
 	q.Tracks[vi].Clips[vc].Gain = a.Clone().Gain
 	q.Tracks[vi].Clips[vc].AudioMuted = a.AudioMuted
 	q.Tracks[vi].Clips[vc].FadeIn, q.Tracks[vi].Clips[vc].FadeOut = a.FadeIn, a.FadeOut
+	q.Tracks[vi].Clips[vc].Envelope = a.Envelope.Clone()
 	clips := q.Tracks[ai].Clips
 	q.Tracks[ai].Clips = append(clips[:ac], clips[ac+1:]...)
 	if err := q.Validate(); err != nil {

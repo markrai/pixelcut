@@ -143,7 +143,7 @@ func (e *editor) pollRecovery() {
 
 func (e *editor) checkpointView() {
 	e.pollRecovery()
-	if e.recovery == nil || e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.scrubbing || time.Since(e.lastCheckpoint) < time.Duration(max(1, e.prefs.ViewSeconds))*time.Second {
+	if e.recovery == nil || e.assetDrag != nil || e.marquee != nil || e.drag != nil || e.envelopeDrag != nil || e.scrubbing || time.Since(e.lastCheckpoint) < time.Duration(max(1, e.prefs.ViewSeconds))*time.Second {
 		return
 	}
 	if e.savedView != e.view() || (e.recoveryError != "" && e.recoveryDone == e.recoveryRequest) {

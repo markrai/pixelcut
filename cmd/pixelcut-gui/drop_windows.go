@@ -141,7 +141,7 @@ func (e *editor) enableFileDrops() {
 func (e *editor) importPaths(paths []string) error { return e.importAt(paths, nil) }
 
 func (e *editor) importAt(paths []string, placement *placementRequest) error {
-	if e.menuOpen || e.assetDrag != nil || e.marquee != nil || e.busy || e.drag != nil || e.scrubbing || e.cropSession != nil || e.transformSession != nil {
+	if e.menuOpen || e.assetDrag != nil || e.marquee != nil || e.busy || e.drag != nil || e.envelopeDrag != nil || e.scrubbing || e.cropSession != nil || e.transformSession != nil {
 		return fmt.Errorf("finish the current operation before importing files")
 	}
 	if len(paths) == 0 || len(paths) > project.MaxImportFiles {
