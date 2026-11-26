@@ -187,7 +187,8 @@ func (e *editor) freezeCompositePlayback() {
 	e.cancelCompositeRun()
 	if e.stillFrame == nil || e.compositeFrameTime != e.playhead {
 		e.stillFrame = nil
-		e.stillError = "Paused; render a still to inspect this marker."
+		e.stillError = ""
+		e.stillDue = time.Now().Add(compositeSeekDelay)
 	}
 	e.syncPreviewLabel()
 	e.updatePlayButton(true)
@@ -246,6 +247,7 @@ func (e *editor) updateCompositePlayback() {
 		}
 		if event.err != nil {
 			e.freezeCompositePlayback()
+			e.stillDue = time.Time{}
 			e.stillError = event.err.Error()
 			e.tell("Composite playback stopped: " + event.err.Error())
 			return
@@ -266,6 +268,10 @@ func (e *editor) updateCompositePlayback() {
 				e.tell("Composite playback stopped: source changed.")
 				return
 			}
+		}
+		if now != e.playhead {
+			e.stillTime, e.playhead = now, now
+			e.refreshPlaybackMarker()
 		}
 		e.stillFrame = &f.Frame
 		e.stillSources = f.Sources

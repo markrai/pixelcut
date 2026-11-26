@@ -101,19 +101,19 @@ func (e *editor) prepareCompositeView(at int64) error {
 }
 
 func (e *editor) seekComposite(at int64, resume bool) error {
-	if e.stillActive && e.compositeRun == nil && !e.compositeResume && !resume && e.stillTime == at && e.stillFingerprint == e.model.Fingerprint() && (e.stillFrame != nil || e.stillSequence != 0) {
+	if e.stillActive && e.compositeRun == nil && !e.compositeResume && !resume && e.stillTime == at && e.stillFingerprint == e.model.Fingerprint() && (e.stillFrame != nil || e.stillSequence != 0 || !e.stillDue.IsZero()) {
 		return nil
 	}
 	if err := e.prepareCompositeView(at); err != nil {
 		return err
 	}
 	e.compositeResume = resume && at < e.endTime()
+	e.stillDue = time.Now().Add(compositeSeekDelay)
 	if e.compositeResume {
 		e.updatePlayButton(false)
 		e.syncPreviewLabel()
 		e.tell("Seeking composite playback...")
 	} else {
-		e.stillDue = time.Now().Add(compositeSeekDelay)
 		e.tell("Seeking composite frame...")
 	}
 	return nil
@@ -164,7 +164,7 @@ func (e *editor) updateCompositeStill() {
 		return
 	}
 	if e.compositeResume {
-		if e.scrubbing || e.drag != nil || e.marquee != nil || e.menuOpen || e.busy || !e.compositeRetired() || !e.sourcePreviewRetired() {
+		if time.Now().Before(e.stillDue) || e.scrubbing || e.drag != nil || e.marquee != nil || e.menuOpen || e.busy || !e.compositeRetired() || !e.sourcePreviewRetired() {
 			return
 		}
 		e.compositeResume = false
@@ -177,7 +177,7 @@ func (e *editor) updateCompositeStill() {
 		}
 		return
 	}
-	if !e.stillDue.IsZero() && !time.Now().Before(e.stillDue) {
+	if !e.stillDue.IsZero() && !time.Now().Before(e.stillDue) && e.drag == nil && e.marquee == nil && e.compositeRetired() && e.sourcePreviewRetired() {
 		e.stillDue = time.Time{}
 		if err := e.submitCompositeStill(); err != nil {
 			e.stillError = err.Error()
