@@ -57,3 +57,22 @@ func TestPreferencesInvalid(t *testing.T) {
 		}
 	}
 }
+
+func TestDecodeBackendPreferences(t *testing.T) {
+	dir := t.TempDir()
+	p := DefaultPreferences()
+	for _, mode := range []string{"", "cpu", "auto", "cuda"} {
+		p.DecodeBackend = mode
+		if err := SavePreferences(dir, p); err != nil {
+			t.Fatal(err)
+		}
+		got, err := LoadPreferences(dir)
+		if err != nil || got != p {
+			t.Fatalf("decode preference round trip: %+v %v", got, err)
+		}
+	}
+	p.DecodeBackend = "bogus"
+	if err := SavePreferences(dir, p); err == nil {
+		t.Fatal("unknown decode preference accepted")
+	}
+}

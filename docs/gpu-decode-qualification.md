@@ -40,3 +40,26 @@ Ordinary CI executes the CPU real-media reference and synthetic parser/selection
 | D06 | Integrate qualified decode adapter into preview/export with existing frame-index, source checks, geometry and publication invariants; CPU fallback only with explicit observable policy |
 
 Local FFmpeg 7.1.5 command-level check: CPU fixture 64x48, VFR 9 frames, selected ordinals 2–5 yielded exactly four 9216-byte planar frames at 100000, 133333, 200000, 233333 microseconds, matching the independent ffprobe index. Explicit CUDA decode failed with missing libcuda.so.1, rather than returning software output. Physical GPU parity, normal renderer integration and full candidate CI remain pending. No schema/dependency changes. No GPU acceleration speedup is claimed.
+
+## User-reported hardware evidence and integration
+
+PR #27 CI 45878236828 and performance 45878236998 passed, and PR #26 CI 45877644040 and performance 45877644056 passed. Both merged. User reported CUDA exact frame parity on a 1920x1080 source:
+
+| Ordinals | Matched | CPU seconds | CUDA seconds |
+| --- | --- | --- | --- |
+| 0–119 | 120/120 | 1.3963929 | 1.5579631 |
+| 120–239 | 120/120 | 2.2779927 | 1.7648387 |
+
+These are user-reported bounded decode-check timings, not integrated rendering throughput or universal driver qualification.
+
+D06 experimental integration is implemented. Select Settings > Video decode: NVIDIA CUDA (experimental). Test composite stills, composite playback, seek/restart, crop/rotation, opacity, gap and overlapping sources. Export a project twice (CPU, CUDA), to separate output paths; verify the existing HLG/AAC contract. For CLI export add `-decode cuda` to export-project or export-video. CPU remains default and Automatic currently uses CPU. Explicit CUDA errors stop the operation; select CPU to retry. No silent fallback.
+
+On the CUDA workstation:
+
+```cmd
+set PIXELCUT_QUALIFY_CUDA=1
+go test -count=1 -v ./internal/media ./internal/projectexport -run "^TestExperimentalCUDA(CompositePixels|ProjectExportParity)$"
+set PIXELCUT_QUALIFY_CUDA=
+```
+
+The optional tests compare processed SDR pixels for still and stream paths, decoder retirement after a discontinuity, exact pre-encode HLG 4:4:4 span pixels across VFR cuts and alpha, and actual published HLG/AAC contract. CI exercises argument/validation and CPU regressions without requiring a GPU. Physical tests, 4K and portrait parity, long-source seek and sustained performance, device failure and fallback remain outstanding. No GPU speedup is claimed; frame transfer and CPU processing remain significant. The original qualification command shares the explicit hardware input and download constants with rendering.

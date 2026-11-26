@@ -78,3 +78,22 @@ func TestGPUInfoPreferenceAction(t *testing.T) {
 		t.Fatal("GPU diagnostics unavailable")
 	}
 }
+
+func TestDecodeBackendMenuAndEngine(t *testing.T) {
+	p := session.DefaultPreferences()
+	for _, tc := range []struct {
+		mode string
+		id   int
+	}{{"", prefDecodeCPU}, {"cpu", prefDecodeCPU}, {"auto", prefDecodeAuto}, {"cuda", prefDecodeCUDA}} {
+		p.DecodeBackend = tc.mode
+		for _, id := range []int{prefDecodeCPU, prefDecodeAuto, prefDecodeCUDA} {
+			item, ok := findMenuItem(preferenceItems(p), id)
+			if !ok || !item.enabled || item.checked != (id == tc.id) {
+				t.Fatalf("decode menu mode %q: %+v", tc.mode, item)
+			}
+		}
+		if engineForPreferences(p).DecodeBackend != media.Backend(tc.mode) {
+			t.Fatal("decode preference not applied to engine")
+		}
+	}
+}

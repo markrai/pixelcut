@@ -282,3 +282,7 @@ Use Settings > GPU capabilities / device diagnostics, or run `.\pixelcut.exe gpu
 ### CUDA HEVC decode qualification (3A.2)
 
 Run `pixelcut gpu-decode-check -frames 120 INPUT` to compare a bounded window of actual CUDA-decoded Main 10 HLG frames against software decoding. Use `-start-frame N` for a zero-based interior source ordinal, and choose a frame count that fits the recording (1–300). The report compares per-frame SHA-256 of the CPU-readable 10-bit planes, source timestamps, dimensions and counts, and reports decode wall times. It exits nonzero on unavailable CUDA, invalid source or mismatch. No project or source is modified and no GPU rendering preference is activated. See [CUDA decode qualification](docs/gpu-decode-qualification.md).
+
+### Experimental CUDA decoding (3A.2 integration)
+
+Settings > Video decode: NVIDIA CUDA (experimental) enables explicit NVDEC for composite stills, live composite playback and whole-project export. CPU is the default; Automatic currently resolves to CPU. Source audition (mpv), thumbnails, selected-clip export, geometry, compositing, encoding and audio are unchanged. Unsupported source or CUDA failure stops the operation; select CPU and retry. CLI project exports accept `-decode cpu|auto|cuda`. Changing the setting retires media workers and invalidates the still cache. See [CUDA qualification](docs/gpu-decode-qualification.md) for hardware tests.
