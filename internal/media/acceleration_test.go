@@ -125,3 +125,27 @@ func TestAccelerationRealFFmpegInventory(t *testing.T) {
 	}
 	t.Log(r.String())
 }
+
+func TestAccelerationNewFilterInventory(t *testing.T) {
+	var calls []string
+	legacy := fakeCapabilityRunner(&calls)
+	run := func(ctx context.Context, args ...string) (string, error) {
+		if slices.Contains(args, "-filters") {
+			return "Filters:\r\n T.. = Timeline support\r\n .S. = Slice threading\r\n .. hwdownload V->V Download\r\n .. scale_cuda V->V Scale\r\n TS overlay_qsv VV->V Overlay\r\n .. scale_cuda V->V Duplicate\r\n XX scale_vulkan V->V Invalid flags\r\n ... scale_vaapi V->V Legacy\r\n", nil
+		}
+		return legacy(ctx, args...)
+	}
+	r, err := probeAcceleration(context.Background(), run, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"hwdownload", "overlay_qsv", "scale_cuda", "scale_vaapi"}
+	if !slices.Equal(r.GPUFilters, want) {
+		t.Fatalf("new and legacy filter flags: got %v want %v", r.GPUFilters, want)
+	}
+	for _, d := range r.Decisions {
+		if d.Selected != BackendCPU {
+			t.Fatal("inventory authorized hardware rendering")
+		}
+	}
+}

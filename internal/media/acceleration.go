@@ -119,6 +119,9 @@ var knownHEVCEncoders = []string{"libx265", "hevc_nvenc", "hevc_qsv", "hevc_amf"
 var knownGPUFilters = []string{"hwupload", "hwupload_cuda", "hwdownload", "hwmap", "scale_cuda", "scale_npp", "scale_qsv", "vpp_qsv", "scale_vaapi", "scale_vulkan", "scale_d3d11", "overlay_cuda", "overlay_qsv", "overlay_vaapi", "overlay_vulkan", "libplacebo", "tonemap_cuda", "tonemap_vaapi", "tonemap_opencl"}
 
 func validCapabilityFlags(flags string) bool {
+	if len(flags) == 2 {
+		return (flags[0] == '.' || flags[0] == 'T') && (flags[1] == '.' || flags[1] == 'S')
+	}
 	if len(flags) != 3 && len(flags) != 6 {
 		return false
 	}
