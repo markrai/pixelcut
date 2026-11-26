@@ -217,6 +217,10 @@ func (e *editor) speed() float64 {
 }
 
 func (e *editor) changeSpeed(direction int, cycle bool) {
+	if e.stillActive {
+		e.tell("Composite playback currently uses a fixed 10 fps target at nominal 1x; source preview speed is unchanged.")
+		return
+	}
 	i := 2
 	for j, v := range playbackSpeeds {
 		if v == e.speed() {

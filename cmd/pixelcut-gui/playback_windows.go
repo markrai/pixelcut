@@ -85,6 +85,10 @@ func (e *editor) updatePlaybackClock() {
 }
 
 func (e *editor) pausePreview() error {
+	if e.compositeRun != nil {
+		e.pauseCompositePlayback()
+		return nil
+	}
 	if e.clock != nil && e.previewActive() && e.clock.transport.Usable() {
 		e.clock.queue(e.playhead, false, true)
 		e.updatePlayButton(true)
@@ -94,7 +98,7 @@ func (e *editor) pausePreview() error {
 }
 
 func (e *editor) playing() bool {
-	return e.clock != nil && e.previewActive() && !e.clock.paused()
+	return e.compositeRun != nil || (e.clock != nil && e.previewActive() && !e.clock.paused())
 }
 
 func (e *editor) seekTimeline(t int64, playing bool) {
@@ -105,7 +109,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 	if t > end {
 		t = end
 	}
-	if e.stillActive && !playing {
+	if e.stillActive {
 		e.playhead = t
 		e.refreshPlaybackMarker()
 		if err := e.showCompositeStill(); err != nil {

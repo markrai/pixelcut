@@ -192,6 +192,8 @@ type editor struct {
 	stillFingerprint        string
 	stillTime               int64
 	stillError              string
+	compositeRun            *compositePreviewRun
+	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]
 	jobFingerprint          string
@@ -420,6 +422,9 @@ func (e *editor) setControlsEnabled(enabled bool) {
 }
 
 func (e *editor) startJob(fn func(context.Context) result) {
+	if e.stillActive {
+		e.stopPreview()
+	}
 	hwnd := mainWindow
 	if err := e.jobs.Start(e.projectEpoch, fn, func() { post.Call(hwnd, wmDone, 0, 0) }); err != nil {
 		e.tell(err.Error())
@@ -867,6 +872,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 			ui.updateThumbnails()
 			ui.updateWaveforms()
 			ui.checkSourceVersions(false)
+			ui.updateCompositePlayback()
 			ui.updateCompositeStill()
 			ui.checkpointView()
 			return 0

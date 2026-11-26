@@ -152,6 +152,7 @@ func (e *editor) checkpointView() {
 }
 
 func (e *editor) beginClose(hwnd uintptr) {
+	e.stopPreview()
 	if !e.checkpoint() {
 		if e.warnRecoveryClose() {
 			destroy.Call(hwnd)
@@ -175,7 +176,7 @@ func (e *editor) pollClose(hwnd uintptr) {
 		return
 	}
 	e.pollRecovery()
-	if e.recoveryDone < e.recoveryRequest && time.Now().Before(e.closeDeadline) {
+	if (e.recoveryDone < e.recoveryRequest || !e.compositeRetired()) && time.Now().Before(e.closeDeadline) {
 		return
 	}
 	e.closeDeadline = time.Time{}

@@ -91,6 +91,7 @@ func (e *editor) showCompositeStill() error {
 }
 
 func (e *editor) cancelCompositeStill() {
+	e.cancelCompositeRun()
 	if e.stillCancel != nil {
 		e.stillCancel()
 		e.stillCancel = nil
@@ -104,14 +105,14 @@ func (e *editor) cancelCompositeStill() {
 }
 
 func (e *editor) updateCompositeStill() {
-	if !e.stillActive || e.stillWorker == nil {
+	if !e.stillActive || e.compositeRun != nil {
 		return
 	}
 	if e.stillFingerprint != e.model.Fingerprint() || e.stillTime != e.playhead {
 		e.hideLayerLayout()
 		return
 	}
-	if e.stillSequence != 0 {
+	if e.stillSequence != 0 && e.stillWorker != nil {
 		r := e.stillWorker.Result()
 		if r.Sequence != e.stillSequence {
 			return
@@ -127,7 +128,7 @@ func (e *editor) updateCompositeStill() {
 		} else {
 			e.stillFrame = &r.Value.frame
 			e.stillSources = r.Value.sources
-			e.tell("Composite frame (SDR, paused). Seek to inspect another frame; Play returns to source audition.")
+			e.tell("Composite frame (SDR, paused). Play starts silent composite playback; seek to inspect another frame.")
 		}
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
 	}

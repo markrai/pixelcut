@@ -129,7 +129,7 @@ func trackMenuItems(p project.Project, active string, selected []string) []menuI
 			items = append(items, item(trackMenuMove+j, "Move selection to "+strings.ReplaceAll(t.ID, "&", "&&"), err == nil))
 		}
 	}
-	return append(items, separator(), item(menuLayerCanvas, "Composition canvas...", true), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true))
+	return append(items, separator(), item(menuLayerCanvas, "Composition canvas...", true), item(menuCompositePlay, "Play composite (SDR, silent)", true), item(menuSourcePlay, "Play active track (source preview)", true), item(menuCompositeStill, "Show composite frame at playhead", true), item(menuLayerLayout, "Show layer layout at playhead", true))
 }
 
 func (e *editor) showTracks() error {
@@ -148,7 +148,7 @@ func (e *editor) showTracks() error {
 		e.switchTrack(e.model.Project().Tracks[id-trackMenuSelect].ID)
 		return nil
 	}
-	if id == menuLayerCanvas || id == menuLayerLayout || id == menuCompositeStill {
+	if id == menuLayerCanvas || id == menuLayerLayout || id == menuCompositeStill || id == menuCompositePlay || id == menuSourcePlay {
 		return e.layerAction(id, point{r.Left, r.Bottom})
 	}
 	if id >= trackMenuHide && id <= trackMenuLock {
