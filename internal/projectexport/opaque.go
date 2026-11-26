@@ -9,18 +9,28 @@ import (
 	"github.com/markrai/pixelcut/internal/media"
 )
 
-const MaxOpaqueLayers = 4
+const MaxVideoLayers = 4
 const MaxExportPixels = 4096 * 2160
 const MaxIntermediatePixels = 16777216
 
-func opaqueFilter(layer composition.PlannedLayer, rotation, first, last int) (string, error) {
+func layerFilter(layer composition.PlannedLayer, source Source, first, last int) (string, error) {
 	g := layer.Geometry
 	p, b := g.Content, g.Bounds
 	if first < 0 || last < first || b.Width <= 0 || b.Height <= 0 || int64(layer.Layer.Asset.Width)*int64(layer.Layer.Asset.Height) > MaxIntermediatePixels || int64(p.ScaledWidth)*int64(p.ScaledHeight) > MaxIntermediatePixels {
-		return "", errors.New("unsupported opaque export geometry or source interval")
+		return "", errors.New("unsupported export layer geometry or source interval")
 	}
-	filters := []string{fmt.Sprintf("select=between(n\\,%d\\,%d)", first, last), "zscale=rangein=limited:range=limited:chromalin=left:filter=lanczos", "format=yuv444p10le"}
-	switch rotation {
+	rangeName := "limited"
+	if source.Asset.Range == "pc" {
+		rangeName = "full"
+	} else if source.Asset.Range != "tv" {
+		return "", errors.New("unsupported source range")
+	}
+	if source.Chroma != "left" && source.Chroma != "center" {
+		return "", errors.New("unsupported source chroma siting")
+	}
+	normalize := fmt.Sprintf("zscale=rangein=%s:range=limited:chromalin=%s:matrixin=2020_ncl:matrix=2020_ncl:primariesin=2020:primaries=2020:transferin=arib-std-b67:transfer=arib-std-b67:filter=lanczos", rangeName, source.Chroma)
+	filters := []string{fmt.Sprintf("select=between(n\\,%d\\,%d)", first, last), normalize, "format=yuv444p10le"}
+	switch source.Rotation {
 	case 0:
 	case -90:
 		filters = append(filters, "transpose=clock")
@@ -89,10 +99,10 @@ func copyOpaque(dst, src []byte, canvas media.CanvasSize, b media.Placement) err
 	return nil
 }
 
-func validateOpaque(plan Plan, discardAudio bool) error {
+func validateVideo(plan Plan, discardAudio bool) error {
 	c := plan.Contract.Canvas
 	if c.Width > 4096 || c.Height > 4096 || int64(c.Width)*int64(c.Height) > MaxExportPixels {
-		return errors.New("opaque export currently supports at most 4096 pixels per side and 4096x2160 pixels total")
+		return errors.New("video export currently supports at most 4096 pixels per side and 4096x2160 pixels total")
 	}
 	if plan.Contract.Audio && !discardAudio {
 		return errors.New("project contains enabled audio; offline audio export is pending; pass -discard-audio to explicitly export video only")
@@ -101,17 +111,21 @@ func validateOpaque(plan Plan, discardAudio bool) error {
 		if s.FirstFrame == s.EndFrame {
 			continue
 		}
-		if len(s.Layers) > MaxOpaqueLayers {
-			return errors.New("opaque export supports at most four simultaneous video layers")
+		if len(s.Layers) > MaxVideoLayers {
+			return errors.New("video export supports at most four simultaneous video layers")
 		}
 		for _, layer := range s.Layers {
-			if layer.Layer.Opacity != 100 {
-				return errors.New("partial opacity requires the linear-light HDR compositor (2D.3)")
+			if layer.Layer.Opacity < 0 || layer.Layer.Opacity > 100 {
+				return errors.New("invalid layer opacity")
 			}
 			if layer.Geometry.Bounds.Width == 0 || layer.Geometry.Bounds.Height == 0 {
 				continue
 			}
-			if _, err := opaqueFilter(layer, 0, 0, 0); err != nil {
+			asset := layer.Layer.Asset
+			if asset.Range == "" {
+				asset.Range = "tv"
+			}
+			if _, err := layerFilter(layer, Source{Asset: asset, Chroma: "left"}, 0, 0); err != nil {
 				return err
 			}
 		}

@@ -46,21 +46,21 @@ func TestOpaqueBlackAndOddPlacement(t *testing.T) {
 	}
 }
 
-func TestOpaqueRejectsAudioAndTranslucency(t *testing.T) {
+func TestVideoRejectsAudioWithoutConsent(t *testing.T) {
 	p := exportFixture(t)
 	plan, err := Build(p, "hlg", 30)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := validateOpaque(plan, false); err == nil {
+	if err := validateVideo(plan, false); err == nil {
 		t.Fatal("enabled audio silently discarded")
 	}
-	if err := validateOpaque(plan, true); err == nil {
-		t.Fatal("partial opacity silently discarded")
+	if err := validateVideo(plan, true); err != nil {
+		t.Fatalf("partial opacity rejected: %v", err)
 	}
 	p.Tracks[2].Clips[0].Opacity = nil
 	plan, err = Build(p, "hlg", 30)
-	if err != nil || validateOpaque(plan, true) != nil {
+	if err != nil || validateVideo(plan, true) != nil {
 		t.Fatalf("opaque project rejected: %v", err)
 	}
 }

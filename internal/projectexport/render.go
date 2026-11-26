@@ -37,7 +37,7 @@ func (r *renderIndexes) get(ctx context.Context, engine media.Engine, source Sou
 	if err != nil {
 		return nil, err
 	}
-	if len(r.entries) >= MaxOpaqueLayers {
+	if len(r.entries) >= MaxVideoLayers {
 		copy(r.entries, r.entries[1:])
 		r.entries = r.entries[:len(r.entries)-1]
 	}
@@ -45,7 +45,7 @@ func (r *renderIndexes) get(ctx context.Context, engine media.Engine, source Sou
 	return index, nil
 }
 
-type opaqueDecoder struct {
+type layerDecoder struct {
 	process *exportProcess
 	reader  io.ReadCloser
 	index   *media.FrameIndex
@@ -59,7 +59,7 @@ func sourceTick(layer composition.PlannedLayer, tick, spanStart int64) int64 {
 	return layer.Layer.SourceTime + (tick - spanStart)
 }
 
-func openOpaque(ctx context.Context, engine media.Engine, indexes *renderIndexes, source Source, layer composition.PlannedLayer, span Span, plan Plan) (*opaqueDecoder, error) {
+func openLayer(ctx context.Context, engine media.Engine, indexes *renderIndexes, source Source, layer composition.PlannedLayer, span Span, plan Plan) (*layerDecoder, error) {
 	index, err := indexes.get(ctx, engine, source)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func openOpaque(ctx context.Context, engine media.Engine, indexes *renderIndexes
 	if !ok || !lastOK || last < first {
 		return nil, errors.New("source has no frame at requested timestamp")
 	}
-	graph, err := opaqueFilter(layer, source.Rotation, first, last)
+	graph, err := layerFilter(layer, source, first, last)
 	if err != nil {
 		return nil, err
 	}
@@ -90,10 +90,10 @@ func openOpaque(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		return nil, err
 	}
 	b := layer.Geometry.Bounds
-	return &opaqueDecoder{process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
+	return &layerDecoder{process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
 }
 
-func (d *opaqueDecoder) frame(tick int64) ([]byte, error) {
+func (d *layerDecoder) frame(tick int64) ([]byte, error) {
 	target, ok := d.index.OrdinalAtOrBefore(tick)
 	if !ok || target < d.current || target > d.last {
 		return nil, errors.New("source frame selection outside decoder interval")
@@ -107,7 +107,7 @@ func (d *opaqueDecoder) frame(tick int64) ([]byte, error) {
 	return d.pixels, nil
 }
 
-func (d *opaqueDecoder) finish() error {
+func (d *layerDecoder) finish() error {
 	if d.current != d.last {
 		return errors.New("source decoder did not reach requested final frame")
 	}
@@ -122,7 +122,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 	if span.FirstFrame == span.EndFrame {
 		return nil
 	}
-	var decoders []*opaqueDecoder
+	var decoders []*layerDecoder
 	defer func() {
 		for _, decoder := range decoders {
 			decoder.process.close()
@@ -140,12 +140,13 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		if err != nil || now != source.Identity {
 			return errors.New("source changed before span decode")
 		}
-		decoder, err := openOpaque(ctx, engine, indexes, source, layer, span, plan)
+		decoder, err := openLayer(ctx, engine, indexes, source, layer, span, plan)
 		if err != nil {
 			return fmt.Errorf("clip %s: %w", layer.Layer.Ref.ClipID, err)
 		}
 		decoders = append(decoders, decoder)
 	}
+	var layers [MaxVideoLayers]layerFrame
 	for n := span.FirstFrame; n < span.EndFrame; n++ {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -154,15 +155,16 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		if !ok {
 			return errors.New("invalid output frame position")
 		}
-		copy(frame, black)
-		for _, d := range decoders {
+		for i, d := range decoders {
 			pixels, err := d.frame(sourceTick(d.layer, tick, span.Start))
 			if err != nil {
 				return err
 			}
-			if err := copyOpaque(frame, pixels, plan.Contract.Canvas, d.layer.Geometry.Bounds); err != nil {
-				return err
-			}
+			layers[i] = layerFrame{Pixels: pixels, Bounds: d.layer.Geometry.Bounds, Opacity: d.layer.Layer.Opacity}
+		}
+		copy(frame, black)
+		if err := compositeHLG(ctx, frame, plan.Contract.Canvas, layers[:len(decoders)]); err != nil {
+			return err
 		}
 		if written, err := dst.Write(frame); err != nil {
 			return err
@@ -223,7 +225,7 @@ func RenderVideo(ctx context.Context, engine media.Engine, p project.Project, co
 		return err
 	}
 	plan := prepared.Plan
-	if err := validateOpaque(plan, discardAudio); err != nil {
+	if err := validateVideo(plan, discardAudio); err != nil {
 		return err
 	}
 	sources := make(map[string]Source, len(prepared.Sources))
