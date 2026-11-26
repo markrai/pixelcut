@@ -79,6 +79,9 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 			}
 			entry = inspected{identity: identity, report: report}
 			reports[identity.Path] = entry
+			if n := report.ExcludedProjectMetadata(); n > 0 {
+				prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: %d recognized Pixel timed metadata stream(s) will be excluded; source unchanged", asset.ID, n))
+			}
 		}
 		actual, err := project.FromReport(asset.ID, identity.Path, entry.report)
 		if err != nil {

@@ -209,3 +209,8 @@ Click or drag the ruler during composite playback: audio is canceled immediately
 ### Composite qualification and diagnostics (2C.6.6)
 
 Composite still and playback workers now reuse the existing bounded on-disk frame timestamp cache, keyed by source and FFprobe identity. Clear media cache cancels and drains cache-owning workers before clearing. After playing or pausing, choose Track > Composite playback diagnostics to inspect the last run: startup to first presented frame, maximum frame render duration, decoded/presented/dropped counts, clock-relative lag, audio queue starvation episodes, decoder open/retirement/peak counts and cancellation retirement time. Use Ctrl+C to copy the dialog. These counters are diagnostic, not physical A/V measurements; process counts are final after worker retirement. Composite output is explicitly tone-mapped SDR, not native HDR. The original HLG source audition and selected-clip HDR export remain separate. See [composite qualification](docs/composite-qualification.md) for the required evidence before accepting 2C.6.
+
+
+### Whole-project export preflight (2D.1)
+
+Run `pixelcut plan-export -color hlg -fps 30 project.pixelcut.json` to inspect the intended HDR export contract, timeline spans, frame/sample ranges and validated contributing sources. This is read-only JSON planning, **not** an export command. Both HLG and a supported integer CFR (24, 25, 30, 50 or 60) must be explicit. Full-range or center-sited visible HLG sources require a future qualified normalization path; unsupported inputs are rejected rather than relabeled. Output rendering, HDR blending, audio mux and UI are subsequent 2D slices. See [project export](docs/project-export.md).

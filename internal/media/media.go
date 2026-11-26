@@ -28,6 +28,8 @@ type Stream struct {
 	ChromaLocation    string            `json:"chroma_location"`
 	SampleAspectRatio string            `json:"sample_aspect_ratio"`
 	AvgFrameRate      string            `json:"avg_frame_rate"`
+	SampleRate        string            `json:"sample_rate,omitempty"`
+	Channels          int               `json:"channels,omitempty"`
 	Duration          string            `json:"duration"`
 	Tags              map[string]string `json:"tags,omitempty"`
 	SideData          []map[string]any  `json:"side_data_list,omitempty"`

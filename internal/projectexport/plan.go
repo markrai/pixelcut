@@ -100,7 +100,7 @@ func Build(p project.Project, color string, fps int) (Plan, error) {
 }
 
 func (p Plan) FrameTick(frame int64) (int64, bool) {
-	if frame < 0 || frame >= p.VideoFrames || p.Contract.FPS <= 0 {
+	if frame < 0 || frame >= p.VideoFrames || p.Duration <= 0 || p.Duration > MaxDuration || p.Contract.Validate() != nil || p.VideoFrames != frameCeiling(p.Duration, p.Contract.FPS) {
 		return 0, false
 	}
 	return frame * project.TicksPerSecond / int64(p.Contract.FPS), true

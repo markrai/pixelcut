@@ -64,6 +64,11 @@ func (c ExportContract) VerifyOutput(r Report) error {
 	}
 	expected := Report{Streams: []Stream{want}}
 	if c.Audio {
+		for _, stream := range r.Streams {
+			if stream.CodecType == "audio" && (stream.SampleRate != "48000" || stream.Channels != 2) {
+				return errors.New("expected 48 kHz stereo AAC output")
+			}
+		}
 		expected.Streams = append(expected.Streams, Stream{CodecType: "audio", CodecName: "aac"})
 	}
 	return r.verifyExportStreams(expected, true)
@@ -81,4 +86,14 @@ func (r Report) ValidateProjectExportSource() error {
 		return errors.New("project export does not support multiple source audio streams")
 	}
 	return r.validateExportStreams()
+}
+
+func (r Report) ExcludedProjectMetadata() int {
+	n := 0
+	for _, stream := range r.Streams {
+		if stream.pixelMetadata() {
+			n++
+		}
+	}
+	return n
 }
