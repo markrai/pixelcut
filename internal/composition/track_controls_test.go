@@ -1,10 +1,6 @@
 package composition
 
-import (
-	"testing"
-
-	"github.com/markrai/pixelcut/internal/project"
-)
+import "testing"
 
 func TestTrackPolicyCompositionAndAudition(t *testing.T) {
 	p := fixture(t)
