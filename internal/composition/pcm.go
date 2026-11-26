@@ -48,7 +48,7 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 		if err := decoder.Retain(ids); err != nil {
 			return PCMBlock{}, err
 		}
-		n := int(next-pos)
+		n := int(next - pos)
 		sum := make([]int32, n*media.PCMChannels)
 		for _, a := range f.Audio {
 			samples, err := decoder.DecodePCM(ctx, media.PCMRequest{ClipID: a.Ref.ClipID, Path: a.Asset.Path, Tick: a.SourceTime, Offset: pos, Frames: n})

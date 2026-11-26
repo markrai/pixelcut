@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"syscall"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unsafe"
 

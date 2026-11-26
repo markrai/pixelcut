@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/media"
