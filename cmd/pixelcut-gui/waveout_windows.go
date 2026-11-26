@@ -38,6 +38,7 @@ type waveHeader struct {
 type queuedWave struct {
 	header uintptr
 	end    int64
+	levels media.AudioLevels
 }
 
 func waveCall(name string, args ...uintptr) error {
@@ -76,9 +77,9 @@ func queueWave(handle uintptr, block composition.PCMBlock) (queuedWave, error) {
 			freeWave(address)
 			return queuedWave{}, err
 		}
-		return queuedWave{header: address, end: block.Offset + int64(block.Frames)}, err
+		return queuedWave{header: address, end: block.Offset + int64(block.Frames), levels: block.Levels}, err
 	}
-	return queuedWave{header: address, end: block.Offset + int64(block.Frames)}, nil
+	return queuedWave{header: address, end: block.Offset + int64(block.Frames), levels: block.Levels}, nil
 }
 
 func waveDone(address uintptr) bool {
@@ -157,6 +158,9 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 			lastProgress = time.Now()
 			if !clock.Confirm(q.end) {
 				return fmt.Errorf("invalid audio completion position")
+			}
+			if metrics != nil {
+				metrics.ConfirmAudio(q.levels)
 			}
 		}
 		empty := started && !closed && len(queued) == 0 && submitted < clock.Total()

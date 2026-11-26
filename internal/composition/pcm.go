@@ -17,6 +17,7 @@ type PCMBlock struct {
 	Offset  int64
 	Frames  int
 	Samples []int16
+	Levels  media.AudioLevels
 }
 
 func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset int64, frames int) (PCMBlock, error) {
@@ -63,7 +64,7 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 			}
 		}
 		first := int(pos-offset) * media.PCMChannels
-		if err := mixer.Finish(out.Samples[first : first+n*media.PCMChannels]); err != nil {
+		if err := mixer.FinishObserved(out.Samples[first:first+n*media.PCMChannels], &out.Levels); err != nil {
 			return PCMBlock{}, err
 		}
 		pos = next

@@ -177,10 +177,15 @@ func validateAudio(plan Plan) error {
 }
 
 func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer) error {
+	return mixAudioObserved(ctx, plan, decoder, dst, nil)
+}
+
+func mixAudioObserved(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer, observe func(media.AudioLevels)) error {
 	if err := validateAudio(plan); err != nil {
 		return err
 	}
 	var pos int64
+	var levels media.AudioLevels
 	var mixer composition.PCMMixer
 	mixed := make([]int16, media.PCMBlockFrames*media.PCMChannels)
 	raw := make([]byte, len(mixed)*2)
@@ -219,7 +224,7 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 					return err
 				}
 			}
-			if err := mixer.Finish(block); err != nil {
+			if err := mixer.FinishObserved(block, &levels); err != nil {
 				return err
 			}
 			for i, v := range block {
@@ -229,6 +234,9 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 				return err
 			}
 			pos += int64(n)
+			if observe != nil {
+				observe(levels)
+			}
 		}
 	}
 	if pos != plan.ContentAudioFrames {
@@ -247,6 +255,10 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 			return err
 		}
 		pos += n
+		levels.Frames += n
+		if observe != nil {
+			observe(levels)
+		}
 	}
 	return ctx.Err()
 }
@@ -272,8 +284,11 @@ func muxAudioObserved(ctx context.Context, engine media.Engine, plan Plan, sourc
 	decoder := &offlineAudio{ctx: ctx, engine: engine, sources: sources, streams: make(map[string]*audioStream)}
 	defer decoder.Close()
 	emit(observe, StageAudio, 0, plan.OutputAudioFrames)
-	writer := &progressWriter{dst: stdin, observe: observe, stage: StageAudio, unitBytes: media.PCMChannels * 2, total: plan.OutputAudioFrames}
-	if err := mixAudio(ctx, plan, decoder, writer); err != nil {
+	if err := mixAudioObserved(ctx, plan, decoder, stdin, func(levels media.AudioLevels) {
+		if observe != nil {
+			observe(Progress{Stage: StageAudio, Completed: levels.Frames, Total: plan.OutputAudioFrames, AudioLevels: levels})
+		}
+	}); err != nil {
 		return err
 	}
 	emit(observe, StageAudioWait, 0, 0)
