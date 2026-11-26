@@ -493,6 +493,12 @@ func (e *editor) startPreview(paused bool) error {
 	if !ok || (e.audioTrack() && !a.HasAudio) {
 		return project.ErrInvalidClip
 	}
+	policy := e.model.Project().TrackPolicies()[e.trackID()]
+	audible := policy.Audio && a.HasAudio && !c.AudioDetached
+	if !policy.Video && !audible {
+		e.stopPreview()
+		return fmt.Errorf("active track has no enabled video or audio for this clip")
+	}
 	if !project.SourceAvailable(a.Path) {
 		e.stopPreview()
 		return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
@@ -512,7 +518,7 @@ func (e *editor) startPreview(paused bool) error {
 		e.playhead = c.Start
 	}
 	generation := e.generation
-	preview, err := launchNativePreview(e.engine, e.host, a, c, e.playhead, e.speed(), e.prefs.HDR, paused, e.audioTrack(), func(err error) {
+	preview, err := launchNativePreview(e.engine, e.host, a, c, e.playhead, e.speed(), e.prefs.HDR, paused, !policy.Video, !audible, func(err error) {
 		select {
 		case e.previewResults <- previewResult{generation, err}:
 			post.Call(mainWindow, wmPreviewDone, 0, 0)
@@ -551,7 +557,11 @@ func (e *editor) command(id, notification int) error {
 		return fmt.Errorf("Finish or cancel the active crop first")
 	}
 	if id != idUndo && id != idRedo {
-		if err := e.availability().Check(commandRequirement(id)); err != nil {
+		a := e.availability()
+		if err := trackCommandAllowed(id, a); err != nil {
+			return err
+		}
+		if err := a.Check(commandRequirement(id)); err != nil {
 			return err
 		}
 	}
@@ -770,6 +780,7 @@ func (e *editor) command(id, notification int) error {
 		if err != nil {
 			return err
 		}
+		ed.Silent = ed.Silent || e.track().Muted
 		if !project.SourceAvailable(a.Path) {
 			return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 		}

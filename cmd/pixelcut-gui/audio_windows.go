@@ -15,8 +15,15 @@ func (e *editor) syncPreviewLabel() {
 	if e.prefs.HDR {
 		preview = "Source preview / HDR (experimental)"
 	}
-	if e.model.TrackIndex() >= 0 && e.audioTrack() {
-		preview = "Audio preview / active track only"
+	if e.model.TrackIndex() >= 0 {
+		policy := e.model.Project().TrackPolicies()[e.trackID()]
+		if !policy.Video && !policy.Audio {
+			preview = "Preview suppressed by track controls"
+		} else if !policy.Video {
+			preview = "Audio preview / active track only"
+		} else if !policy.Audio {
+			preview += " / muted"
+		}
 	}
 	change(e.previewLabel, preview)
 }
@@ -35,6 +42,9 @@ func (e *editor) editClipAudio(detach bool) error {
 	}
 	p := e.model.Project()
 	ref := project.ClipRef{TrackID: e.trackID(), ClipID: c.ID}
+	if err := p.RequireEditableTrack(ref.TrackID); err != nil {
+		return err
+	}
 	var q project.Project
 	if detach {
 		a, ok := p.Asset(c.AssetID)

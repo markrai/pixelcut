@@ -187,7 +187,7 @@ type nativePreview struct {
 	done   chan struct{}
 }
 
-func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c project.Clip, marker int64, speed float64, hdr, paused, audioOnly bool, finished func(error)) (*nativePreview, error) {
+func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c project.Clip, marker int64, speed float64, hdr, paused, audioOnly, silent bool, finished func(error)) (*nativePreview, error) {
 	source, ok := c.SourceAt(marker)
 	if !ok {
 		return nil, project.ErrInvalidClip
@@ -217,7 +217,7 @@ func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c p
 	} else {
 		script, err = writeCropScript()
 		if err == nil {
-			cmd, err = engine.EmbeddedPreviewMode(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script, c.AudioDetached)
+			cmd, err = engine.EmbeddedPreviewMode(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script, silent)
 		}
 	}
 	if err != nil {

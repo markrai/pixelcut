@@ -136,7 +136,9 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 	view := e.timelineView(w)
 	fill(dc, r, palette.black)
 	fill(dc, rect{0, 0, w, 32}, palette.panel)
-	stack := timeline.LayoutStack(e.model.Project(), h, e.laneScroll)
+	current := e.model.Project()
+	policies := current.TrackPolicies()
+	stack := timeline.LayoutStack(current, h, e.laneScroll)
 	e.laneScroll = stack.Scroll
 	textAt(dc, rect{10, 0, trackHeader - 4, 32}, "TIME", palette.muted, 4)
 	for _, l := range stack.Lanes {
@@ -155,7 +157,13 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 		}
 		fill(dc, rect{0, timeline.TrackTop, trackHeader, end}, header)
 		fill(dc, rect{trackHeader, timeline.TrackTop, w, end}, palette.bg)
-		textAt(dc, rect{12, laneTop, trackHeader - 4, laneBottom}, l.TrackID+" "+kind, palette.text, 4)
+		textAt(dc, rect{12, laneTop, trackHeader - 4, laneTop + 22}, l.TrackID+" "+kind, palette.text, 4)
+		if i := current.TrackIndex(l.TrackID); i >= 0 {
+			status := trackStatus(current.Tracks[i])
+			if status != "" {
+				textAt(dc, rect{12, laneTop + 22, trackHeader - 4, laneBottom}, status, palette.accent, 4)
+			}
+		}
 		if l.Kind == project.VideoTrack {
 			textAt(dc, rect{12, timeline.AudioTop, trackHeader - 4, timeline.AudioBottom}, "Linked audio", palette.muted, 4)
 		}
@@ -219,6 +227,10 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			if offline {
 				col = rgb(94, 52, 60)
 			}
+			policy := policies[l.TrackID]
+			if (audioTrack && !policy.Audio) || (!audioTrack && !policy.Video) {
+				col = rgb(53, 56, 62)
+			}
 			if !valid {
 				col = rgb(136, 55, 61)
 			}
@@ -242,6 +254,9 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			}
 			if geometry.LinkedAudio {
 				audioColor := palette.audio
+				if !policy.Audio {
+					audioColor = rgb(53, 56, 62)
+				}
 				if offline {
 					audioColor = rgb(74, 44, 49)
 				}
@@ -365,6 +380,14 @@ func (e *editor) beginTimeline(x, y, w int32) {
 				e.model.SetPrimary(c.ID)
 				e.syncSelectionUI()
 				mode = "move"
+			}
+			if e.track().Locked {
+				e.stopPreview()
+				e.playhead = t
+				e.refreshPlaybackMarker()
+				e.checkpoint()
+				e.tell("Track locked; clip selected for inspection.")
+				return
 			}
 			ids := e.selectionIDs()
 			var frames *media.FrameIndex
@@ -669,6 +692,9 @@ func (e *editor) timelineCursor(x, y, w int32) uintptr {
 				continue
 			}
 			if mode := geometry.MainHit(x, y); mode != "" {
+				if e.model.Project().Tracks[ti].Locked {
+					return cursorArrow
+				}
 				if e.model.Count() > 1 && e.model.Contains(c.ID) {
 					mode = "move"
 				}

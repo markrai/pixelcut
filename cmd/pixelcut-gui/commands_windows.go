@@ -1,6 +1,11 @@
 package main
 
-import editorstate "github.com/markrai/pixelcut/internal/editor"
+import (
+	"fmt"
+
+	editorstate "github.com/markrai/pixelcut/internal/editor"
+	"github.com/markrai/pixelcut/internal/project"
+)
 
 func commandRequirement(id int) editorstate.Requirement {
 	switch id {
@@ -27,9 +32,22 @@ func (e *editor) availability() editorstate.Availability {
 	return e.model.Availability(e.clipboard.Count() > 0)
 }
 
+func trackCommandAllowed(id int, a editorstate.Availability) error {
+	if a.TrackLocked {
+		switch id {
+		case idApply, idSplit, idCropVisual, idCropReset, idTransform, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio, idCut, idDuplicate, idDelete, idRippleDelete, idAdd, idPaste, menuPasteHere, menuGapHere:
+			return project.ErrTrackLocked
+		}
+	}
+	if a.VideoSuppressed && (id == idCropVisual || id == idTransform) {
+		return fmt.Errorf("enable the active track's video preview before visual editing")
+	}
+	return nil
+}
+
 func eligibleItems(items []menuItem, a editorstate.Availability) []menuItem {
 	for i := range items {
-		if items[i].enabled && a.Check(commandRequirement(items[i].id)) != nil {
+		if items[i].enabled && (a.Check(commandRequirement(items[i].id)) != nil || trackCommandAllowed(items[i].id, a) != nil) {
 			items[i].enabled = false
 		}
 	}

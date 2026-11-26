@@ -97,10 +97,13 @@ func (p Project) ValidateLockedEdit(q Project) error {
 			continue
 		}
 		i := q.TrackIndex(t.ID)
-		if i < 0 || q.Tracks[i].Kind != t.Kind || !reflect.DeepEqual(t.Clips, q.Tracks[i].Clips) {
+		if i < 0 || q.Tracks[i].Kind != t.Kind || len(t.Clips) != len(q.Tracks[i].Clips) {
 			return fmt.Errorf("%w: %s", ErrTrackLocked, t.ID)
 		}
-		for _, c := range t.Clips {
+		for j, c := range t.Clips {
+			if !reflect.DeepEqual(c, q.Tracks[i].Clips[j]) {
+				return fmt.Errorf("%w: %s", ErrTrackLocked, t.ID)
+			}
 			a, ok := p.Asset(c.AssetID)
 			b, present := q.Asset(c.AssetID)
 			if !ok || !present || a != b {
