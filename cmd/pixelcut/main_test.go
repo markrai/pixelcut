@@ -82,11 +82,11 @@ func TestGPUScaleCheckCommandArguments(t *testing.T) {
 
 func TestGPUPreviewScaleCheckCommandArguments(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") {
+	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") || !strings.Contains(out.String(), "chroma") || !strings.Contains(out.String(), "benchmark") {
 		t.Fatalf("preview scale help: %v", err)
 	}
 	out.Reset()
-	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-diagnose", "-width", "960", "-height", "540", "-frames", "121", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") {
+	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-chroma", "-benchmark", "-width", "960", "-height", "540", "-frames", "121", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") {
 		t.Fatal("invalid preview scale interval accepted")
 	}
 }

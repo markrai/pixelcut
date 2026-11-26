@@ -101,3 +101,25 @@ pixelcut gpu-preview-scale-check -diagnose -width 540 -height 960 -start-frame 1
 ```
 
 Use short windows first because the diagnostic runs four comparisons total. No local GPU results available; candidate CI pending.
+
+## 3A.3d: chroma controls and independent timing
+
+PR #33 merged (CI 45893321213, performance 45893321189 passed). Physical observations, 30 frames at coded 1920x1080 to 960x540: March 31 FFmpeg N-123778-g3b55818764 rotated RGB max 53, PSNR 43.34, Y/U/V max 131/42/17; November 26 N-129308-g17de9f8597 rotated RGB max 27, PSNR 51.63, Y/U/V max 1/26/13. Same video stream remuxed without display rotation: RGB max 47, PSNR 52.19, mean 0.11244, 1386 over-limit samples; Y/U/V max 1/30/15. CPU geometry order exact 30/30 without rotation. New build synthetic smooth fixture passes BGRA max 13 and still/stream max 11, lifecycle 2 opened/2 retired/peak 1. Small fixture sequential CPU/GPU stream timings 91.27/313.48 ms do not establish throughput. Real-source quality still fails.
+
+Reports now identify resolved FFmpeg and FFprobe paths and version lines, and use those absolute paths for the duration of qualification. This is path/version evidence, not a binary fingerprint or driver qualification. Optional -chroma implies -diagnose and compares four explicit software scaling hypotheses in coded axes before rotation: left to left, left to center, center to left, center to center. Uses scale in_chroma_loc/out_chroma_loc (requires a supporting FFmpeg build). These are controls, including deliberate metadata overrides, not permissible production conversions. Low error against a control does not authorize changing source tags. Original CPU reference and CUDA candidate stay unchanged. New edge and moving impulse fixtures use constant luma and lossless HEVC encoding; normal CPU fixture checks run without a GPU, explicit physical qualification runs both fixtures and retains the existing SDR gate.
+
+Optional -benchmark times the existing BGRA paths sequentially, three startup-inclusive repetitions per backend, alternating order, reports individual times and medians. Includes decode from source start, scaling, rotation, tone mapping, download where applicable, raw pipe and hash verification. Runs after fidelity comparison even if the quality gate is exceeded; not pure GPU kernel time or sustained playback throughput. All flags share the existing three-minute deadline. Use short frame windows if combining diagnostics.
+
+```cmd
+pixelcut gpu-preview-scale-check -chroma -width 540 -height 960 -frames 30 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -chroma -width 960 -height 540 -frames 30 "test-media\test-unrotated.mp4"
+pixelcut gpu-preview-scale-check -benchmark -width 540 -height 960 -frames 120 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -benchmark -width 960 -height 540 -frames 120 "test-media\4k-landscape.mp4"
+set PIXELCUT_QUALIFY_CUDA_CHROMA=1
+go test -count=1 -v ./internal/media -run "^TestPreviewQualificationChromaFixtures$"
+set PIXELCUT_QUALIFY_CUDA_CHROMA=
+```
+
+4K command assumes a real unrotated 3840x2160 limited-range left-sited HEVC Main 10 HLG recording with at least 120 frames; substitute path or swap output dimensions for a portrait recording. 1080p/4K are source resolutions, not preview output sizes. No new activation, thresholds, schema or dependencies. Candidate CI and hardware runs pending.
+
+Local command-level FFmpeg verification: both generated fixtures probe as Main 10, left-sited 10-bit 4:2:0, four frames. The impulse fixture produced four distinct raw SHA-256 results for the four named chroma-location controls, each 82,944 bytes (four 96x72 planar frames). This validates fixture and option execution on the local build only; candidate Go suite and CUDA remain untested locally. Ordinary CI exercises the explicit CPU location control when its FFmpeg advertises both named options; older builds still exercise baseline and timing.
