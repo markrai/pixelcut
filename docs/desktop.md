@@ -254,3 +254,8 @@ Choose Track > Play composite (SDR, with audio). Use overlapping HLG clips with 
 ## Phase 2C.6.5: Integrated navigation acceptance
 
 In composite mode, test ruler scrubbing while playing and paused, clicks on another track, rapid keyboard marker changes, Stop/Escape during a pending resume, capture loss, a clip drag and project switch during a pending seek. The prior playing state resumes only on a completed seek below project end; an edit cancels it. Confirm old audio does not replay, no stale still appears after a newer marker, and no manual retry is needed merely because the prior decoder is retiring. Verify Ctrl+arrow traverses edit boundaries across tracks, and selected-source frame stepping (including a cold index) retains composite mode. Use cuts at non-grid timestamps and a short overlay: the outgoing image must expire at the cut, even when its replacement is late; a brief blank is preferable to a wrong layer. Leading/interior gaps play as black/silence, project end remains paused black. Measure seek startup latency and VFR/driver timing on real Pixel HLG footage; no zero-latency or sample-accurate physical sync guarantee is implied.
+
+
+## Phase 2C.6.6: Diagnostics and qualification
+
+Track > Composite playback diagnostics opens a read-only report of the most recent run. For a completed report pause or stop and allow the workers to retire; the report identifies whether retirement finished. Ctrl+C copies the Windows dialog text. Run the cold/warm and cancellation scenarios in [composite qualification](composite-qualification.md); keep private footage and recovery data local. The decoder and UI counters do not prove physical synchronization or real-time playback. No HDR composite display is claimed.
