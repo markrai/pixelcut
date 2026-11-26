@@ -13,7 +13,8 @@ const AudioVersion = 3
 const ControlsVersion = 4
 const LayerVersion = 5
 const GainVersion = 6
-const Version = 7
+const MuteVersion = 7
+const Version = 8
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -44,6 +45,8 @@ type Clip struct {
 	Opacity       *int             `json:"opacity_percent,omitempty"`
 	Gain          *int             `json:"audio_gain_percent,omitempty"`
 	AudioMuted    bool             `json:"audio_muted,omitempty"`
+	FadeIn        int64            `json:"audio_fade_in_us,omitempty"`
+	FadeOut       int64            `json:"audio_fade_out_us,omitempty"`
 }
 
 type Track struct {
@@ -136,6 +139,8 @@ func (p Project) Split(track, clip, rightID string, at int64) (Project, error) {
 	source, _ := c.SourceAt(at)
 	right.ID, right.Start, right.In = rightID, at, source
 	q.Tracks[i].Clips[j].Out = right.In
+	q.Tracks[i].Clips[j].FadeOut = 0
+	right.FadeIn = 0
 	q.Tracks[i].Clips = append(q.Tracks[i].Clips, right)
 	if err := q.Validate(); err != nil {
 		return p, err
@@ -162,6 +167,9 @@ func (p Project) MediaEditWithMute(c Clip, muted bool) (Asset, media.Edit, error
 		return a, media.Edit{}, errors.New("layer opacity requires project composition; selected-clip export cannot apply it")
 	}
 	silent := muted || c.AudioDetached || c.EffectiveGainPercent() == 0
+	if !silent && c.HasFades() {
+		return a, media.Edit{}, errors.New("clip audio fades require whole-project export")
+	}
 	if !silent && c.GainPercent() != 100 {
 		return a, media.Edit{}, errors.New("clip audio gain requires whole-project export")
 	}
