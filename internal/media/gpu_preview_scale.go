@@ -10,6 +10,7 @@ import (
 	"math"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/markrai/pixelcut/internal/mediacache"
@@ -25,10 +26,11 @@ func previewScaleCandidate(v Stream, req StillRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	w, h := req.OutputWidth, req.OutputHeight
-	if rotation != 0 {
-		return "", fmt.Errorf("CUDA preview scale candidate requires zero display rotation; got %d degrees", rotation)
+	display, err := v.DisplayGeometry()
+	if err != nil {
+		return "", err
 	}
+	w, h := req.OutputWidth, req.OutputHeight
 	if v.Range != "tv" {
 		return "", fmt.Errorf("CUDA preview scale candidate requires limited-range HLG (tv); got %q", v.Range)
 	}
@@ -38,16 +40,21 @@ func previewScaleCandidate(v Stream, req StillRequest) (string, error) {
 	if req.Crop != nil || req.Transform != nil {
 		return "", errors.New("CUDA preview scale candidate does not support crop or transform")
 	}
-	if req.Width != v.Width || req.Height != v.Height || req.Canvas != (CanvasSize{v.Width, v.Height}) {
-		return "", errors.New("CUDA preview scale candidate requires source-sized geometry and canvas")
+	if req.Width != display.Width || req.Height != display.Height || req.Canvas != (CanvasSize{display.Width, display.Height}) {
+		return "", errors.New("CUDA preview scale candidate requires display-sized geometry and canvas")
 	}
 	if w < 2 || h < 2 || w > MaxStillSide || h > MaxStillSide || w%2 != 0 || h%2 != 0 {
 		return "", fmt.Errorf("CUDA preview scale candidate requires even output dimensions up to %d; got %dx%d", MaxStillSide, w, h)
 	}
-	if w > v.Width || h > v.Height || int64(w)*int64(v.Height) != int64(h)*int64(v.Width) {
-		return "", fmt.Errorf("CUDA preview scale candidate requires aspect-preserving downscale; got %dx%d to %dx%d", v.Width, v.Height, w, h)
+	if w > display.Width || h > display.Height || int64(w)*int64(display.Height) != int64(h)*int64(display.Width) {
+		return "", fmt.Errorf("CUDA preview scale candidate requires aspect-preserving display downscale; got display %dx%d to %dx%d", display.Width, display.Height, w, h)
 	}
-	return fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le:interp_algo=lanczos:passthrough=0,%s", w, h, cudaDownloadFilter), nil
+	if rotation == -90 || rotation == 90 {
+		w, h = h, w
+	}
+	filters := []string{fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le:interp_algo=lanczos:passthrough=0", w, h), cudaDownloadFilter}
+	filters = append(filters, displayRotationFilters(rotation)...)
+	return strings.Join(filters, ","), nil
 }
 
 func (e Engine) previewCUDAPipeline(v Stream, req StillRequest, temporal, graph string, candidate bool) ([]string, string, error) {
@@ -187,7 +194,12 @@ func previewCheckArgs(e Engine, v Stream, req StillRequest, first, count int, cu
 	}
 	temporal := fmt.Sprintf("select=between(n\\,%d\\,%d)", first, first+count-1)
 	input := []string{"-noautorotate", "-hwaccel", "none", "-c:v", "hevc"}
-	graph = temporal + "," + graph
+	rotation, err := v.DisplayRotation()
+	if err != nil {
+		return nil, err
+	}
+	filters := append(displayRotationFilters(rotation), temporal, graph)
+	graph = strings.Join(filters, ",")
 	if cuda {
 		e.DecodeBackend = BackendCUDA
 		input, graph, err = e.previewCUDAPipeline(v, req, temporal, "", true)
@@ -349,7 +361,11 @@ func (e Engine) CheckCUDAPreviewScale(ctx context.Context, path string, first, c
 	if rotation, rotationErr := v.DisplayRotation(); rotationErr == nil {
 		r.SourceVideo.Rotation = &rotation
 	}
-	req := StillRequest{Path: identity.Path, Width: v.Width, Height: v.Height, Canvas: CanvasSize{v.Width, v.Height}, OutputWidth: width, OutputHeight: height}
+	display, err := v.DisplayGeometry()
+	if err != nil {
+		return r, err
+	}
+	req := StillRequest{Path: identity.Path, Width: display.Width, Height: display.Height, Canvas: CanvasSize{display.Width, display.Height}, OutputWidth: width, OutputHeight: height}
 	if _, err = previewScaleCandidate(v, req); err != nil {
 		return r, err
 	}

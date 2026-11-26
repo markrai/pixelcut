@@ -123,6 +123,43 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 	if err != nil || n != 4 || q.ExactFrames != 4 || !q.withinLimits() {
 		t.Fatalf("CPU preview comparison: %+v %d %v", q, n, err)
 	}
+	for _, angle := range []string{"-90", "90", "180"} {
+		rotated := filepath.Join(t.TempDir(), "rotated.mp4")
+		runFF(t, "-v", "error", "-i", path, "-map", "0:v:0", "-c:v", "copy", "-metadata:s:v:0", "rotate="+angle, rotated)
+		r, err := engine.Inspect(ctx, rotated)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := r.Video()
+		if err != nil {
+			t.Fatal(err)
+		}
+		rotation, err := raw.DisplayRotation()
+		if err != nil || rotation == 0 {
+			t.Fatalf("fixture display rotation: %d %v", rotation, err)
+		}
+		display, err := raw.DisplayGeometry()
+		if err != nil {
+			t.Fatal(err)
+		}
+		req := StillRequest{Path: rotated, Width: display.Width, Height: display.Height, Canvas: CanvasSize{display.Width, display.Height}, OutputWidth: display.Width / 2, OutputHeight: display.Height / 2}
+		prefix, err := previewScaleCandidate(raw, req)
+		want := "scale_cuda=w=32:h=24:format=p010le:interp_algo=lanczos:passthrough=0," + cudaDownloadFilter + "," + strings.Join(displayRotationFilters(rotation), ",")
+		if err != nil || prefix != want {
+			t.Fatalf("rotated candidate graph: %q want %q: %v", prefix, want, err)
+		}
+		if rotation != 180 {
+			bad := req
+			bad.OutputWidth, bad.OutputHeight = bad.OutputHeight, bad.OutputWidth
+			if _, err := previewScaleCandidate(raw, bad); err == nil {
+				t.Fatal("coded orientation incorrectly accepted as display output")
+			}
+		}
+		q, n, err := engine.comparePreviewScale(ctx, raw, req, 2, index.ticks[2:6], false)
+		if err != nil || n != 4 || q.ExactFrames != 4 || !q.withinLimits() {
+			t.Fatalf("rotated CPU preview comparison: %+v %d %v", q, n, err)
+		}
+	}
 	if os.Getenv("PIXELCUT_QUALIFY_CUDA_SCALE") == "1" {
 		for _, size := range []scaleCheckSize{{64, 48}, {32, 24}, {128, 96}} {
 			r, err := engine.CheckCUDAScale(ctx, path, 2, 4, size.width, size.height)
