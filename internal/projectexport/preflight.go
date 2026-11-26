@@ -39,11 +39,10 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 	}
 	prepared := Prepared{Plan: plan}
 	used := make(map[string]bool)
-	visible := make(map[string]bool)
 	for _, span := range plan.Spans {
 		for _, layer := range span.Layers {
 			id := layer.Layer.Asset.ID
-			used[id], visible[id] = true, true
+			used[id] = true
 		}
 		for _, audio := range span.Audio {
 			used[audio.Asset.ID] = true
@@ -94,8 +93,8 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 		if err != nil {
 			return Prepared{}, err
 		}
-		if visible[asset.ID] && (v.Range != "tv" || v.ChromaLocation != "left") {
-			return Prepared{}, fmt.Errorf("asset %s requires explicit range or chroma normalization, not yet supported by the HLG export contract", asset.ID)
+		if v.Range != "tv" || v.ChromaLocation != "left" {
+			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, v.Range, v.ChromaLocation))
 		}
 		rotation, err := v.DisplayRotation()
 		if err != nil {
