@@ -45,6 +45,9 @@ func (e *editor) syncPreviewLabel() {
 			} else if c.GainPercent() != 100 {
 				preview += fmt.Sprintf(" / clip gain %d%%", c.GainPercent())
 			}
+			if c.HasFades() && c.EffectiveGainPercent() > 0 {
+				preview += " / fades: composite only"
+			}
 		}
 	}
 	change(e.previewLabel, preview)
@@ -57,10 +60,14 @@ func audioClipLabel(c project.Clip) string {
 	if c.AudioMuted {
 		return " / muted"
 	}
+	label := ""
 	if c.GainPercent() != 100 {
-		return fmt.Sprintf(" / vol %d%%", c.GainPercent())
+		label = fmt.Sprintf(" / vol %d%%", c.GainPercent())
 	}
-	return ""
+	if c.HasFades() {
+		label += " / fade"
+	}
+	return label
 }
 
 func (e *editor) editClipAudio(detach bool) error {

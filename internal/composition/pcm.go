@@ -58,7 +58,7 @@ func MixPCM(ctx context.Context, e *Evaluator, decoder PCMDecoder, start, offset
 			if err != nil {
 				return PCMBlock{}, fmt.Errorf("audio %s/%s: %w", a.Ref.TrackID, a.Ref.ClipID, err)
 			}
-			if err := mixer.Add(samples, a.GainPercent); err != nil {
+			if err := mixer.AddContribution(samples, a, start, pos); err != nil {
 				return PCMBlock{}, err
 			}
 		}

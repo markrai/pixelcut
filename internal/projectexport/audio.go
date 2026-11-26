@@ -215,7 +215,7 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 				if err != nil {
 					return fmt.Errorf("audio %s/%s: %w", a.Ref.TrackID, a.Ref.ClipID, err)
 				}
-				if err := mixer.Add(samples, a.GainPercent); err != nil {
+				if err := mixer.AddContribution(samples, a, 0, pos); err != nil {
 					return err
 				}
 			}
