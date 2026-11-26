@@ -125,7 +125,7 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 	}
 	for _, angle := range []string{"-90", "90", "180"} {
 		rotated := filepath.Join(t.TempDir(), "rotated.mp4")
-		runFF(t, "-v", "error", "-i", path, "-map", "0:v:0", "-c:v", "copy", "-metadata:s:v:0", "rotate="+angle, rotated)
+		runFF(t, "-v", "error", "-display_rotation:v:0", angle, "-i", path, "-map", "0:v:0", "-c:v", "copy", rotated)
 		r, err := engine.Inspect(ctx, rotated)
 		if err != nil {
 			t.Fatal(err)
@@ -135,8 +135,9 @@ func TestHEVCDecodeCheckRealVFR(t *testing.T) {
 			t.Fatal(err)
 		}
 		rotation, err := raw.DisplayRotation()
-		if err != nil || rotation == 0 {
-			t.Fatalf("fixture display rotation: %d %v", rotation, err)
+		expected := map[string]int{"-90": -90, "90": 90, "180": 180}[angle]
+		if err != nil || rotation != expected {
+			t.Fatalf("fixture display rotation: got %d, want %d: %v", rotation, expected, err)
 		}
 		display, err := raw.DisplayGeometry()
 		if err != nil {
