@@ -21,6 +21,7 @@ type frameJobResult struct {
 	path, clipID string
 	entry        frameCacheEntry
 	action       int
+	composite    bool
 }
 
 func (e *editor) cachedFrames(a project.Asset) *media.FrameIndex {
@@ -46,6 +47,7 @@ func (e *editor) loadFrames(a project.Asset, clipID string, action int) error {
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("source is not a regular file")
 	}
+	composite := e.stillActive
 	e.stopPreview()
 	engine := e.engine
 	disk := e.mediaDisk
@@ -62,7 +64,7 @@ func (e *editor) loadFrames(a project.Asset, clipID string, action int) error {
 		if err != nil || after.Size() != size || !after.ModTime().Equal(modified) {
 			return result{err: fmt.Errorf("source changed during frame indexing")}
 		}
-		return result{frames: &frameJobResult{path: a.Path, clipID: clipID, entry: frameCacheEntry{index, size, modified}, action: action}}
+		return result{frames: &frameJobResult{path: a.Path, clipID: clipID, entry: frameCacheEntry{index, size, modified}, action: action, composite: composite}}
 	})
 	return nil
 }
@@ -88,6 +90,12 @@ func (e *editor) finishFrames(r *frameJobResult) {
 	if !ok || c.ID != r.clipID {
 		e.tell("Frame index ready.")
 		return
+	}
+	if r.composite && (r.action == idFrameBack || r.action == idFrameForward) {
+		if err := e.seekComposite(e.playhead, false); err != nil {
+			e.tell(err.Error())
+			return
+		}
 	}
 	if err := e.precisionAction(r.action); err != nil {
 		e.tell(err.Error())
@@ -189,6 +197,18 @@ func absTicks(v int64) int64 {
 
 func (e *editor) jumpEdit(forward bool) {
 	e.updatePlaybackClock()
+	if e.stillActive {
+		compiled, err := e.compiledComposition()
+		if err != nil {
+			e.tell(err.Error())
+			return
+		}
+		if at, ok := compiled.EditBoundary(e.playhead, forward); ok {
+			e.seekTimeline(at, false)
+			e.checkpoint()
+		}
+		return
+	}
 	at, ok := editBoundary(e.track().Clips, e.playhead, forward)
 	if !ok {
 		return

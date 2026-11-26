@@ -100,10 +100,16 @@ func (e *editor) switchTrack(id string) {
 	if e.model.Project().TrackIndex(id) < 0 || id == e.trackID() {
 		return
 	}
-	e.stopPreview()
+	if !e.stillActive {
+		e.stopPreview()
+	}
 	e.model.SwitchTrack(id)
 	e.refresh()
-	e.tell("Editing " + id + ". Preview is isolated to the active track.")
+	if e.stillActive {
+		e.tell("Editing " + id + ". Composite preview includes all enabled tracks.")
+	} else {
+		e.tell("Editing " + id + ". Preview is isolated to the active track.")
+	}
 }
 
 func trackMenuItems(p project.Project, active string, selected []string) []menuItem {

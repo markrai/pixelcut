@@ -120,47 +120,47 @@ func (e *editor) compositeRetired() bool {
 	}
 }
 
+func (e *editor) sourcePreviewRetired() bool {
+	if e.retiringPreview == nil {
+		return true
+	}
+	select {
+	case <-e.retiringPreview:
+		e.retiringPreview = nil
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *editor) startCompositePlayback() error {
 	if e.compositeRun != nil {
 		return nil
 	}
-	if !e.compositeRetired() {
-		return fmt.Errorf("previous composite decoders are closing; retry Play")
+	if e.playhead >= e.endTime() {
+		return fmt.Errorf("no timeline remains ahead of the playhead")
+	}
+	if !e.stillActive {
+		e.stopPreview()
 	}
 	if e.playhead >= e.endTime() {
 		return fmt.Errorf("no timeline remains ahead of the playhead")
 	}
-	if e.layerSurface == 0 {
-		return fmt.Errorf("composite preview surface unavailable")
+	if !e.compositeRetired() || !e.sourcePreviewRetired() {
+		return e.seekComposite(e.playhead, true)
 	}
-	compiled, err := composition.Compile(e.model.Project())
+	compiled, err := e.compiledComposition()
 	if err != nil {
 		return err
 	}
-	e.stopPreview()
-	if e.retiringPreview != nil {
-		select {
-		case <-e.retiringPreview:
-			e.retiringPreview = nil
-		default:
-			return fmt.Errorf("source preview is closing; retry Play")
-		}
+	if err = e.prepareCompositeView(e.playhead); err != nil {
+		return err
 	}
-	if e.playhead >= compiled.Duration() {
-		return fmt.Errorf("no timeline remains ahead of the playhead")
-	}
-	e.stillActive = true
-	e.stillTime = e.playhead
-	e.stillFingerprint = e.model.Fingerprint()
 	run, err := launchCompositePreview(e.engine, compiled, e.playhead)
 	if err != nil {
-		e.cancelCompositeStill()
 		return err
 	}
 	e.compositeRun = run
-	user.NewProc("ShowWindow").Call(e.layerSurface, 5)
-	user.NewProc("SetWindowPos").Call(e.layerSurface, 0, 0, 0, 0, 0x0013)
-	user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
 	e.syncPreviewLabel()
 	e.updatePlayButton(false)
 	e.tell("Composite playback (SDR, audio master). Preparing video and audio buffers.")
@@ -178,6 +178,7 @@ func (e *editor) cancelCompositeRun() {
 }
 
 func (e *editor) freezeCompositePlayback() {
+	e.compositeResume = false
 	if run := e.compositeRun; run != nil && run.clock != nil {
 		tick := run.clock.Tick()
 		e.stillTime, e.playhead = tick, tick
@@ -228,7 +229,7 @@ func (e *editor) updateCompositePlayback() {
 		e.stillTime, e.playhead = tick, tick
 		e.refreshPlaybackMarker()
 	}
-	if e.stillFrame != nil && tick-e.compositeFrameTime > 2*media.CompositeStep {
+	if e.stillFrame != nil && !(composition.CompositeFrame{Time: e.compositeFrameTime, ValidUntil: e.compositeFrameUntil, End: e.compositeFrameEnd}).CurrentAt(tick) {
 		e.stillFrame = nil
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
 	}
@@ -256,7 +257,7 @@ func (e *editor) updateCompositePlayback() {
 			e.tell("Composite playback returned an invalid frame.")
 			return
 		}
-		if now-f.Time > 2*media.CompositeStep {
+		if !f.CurrentAt(now) {
 			return
 		}
 		for path, identity := range f.Sources {
@@ -269,6 +270,8 @@ func (e *editor) updateCompositePlayback() {
 		e.stillFrame = &f.Frame
 		e.stillSources = f.Sources
 		e.compositeFrameTime = f.Time
+		e.compositeFrameUntil = f.ValidUntil
+		e.compositeFrameEnd = f.End
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 0)
 	default:
 	}

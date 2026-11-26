@@ -59,6 +59,9 @@ func (e *editor) modifySelection(i int, ctrl, shift bool) {
 }
 
 func (e *editor) beginMarquee(x, y int32, t int64, playing bool) {
+	if e.stillActive && playing {
+		e.freezeCompositePlayback()
+	}
 	e.marquee = &marqueeDrag{x: x, y: y, currentX: x, currentY: y, before: e.selectionIDs(), primary: e.model.PrimaryID(), additive: keyPressed(0x11), clickTime: t, wasPlaying: playing}
 	user.NewProc("SetCapture").Call(e.timeline)
 }

@@ -9,16 +9,24 @@ import (
 
 const playbackTimer uintptr = 1
 
-func (e *editor) previewTarget(at int64, advance bool) (int, int64, bool, error) {
+func (e *editor) compiledComposition() (*composition.Evaluator, error) {
 	fingerprint := e.model.Fingerprint()
 	if e.composition == nil || e.compositionFingerprint != fingerprint {
 		compiled, err := composition.Compile(e.model.Project())
 		if err != nil {
-			return -1, at, false, err
+			return nil, err
 		}
 		e.composition, e.compositionFingerprint = compiled, fingerprint
 	}
-	ref, target, ok := e.composition.AuditionTarget(e.trackID(), at, advance)
+	return e.composition, nil
+}
+
+func (e *editor) previewTarget(at int64, advance bool) (int, int64, bool, error) {
+	compiled, err := e.compiledComposition()
+	if err != nil {
+		return -1, at, false, err
+	}
+	ref, target, ok := compiled.AuditionTarget(e.trackID(), at, advance)
 	if !ok {
 		return -1, at, false, nil
 	}
@@ -85,7 +93,7 @@ func (e *editor) updatePlaybackClock() {
 }
 
 func (e *editor) pausePreview() error {
-	if e.compositeRun != nil {
+	if e.compositeRun != nil || e.compositeResume {
 		e.pauseCompositePlayback()
 		return nil
 	}
@@ -98,7 +106,7 @@ func (e *editor) pausePreview() error {
 }
 
 func (e *editor) playing() bool {
-	return e.compositeRun != nil || (e.clock != nil && e.previewActive() && !e.clock.paused())
+	return e.compositeRun != nil || e.compositeResume || (e.clock != nil && e.previewActive() && !e.clock.paused())
 }
 
 func (e *editor) seekTimeline(t int64, playing bool) {
@@ -110,9 +118,7 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		t = end
 	}
 	if e.stillActive {
-		e.playhead = t
-		e.refreshPlaybackMarker()
-		if err := e.showCompositeStill(); err != nil {
+		if err := e.seekComposite(t, playing && !e.scrubbing); err != nil {
 			e.tell(err.Error())
 		}
 		return

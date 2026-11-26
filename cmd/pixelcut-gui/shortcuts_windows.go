@@ -349,13 +349,13 @@ func (e *editor) handleShortcut(m message) bool {
 		if e.marquee != nil {
 			e.endMarquee(true)
 		} else if e.scrubbing {
-			e.scrubbing = false
+			e.scrubbing, e.scrubPlaying = false, false
 			user.NewProc("ReleaseCapture").Call()
 			e.pausePreview()
 		} else if e.drag != nil {
 			e.cancelTimelineDrag()
 			e.tell("Timeline edit canceled.")
-		} else if e.previewActive() || e.compositeRun != nil {
+		} else if e.previewActive() || e.compositeRun != nil || e.compositeResume {
 			e.pausePreview()
 		}
 	case keyMarkerBack:
