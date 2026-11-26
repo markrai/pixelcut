@@ -84,3 +84,20 @@ pixelcut gpu-preview-scale-check -width 360 -height 640 -frames 120 "test-media\
 ```
 
 Generated cardinal display-matrix fixtures exercise the coded/display dimension boundary and CPU VFR paired comparison. Candidate CI and real GPU rotation quality remain pending. No changes to thresholds or ordinary rendering; earlier synthetic max-delta failure remains unresolved.
+
+## 3A.3c: stage isolation
+
+PR #32 merged, CI 45890749200 and performance 45890748922 passed. Physical portrait comparison and the prior synthetic max-delta failure are still unresolved. Add optional -diagnose to gpu-preview-scale-check to run three paired pre-tone-map planar 10-bit comparisons after the existing BGRA comparison (including when the BGRA quality gate is exceeded). The command still returns failure on the existing SDR quality gate. Stage diagnostics never authorize GPU activation.
+
+- cuda_against_reference: production CPU geometry before tone mapping versus CUDA scaled/downloaded/rotated geometry before tone mapping.
+- cpu_order_against_reference: the same CPU reference versus a CPU Lanczos scale in coded axes followed by display rotation, controlling for geometry order and elimination of the reference intermediate scaling step.
+- cuda_against_cpu_order: the reordered CPU control versus the CUDA candidate, isolating remaining combined decoder/scaler differences (verify raw decode parity separately).
+
+Each comparison reports Y, U, V code-value counts, differing samples, max and mean absolute deltas, minimum per-frame PSNR (peak 1023, exact capped at 100 dB), exact frames, and concurrent wall time. Planar geometry output is explicitly normalized to yuv420p10le at the boundary; these are not HDR perceptual or export guarantees. Compare SDR and planar results without equating 8-bit and 10-bit PSNR. The control is not proof that rotation alone caused a difference: the reference can have two scale stages. Two processes at a time, two frame buffers, bounded hash capture and existing shared three-minute timeout; no media files. Stage failure is an error, never success. SDR metrics remain in the report even when diagnostics fail. No interpolation or threshold changes.
+
+```cmd
+pixelcut gpu-preview-scale-check -diagnose -width 540 -height 960 -frames 30 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -diagnose -width 540 -height 960 -start-frame 120 -frames 30 "test-media\test.mp4"
+```
+
+Use short windows first because the diagnostic runs four comparisons total. No local GPU results available; candidate CI pending.
