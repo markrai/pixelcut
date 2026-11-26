@@ -6,11 +6,14 @@ if errorlevel 1 (
     echo Go was not found on PATH.
     goto :failed
 )
-echo Building PixelCut...
+echo Building PixelCut CLI...
+go build -o pixelcut.exe ./cmd/pixelcut
+if errorlevel 1 goto :failed
+echo Building PixelCut GUI...
 go build -o pixelcut-gui.exe ./cmd/pixelcut-gui
 if errorlevel 1 goto :failed
 echo Launching PixelCut...
-pixelcut-gui.exe
+".\pixelcut-gui.exe"
 if errorlevel 1 goto :failed
 popd
 exit /b 0

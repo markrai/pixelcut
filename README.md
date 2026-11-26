@@ -68,11 +68,12 @@ Re-encoded output uses HEVC Main 10 through libx265 and CRF 16. It is not mathem
 
 Double-click `run.bat` in the repository root, or execute it from Command Prompt. It builds the current desktop executable and launches it only after a successful build. Go must be on PATH; FFmpeg, FFprobe and mpv are required for media operations. The launcher does not download dependencies or pull repository changes.
 
-Alternatively, build and launch manually:
+Alternatively, build both binaries and launch manually:
 
 ```cmd
+go build -o pixelcut.exe ./cmd/pixelcut
 go build -o pixelcut-gui.exe ./cmd/pixelcut-gui
-pixelcut-gui.exe
+.\pixelcut-gui.exe
 ```
 
 Import a supported HLG video, select it in the media bin and click **Add to V1**. Select the clip, enter source in/out and timeline start in seconds, optionally enter a display-relative crop as `x,y,width,height`, and click **Apply edits**. **Split** takes a timeline time strictly inside the selected clip. Play clip uses mpv embedded in a native Windows window and previews the selected source interval in SDR; committed crops are previewed through the shared geometry filter plan. **Export clip** exports the selected clip, not the entire project. New projects have a V1 video track and an empty A1 audio track; source audio follows the selected video unless detached.
@@ -160,7 +161,7 @@ Offline assets retain every timeline edit. The Relink toolbar menu and asset/cli
 
 ### Application preferences
 
-Open Settings (Ctrl+,) to configure editing toggles, preview speed, SDR or experimental HDR output, startup preview restoration, recovery view checkpoint timing and tool executable paths. Settings persist independently of projects. Space/Play starts from the marker, skips leading/interior gaps to the next clip, and does not restart playback at the final timeline end.
+Open **Settings** in the main toolbar next to **Shortcuts** (or press Ctrl+,) to configure editing toggles, preview speed, SDR or experimental HDR output, startup preview restoration, recovery view checkpoint timing and tool executable paths. Settings persist independently of projects. Space/Play starts from the marker, skips leading/interior gaps to the next clip, and does not restart playback at the final timeline end.
 
 ### Multitrack foundation (2C.1)
 
@@ -276,4 +277,4 @@ Composite playback and whole-project export now share the same timestamp normali
 
 ### GPU diagnostics (3A.1)
 
-Use Settings > GPU capabilities / device diagnostics, or run `pixelcut gpu-info` for the configured FFmpeg inventory and `pixelcut gpu-info -probe-devices` to attempt device initialization. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. Rendering remains CPU-only; a successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
+Use Settings > GPU capabilities / device diagnostics, or run `.\pixelcut.exe gpu-info` for the FFmpeg inventory and `.\pixelcut.exe gpu-info -probe-devices` to attempt device initialization. On Windows, `run.bat` rebuilds both the CLI and GUI before opening the editor. After pulling changes, rebuild the binaries; `where pixelcut` helps diagnose an older executable on PATH. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. Rendering remains CPU-only; a successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
