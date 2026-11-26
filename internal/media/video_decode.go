@@ -62,17 +62,23 @@ func (e Engine) VideoDecodePipeline(v Stream, graph string, displayRotation bool
 		if err != nil {
 			return nil, "", err
 		}
-		switch rotation {
-		case -90:
-			filters = append(filters, "transpose=clock")
-		case 90:
-			filters = append(filters, "transpose=cclock")
-		case 180:
-			filters = append(filters, "hflip", "vflip")
-		}
+		filters = append(filters, displayRotationFilters(rotation)...)
 	}
 	if graph != "" {
 		filters = append(filters, graph)
 	}
 	return args, strings.Join(filters, ","), nil
+}
+
+func displayRotationFilters(rotation int) []string {
+	switch rotation {
+	case -90:
+		return []string{"transpose=clock"}
+	case 90:
+		return []string{"transpose=cclock"}
+	case 180:
+		return []string{"hflip", "vflip"}
+	default:
+		return nil
+	}
 }

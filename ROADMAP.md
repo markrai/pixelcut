@@ -130,7 +130,7 @@ See [audio processing contract](docs/audio-processing.md). The shared mixer cons
 | --- | --- | --- |
 | 3A.1 | Bounded capability inventory, optional device initialization and CPU-first stage policy | Merged via PR #24; CI passed; Windows CUDA/D3D11VA/D3D12VA/Vulkan initialization observed |
 | 3A.2 | Hardware HEVC decode, exact frame selection and CPU-readable 10-bit parity | PR #27 merged; CI passed; user 240/240 frame parity; experimental renderer integration merged via PR #28; CI and performance passed; physical acceptance pending |
-| 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a merged via PR #29; CI and performance passed; user 240/240 nearest-neighbor frame parity at 1080p to 540p. 3A.3b merged via PR #30; CI and performance passed; real source rejected before comparison, synthetic GPU quality failed max-delta gate (19 > 16); diagnostic follow-up implemented; activation and remaining geometry pending |
+| 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a merged via PR #29; CI and performance passed; user 240/240 nearest-neighbor frame parity at 1080p to 540p. 3A.3b merged via PR #30; CI and performance passed; real source rejection traced to -90 display rotation; cardinal-rotation candidate implemented; synthetic GPU quality failed max-delta gate (19 > 16); physical quality pending; activation and remaining geometry pending |
 | 3A.4 | GPU layer compositing with explicit HLG linear-light contract | Pending |
 | 3A.5 | Hardware HEVC Main 10 encode with verified color/timing/publication | Pending |
 | 3A.6 | GPU/CPU parity, fallback, performance and physical qualification | Pending |

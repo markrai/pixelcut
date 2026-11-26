@@ -45,8 +45,8 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	case "gpu-preview-scale-check":
 		fs := flag.NewFlagSet("gpu-preview-scale-check", flag.ContinueOnError)
 		fs.SetOutput(stdout)
-		width := fs.Int("width", 0, "required even output width")
-		height := fs.Int("height", 0, "required even output height")
+		width := fs.Int("width", 0, "required even displayed output width")
+		height := fs.Int("height", 0, "required even displayed output height")
 		first := fs.Int("start-frame", 0, "first source frame ordinal (zero based)")
 		count := fs.Int("frames", 120, "number of consecutive frames (1-120)")
 		if err := fs.Parse(args[1:]); err != nil {

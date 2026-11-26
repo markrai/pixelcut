@@ -72,3 +72,15 @@ The small fixture reports aggregate sequential stream call timings including sta
 PR #30 merged, CI 45886342264 and performance 45886342125 passed. User reported that the 1080p recording was rejected before scaling at 960x540 (both windows) and 640x360; the previous broad eligibility error did not identify which source property failed. The synthetic CUDA fixture compared all 10 frames, minimum frame/channel PSNR 42.72219584041022 dB, max channel delta 19, mean absolute delta 0.5875192901234568 and zero identical frames. This failed the unchanged max-delta gate of 16 despite passing the PSNR gate of 40 dB. The opt-in test stopped before still and stream qualification.
 
 The follow-up reports exact rejection reasons and source coded dimensions, range, chroma location and display rotation in the JSON. For compared frames it reports number of RGB channel samples compared, count strictly above the existing delta limit, and first occurrence of the worst sample with zero-based frame offset, row-major pixel index, channel and CPU/CUDA values. Frame ordinal is first_frame + frame_offset; pixel x is pixel_index modulo output_width; y is integer division by output_width. Exact frames have no worst sample. This is diagnostic evidence, not a change of eligibility or quality limits. The pre-tone-map and post-tone-map contributions still need isolation; no GPU geometry activation or speedup is claimed.
+
+## Cardinal display rotation follow-up
+
+PR #31 merged, CI 45887172992 and performance 45887172988 passed. User report confirms coded 1920x1080, limited range, left chroma and -90 degree display rotation. The diagnostic command previously rejected this valid portrait recording. The candidate now accepts existing validated cardinal display rotations. Output width and height are in displayed orientation: for this source use 540x960 or 360x640. GPU scaling uses coded-axis dimensions (960x540 or 640x360 respectively), downloads reduced 10-bit frames, then applies the same explicit CPU rotation mapping used by CUDA decode. The CPU reference applies rotation before its existing Lanczos geometry graph. Order and chroma resampling differences are included in the same SDR quality gate; no claim of commutation or parity is made.
+
+```cmd
+pixelcut gpu-preview-scale-check -width 540 -height 960 -frames 120 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -width 540 -height 960 -start-frame 120 -frames 120 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -width 360 -height 640 -frames 120 "test-media\test.mp4"
+```
+
+Generated cardinal display-matrix fixtures exercise the coded/display dimension boundary and CPU VFR paired comparison. Candidate CI and real GPU rotation quality remain pending. No changes to thresholds or ordinary rendering; earlier synthetic max-delta failure remains unresolved.
