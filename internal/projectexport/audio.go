@@ -249,6 +249,10 @@ func mixAudio(ctx context.Context, plan Plan, decoder audioBlocks, dst io.Writer
 }
 
 func muxAudio(ctx context.Context, engine media.Engine, plan Plan, sources map[string]Source, video, output string) error {
+	return muxAudioObserved(ctx, engine, plan, sources, video, output, nil)
+}
+
+func muxAudioObserved(ctx context.Context, engine media.Engine, plan Plan, sources map[string]Source, video, output string, observe Observer) error {
 	if err := validateAudio(plan); err != nil {
 		return err
 	}
@@ -264,9 +268,12 @@ func muxAudio(ctx context.Context, engine media.Engine, plan Plan, sources map[s
 	}
 	decoder := &offlineAudio{ctx: ctx, engine: engine, sources: sources, streams: make(map[string]*audioStream)}
 	defer decoder.Close()
-	if err := mixAudio(ctx, plan, decoder, stdin); err != nil {
+	emit(observe, StageAudio, 0, plan.OutputAudioFrames)
+	writer := &progressWriter{dst: stdin, observe: observe, stage: StageAudio, unitBytes: media.PCMChannels * 2, total: plan.OutputAudioFrames}
+	if err := mixAudio(ctx, plan, decoder, writer); err != nil {
 		return err
 	}
+	emit(observe, StageAudioWait, 0, 0)
 	if err := stdin.Close(); err != nil {
 		return err
 	}
