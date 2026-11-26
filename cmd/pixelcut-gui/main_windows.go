@@ -524,7 +524,7 @@ func (e *editor) startPreview(paused bool) error {
 		return project.ErrInvalidClip
 	}
 	policy := e.model.Project().TrackPolicies()[e.trackID()]
-	audible := policy.Audio && a.HasAudio && !c.AudioDetached && c.GainPercent() > 0
+	audible := policy.Audio && a.HasAudio && !c.AudioDetached && c.EffectiveGainPercent() > 0
 	if !policy.Video && !audible {
 		e.stopPreview()
 		return fmt.Errorf("active track has no enabled video or audio for this clip")

@@ -130,8 +130,8 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 			c = c.Clone()
 			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform, Opacity: c.OpacityPercent()})
 		}
-		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.GainPercent() > 0 {
-			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack, GainPercent: c.GainPercent()})
+		if t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.EffectiveGainPercent() > 0 {
+			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack, GainPercent: c.EffectiveGainPercent()})
 		}
 	}
 	return f, nil
@@ -152,7 +152,7 @@ func (e *Evaluator) AuditionTarget(trackID string, at int64, advance bool) (proj
 			if c.Start > at && !advance {
 				break
 			}
-			if t.policy.Video || (t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.GainPercent() > 0) {
+			if t.policy.Video || (t.policy.Audio && item.asset.HasAudio && !c.AudioDetached && c.EffectiveGainPercent() > 0) {
 				return project.ClipRef{TrackID: t.id, ClipID: c.ID}, max(at, c.Start), true
 			}
 			if !advance {
@@ -165,31 +165,21 @@ func (e *Evaluator) AuditionTarget(trackID string, at int64, advance bool) (proj
 }
 
 func (e *Evaluator) AudioTarget(trackID string, at int64, advance bool) (AudioContribution, int64, bool) {
-	if at < 0 || at >= e.duration {
-		return AudioContribution{}, at, false
-	}
 	for _, t := range e.tracks {
 		if t.id != trackID || t.kind != project.AudioTrack {
 			continue
 		}
-		i := sort.Search(len(t.clips), func(i int) bool { return t.clips[i].clip.End() > at })
-		if i == len(t.clips) {
+		ref, tick, ok := e.AuditionTarget(trackID, at, advance)
+		if !ok {
 			break
 		}
-		c := t.clips[i].clip
-		if at < c.Start {
-			if !advance {
-				break
-			}
-			at = c.Start
-		}
-		f, err := e.At(at)
+		f, err := e.At(tick)
 		if err != nil {
 			break
 		}
 		for _, a := range f.Audio {
-			if a.Ref.TrackID == trackID && !a.Linked {
-				return a, at, true
+			if a.Ref == ref && !a.Linked {
+				return a, tick, true
 			}
 		}
 		break

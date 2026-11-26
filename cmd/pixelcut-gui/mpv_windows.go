@@ -213,11 +213,11 @@ func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c p
 	var script string
 	var cmd *exec.Cmd
 	if audioOnly {
-		cmd, err = engine.AudioPreview(ctx, a.Path, project.Seconds(source), project.Seconds(c.Out-source), pipe, paused)
+		cmd, err = engine.AudioPreviewGain(ctx, a.Path, project.Seconds(source), project.Seconds(c.Out-source), pipe, paused, c.EffectiveGainPercent())
 	} else {
 		script, err = writeCropScript()
 		if err == nil {
-			cmd, err = engine.EmbeddedPreviewMode(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script, silent)
+			cmd, err = engine.EmbeddedPreviewGain(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script, silent, c.EffectiveGainPercent())
 		}
 	}
 	if err != nil {
