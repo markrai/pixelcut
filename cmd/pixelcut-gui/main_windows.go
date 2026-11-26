@@ -17,6 +17,7 @@ import (
 	editorstate "github.com/markrai/pixelcut/internal/editor"
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/mediacache"
+	"github.com/markrai/pixelcut/internal/playback"
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/service"
 	"github.com/markrai/pixelcut/internal/session"
@@ -192,8 +193,13 @@ type editor struct {
 	stillFingerprint        string
 	stillTime               int64
 	stillError              string
+	stillDue                time.Time
+	compositeResume         bool
 	compositeRun            *compositePreviewRun
+	lastCompositeMetrics    *playback.PreviewMetrics
 	compositeFrameTime      int64
+	compositeFrameUntil     int64
+	compositeFrameEnd       bool
 	retiringComposite       <-chan struct{}
 	busy                    bool
 	jobs                    service.Jobs[result]

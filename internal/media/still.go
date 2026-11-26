@@ -115,13 +115,18 @@ type stillSource struct {
 
 type StillDecoder struct {
 	engine  Engine
+	disk    *mediacache.Cache
 	sources []stillSource
 	frames  []stillEntry
 	bytes   int
 }
 
 func NewStillDecoder(engine Engine) *StillDecoder {
-	return &StillDecoder{engine: engine}
+	return NewStillDecoderWithCache(engine, nil)
+}
+
+func NewStillDecoderWithCache(engine Engine, disk *mediacache.Cache) *StillDecoder {
+	return &StillDecoder{engine: engine, disk: disk}
 }
 
 func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, path string) (stillSource, error) {
@@ -150,7 +155,7 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	if v.Width > 16384 || v.Height > 16384 || int64(v.Width)*int64(v.Height) > 33554432 {
 		return stillSource{}, errors.New("source exceeds static preview frame budget")
 	}
-	index, err := d.engine.Frames(ctx, path)
+	index, err := d.engine.CachedFrames(ctx, d.disk, path)
 	if err != nil {
 		return stillSource{}, err
 	}

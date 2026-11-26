@@ -8,6 +8,7 @@ import (
 
 	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/media"
+	"github.com/markrai/pixelcut/internal/mediacache"
 	"github.com/markrai/pixelcut/internal/playback"
 )
 
@@ -17,22 +18,24 @@ type compositePreviewEvent struct {
 }
 
 type compositePreviewRun struct {
-	cancel context.CancelFunc
-	events chan compositePreviewEvent
-	done   chan struct{}
-	clock  *playback.SampleClock
+	cancel  context.CancelFunc
+	events  chan compositePreviewEvent
+	done    chan struct{}
+	clock   *playback.SampleClock
+	metrics *playback.PreviewMetrics
 }
 
-func launchCompositePreview(engine media.Engine, compiled *composition.Evaluator, at int64) (*compositePreviewRun, error) {
+func launchCompositePreview(engine media.Engine, disk *mediacache.Cache, compiled *composition.Evaluator, at int64) (*compositePreviewRun, error) {
 	clock, err := playback.NewSampleClock(at, compiled.Duration())
 	if err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	run := &compositePreviewRun{cancel: cancel, events: make(chan compositePreviewEvent, 1), done: make(chan struct{}), clock: clock}
+	run := &compositePreviewRun{cancel: cancel, events: make(chan compositePreviewEvent, 1), done: make(chan struct{}), clock: clock, metrics: playback.NewPreviewMetrics()}
 	go func() {
 		defer close(run.done)
 		defer close(run.events)
+		defer func() { run.metrics.Finished(clock.Played()) }()
 		defer cancel()
 		work, stop := context.WithCancel(ctx)
 		defer stop()
@@ -56,7 +59,10 @@ func launchCompositePreview(engine media.Engine, compiled *composition.Evaluator
 		worker(func() error {
 			defer close(blocks)
 			decoder := media.NewPCMDecoder(work, engine)
-			defer decoder.Close()
+			defer func() {
+				decoder.Close()
+				run.metrics.SetAudio(decoder.Stats())
+			}()
 			for offset := int64(0); offset < clock.Total(); {
 				n := int(min(int64(media.PCMBlockFrames), clock.Total()-offset))
 				job, cancel := context.WithTimeout(work, 30*time.Second)
@@ -75,13 +81,16 @@ func launchCompositePreview(engine media.Engine, compiled *composition.Evaluator
 			return nil
 		})
 		worker(func() error {
-			return playPCM(work, clock, blocks, ready)
+			return playPCM(work, clock, blocks, ready, run.metrics)
 		})
 		worker(func() error {
-			decoder := media.NewStreamDecoder(work, engine)
-			defer decoder.Close()
+			decoder := media.NewStreamDecoderWithCache(work, engine, disk)
+			defer func() {
+				decoder.Close()
+				run.metrics.SetVideo(decoder.Stats())
+			}()
 			first := true
-			return composition.RenderClockedSequence(work, compiled, decoder, at, clock.Tick, func(ctx context.Context, value composition.CompositeFrame) error {
+			return composition.RenderClockedSequenceObserved(work, compiled, decoder, at, clock.Tick, func(ctx context.Context, value composition.CompositeFrame) error {
 				select {
 				case run.events <- compositePreviewEvent{value: value}:
 					if first {
@@ -92,6 +101,8 @@ func launchCompositePreview(engine media.Engine, compiled *composition.Evaluator
 				case <-ctx.Done():
 					return ctx.Err()
 				}
+			}, func(obs composition.FrameObservation) {
+				run.metrics.Decoded(obs.DecodeTime, obs.Eligible)
 			})
 		})
 		wg.Wait()
@@ -120,47 +131,48 @@ func (e *editor) compositeRetired() bool {
 	}
 }
 
+func (e *editor) sourcePreviewRetired() bool {
+	if e.retiringPreview == nil {
+		return true
+	}
+	select {
+	case <-e.retiringPreview:
+		e.retiringPreview = nil
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *editor) startCompositePlayback() error {
 	if e.compositeRun != nil {
 		return nil
 	}
-	if !e.compositeRetired() {
-		return fmt.Errorf("previous composite decoders are closing; retry Play")
+	if e.playhead >= e.endTime() {
+		return fmt.Errorf("no timeline remains ahead of the playhead")
+	}
+	if !e.stillActive {
+		e.stopPreview()
 	}
 	if e.playhead >= e.endTime() {
 		return fmt.Errorf("no timeline remains ahead of the playhead")
 	}
-	if e.layerSurface == 0 {
-		return fmt.Errorf("composite preview surface unavailable")
+	if !e.compositeRetired() || !e.sourcePreviewRetired() {
+		return e.seekComposite(e.playhead, true)
 	}
-	compiled, err := composition.Compile(e.model.Project())
+	compiled, err := e.compiledComposition()
 	if err != nil {
 		return err
 	}
-	e.stopPreview()
-	if e.retiringPreview != nil {
-		select {
-		case <-e.retiringPreview:
-			e.retiringPreview = nil
-		default:
-			return fmt.Errorf("source preview is closing; retry Play")
-		}
+	if err = e.prepareCompositeView(e.playhead); err != nil {
+		return err
 	}
-	if e.playhead >= compiled.Duration() {
-		return fmt.Errorf("no timeline remains ahead of the playhead")
-	}
-	e.stillActive = true
-	e.stillTime = e.playhead
-	e.stillFingerprint = e.model.Fingerprint()
-	run, err := launchCompositePreview(e.engine, compiled, e.playhead)
+	run, err := launchCompositePreview(e.engine, e.mediaDisk, compiled, e.playhead)
 	if err != nil {
-		e.cancelCompositeStill()
 		return err
 	}
 	e.compositeRun = run
-	user.NewProc("ShowWindow").Call(e.layerSurface, 5)
-	user.NewProc("SetWindowPos").Call(e.layerSurface, 0, 0, 0, 0, 0x0013)
-	user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
+	e.lastCompositeMetrics = run.metrics
 	e.syncPreviewLabel()
 	e.updatePlayButton(false)
 	e.tell("Composite playback (SDR, audio master). Preparing video and audio buffers.")
@@ -173,11 +185,15 @@ func (e *editor) cancelCompositeRun() {
 	}
 	run := e.compositeRun
 	e.compositeRun = nil
+	if run.metrics != nil {
+		run.metrics.Cancelled()
+	}
 	run.cancel()
 	e.retiringComposite = run.done
 }
 
 func (e *editor) freezeCompositePlayback() {
+	e.compositeResume = false
 	if run := e.compositeRun; run != nil && run.clock != nil {
 		tick := run.clock.Tick()
 		e.stillTime, e.playhead = tick, tick
@@ -186,7 +202,8 @@ func (e *editor) freezeCompositePlayback() {
 	e.cancelCompositeRun()
 	if e.stillFrame == nil || e.compositeFrameTime != e.playhead {
 		e.stillFrame = nil
-		e.stillError = "Paused; render a still to inspect this marker."
+		e.stillError = ""
+		e.stillDue = time.Now().Add(compositeSeekDelay)
 	}
 	e.syncPreviewLabel()
 	e.updatePlayButton(true)
@@ -196,7 +213,7 @@ func (e *editor) freezeCompositePlayback() {
 func (e *editor) pauseCompositePlayback() {
 	e.freezeCompositePlayback()
 	if e.stillFrame == nil {
-		if err := e.showCompositeStill(); err != nil {
+		if err := e.seekComposite(e.playhead, false); err != nil {
 			e.tell(err.Error())
 		}
 		return
@@ -228,7 +245,7 @@ func (e *editor) updateCompositePlayback() {
 		e.stillTime, e.playhead = tick, tick
 		e.refreshPlaybackMarker()
 	}
-	if e.stillFrame != nil && tick-e.compositeFrameTime > 2*media.CompositeStep {
+	if e.stillFrame != nil && !(composition.CompositeFrame{Time: e.compositeFrameTime, ValidUntil: e.compositeFrameUntil, End: e.compositeFrameEnd}).CurrentAt(tick) {
 		e.stillFrame = nil
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 1)
 	}
@@ -245,6 +262,7 @@ func (e *editor) updateCompositePlayback() {
 		}
 		if event.err != nil {
 			e.freezeCompositePlayback()
+			e.stillDue = time.Time{}
 			e.stillError = event.err.Error()
 			e.tell("Composite playback stopped: " + event.err.Error())
 			return
@@ -256,7 +274,8 @@ func (e *editor) updateCompositePlayback() {
 			e.tell("Composite playback returned an invalid frame.")
 			return
 		}
-		if now-f.Time > 2*media.CompositeStep {
+		if !f.CurrentAt(now) {
+			run.metrics.Dropped()
 			return
 		}
 		for path, identity := range f.Sources {
@@ -266,9 +285,16 @@ func (e *editor) updateCompositePlayback() {
 				return
 			}
 		}
+		if now != e.playhead {
+			e.stillTime, e.playhead = now, now
+			e.refreshPlaybackMarker()
+		}
 		e.stillFrame = &f.Frame
 		e.stillSources = f.Sources
 		e.compositeFrameTime = f.Time
+		e.compositeFrameUntil = f.ValidUntil
+		e.compositeFrameEnd = f.End
+		run.metrics.Presented(time.Duration(now-f.Time) * time.Microsecond)
 		user.NewProc("InvalidateRect").Call(e.layerSurface, 0, 0)
 	default:
 	}

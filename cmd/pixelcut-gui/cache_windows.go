@@ -194,8 +194,17 @@ func (e *editor) clearMediaCache() error {
 		return nil
 	}
 	disk := e.mediaDisk
+	e.stopPreview()
 	e.retireMediaWorkers()
+	if e.stillWorker != nil {
+		e.stillWorker.Close()
+		e.retiredWorkers = append(e.retiredWorkers, e.stillWorker.Done())
+		e.stillWorker = nil
+	}
 	retired := append([]<-chan struct{}(nil), e.retiredWorkers...)
+	if e.retiringComposite != nil {
+		retired = append(retired, e.retiringComposite)
+	}
 	e.frameCache = nil
 	e.tell("Clearing media cache...")
 	e.startJob(func(ctx context.Context) result {

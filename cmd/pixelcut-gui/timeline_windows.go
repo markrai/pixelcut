@@ -357,7 +357,7 @@ func (e *editor) beginTimeline(x, y, w int32) {
 	}
 	if l.TrackID != e.trackID() {
 		e.selectTimelineLane(l.TrackID)
-		playing = false
+		playing = e.playing()
 	}
 	if x < trackHeader {
 		return
@@ -382,6 +382,11 @@ func (e *editor) beginTimeline(x, y, w int32) {
 				mode = "move"
 			}
 			if e.track().Locked {
+				if e.stillActive {
+					e.seekTimeline(t, false)
+					e.checkpoint()
+					return
+				}
 				e.stopPreview()
 				e.playhead = t
 				e.refreshPlaybackMarker()
@@ -405,6 +410,9 @@ func (e *editor) beginTimeline(x, y, w int32) {
 					}
 					return
 				}
+			}
+			if e.stillActive && playing {
+				e.freezeCompositePlayback()
 			}
 			e.drag = &timelineDrag{index: i, trackID: e.trackID(), targetID: e.trackID(), y: y, mode: mode, x: x, scale: e.scale(w), original: c, candidate: c, valid: true, wasPlaying: playing, clickTime: t, groupIDs: ids, groupProject: e.model.Project(), ripple: e.rippleTrim && mode != "move" && len(ids) == 1, frames: frames, sourceDuration: duration}
 			user.NewProc("SetCapture").Call(e.timeline)
@@ -586,7 +594,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		} else if ui.scrubbing {
 			t := ui.timeAt(x, clientRect(hwnd).Right)
 			playing := ui.scrubPlaying
-			ui.scrubbing = false
+			ui.scrubbing, ui.scrubPlaying = false, false
 			user.NewProc("ReleaseCapture").Call()
 			ui.seekTimeline(t, playing)
 		} else {
@@ -597,7 +605,7 @@ func timelineProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return 0
 	case 0x0215:
 		ui.drag = nil
-		ui.scrubbing = false
+		ui.scrubbing, ui.scrubPlaying = false, false
 		if ui.marquee != nil {
 			d := ui.marquee
 			ui.marquee = nil

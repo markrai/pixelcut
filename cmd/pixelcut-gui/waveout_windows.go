@@ -96,7 +96,7 @@ func releaseWave(handle uintptr, q queuedWave) error {
 	return nil
 }
 
-func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan composition.PCMBlock, ready <-chan struct{}) (err error) {
+func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan composition.PCMBlock, ready <-chan struct{}, metrics *playback.PreviewMetrics) (err error) {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -142,7 +142,7 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 	ticker := time.NewTicker(5 * time.Millisecond)
 	defer ticker.Stop()
 	var submitted int64
-	started, closed := false, false
+	started, closed, starved := false, false, false
 	lastProgress := time.Now()
 	for {
 		if err := ctx.Err(); err != nil {
@@ -159,6 +159,11 @@ func playPCM(ctx context.Context, clock *playback.SampleClock, blocks <-chan com
 				return fmt.Errorf("invalid audio completion position")
 			}
 		}
+		empty := started && !closed && len(queued) == 0 && submitted < clock.Total()
+		if empty && !starved && metrics != nil {
+			metrics.Starved()
+		}
+		starved = empty
 		if closed && len(queued) == 0 {
 			if submitted != clock.Total() || clock.Played() != clock.Total() {
 				return fmt.Errorf("audio ended before project duration")
