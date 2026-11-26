@@ -63,7 +63,7 @@ from a build alone.
 | 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
 | 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.6 merged to main via PR #11; native qualification remains open |
 | 2D | Whole-project export and explicit output color contracts | 2D.1–2D.6 merged; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45843280827); physical acceptance pending |
-| 2E | Audio envelopes, fades, levels and mixing | In progress; 2E.1–2E.4 merged and CI passed; 2E.5 metering implemented; CI pending |
+| 2E | Audio envelopes, fades, levels and mixing | 2E.1–2E.5 merged and CI passed; 2E.6 automated qualification implemented; CI and physical acceptance pending |
 | 3A | GPU acceleration | Pending |
 | 3B | Transitions, keyframes, speed effects, titles and subtitles | Pending |
 | 4A | Packaging and distribution | Pending |
@@ -117,7 +117,9 @@ See [project export contract](docs/project-export.md). Whole-project HDR video a
 | 2E.2 | Per-clip volume and reversible mute controls, native audition behavior | Merged via PR #19; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45853835545); native acceptance pending |
 | 2E.3 | Fade-in and fade-out, timeline edit semantics | Merged via PR #20; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45855331369); native acceptance pending |
 | 2E.4 | Volume envelopes and draggable keyframes | Merged via PR #21; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45858633368); native acceptance pending |
-| 2E.5 | Audio level meters and clipping indicators | Implemented; CI and native acceptance pending |
-| 2E.6 | Audio preview/export parity, performance and physical qualification | Pending |
+| 2E.5 | Audio level meters and clipping indicators | Merged via PR #22; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45860773291); native acceptance pending |
+| 2E.6 | Audio preview/export parity, performance and physical qualification | Automated qualification implemented; CI and physical acceptance pending |
 
 See [audio processing contract](docs/audio-processing.md). The shared mixer consumes decoded PCM; decoder timing and lossy AAC output remain separate qualification issues. 2D physical acceptance remains open.
+
+2E.6 acceptance is tracked in [audio qualification](docs/audio-qualification.md). The canonical decoder deliberately trades seek-first latency for exact source-sample mapping. Do not mark audio physically qualified until the Windows audio-device, long-source seek, sustained-load and Pixel-media gates are recorded. Phase 3A GPU planning may proceed independently, but must preserve these contracts.
