@@ -228,7 +228,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				col = rgb(94, 52, 60)
 			}
 			policy := policies[l.TrackID]
-			if (audioTrack && !policy.Audio) || (!audioTrack && !policy.Video) {
+			if (audioTrack && (!policy.Audio || c.EffectiveGainPercent() == 0)) || (!audioTrack && !policy.Video) {
 				col = rgb(53, 56, 62)
 			}
 			if !valid {
@@ -254,7 +254,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			}
 			if geometry.LinkedAudio {
 				audioColor := palette.audio
-				if !policy.Audio {
+				if !policy.Audio || c.EffectiveGainPercent() == 0 {
 					audioColor = rgb(53, 56, 62)
 				}
 				if offline {

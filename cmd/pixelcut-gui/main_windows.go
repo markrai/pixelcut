@@ -124,6 +124,7 @@ const (
 	idPreferences
 	idTracks
 	idExportMenu
+	idClipAudio
 )
 
 type windowClass struct {
@@ -373,6 +374,7 @@ func (e *editor) refresh() {
 
 func (e *editor) fields() {
 	e.syncPreviewLabel()
+	e.syncClipAudioControl()
 	c, ok := e.selected()
 	for _, id := range []int{idStart, idIn, idOut, idCrop, idAt} {
 		change(e.controls[id], "")
@@ -427,6 +429,9 @@ func (e *editor) setControlsEnabled(enabled bool) {
 	}
 	for _, h := range e.controls {
 		user.NewProc("EnableWindow").Call(h, value)
+	}
+	if enabled {
+		e.syncClipAudioControl()
 	}
 }
 
@@ -810,6 +815,8 @@ func (e *editor) command(id, notification int) error {
 		return e.pausePreview()
 	case idExportMenu:
 		return e.showExportMenu()
+	case idClipAudio:
+		return e.openClipAudio()
 	case idExport:
 		c, ok := e.selected()
 		if !ok {
@@ -874,7 +881,7 @@ func wndProc(hwnd uintptr, msg uint32, wp, lp uintptr) uintptr {
 		return colorControl(msg, wp, lp)
 	case wmCommand:
 		id, notification := int(wp&0xffff), int((wp>>16)&0xffff)
-		if id >= idNew && id <= idExportMenu && !(id >= idCanvasW && id <= idPositionY) && id != idStart && id != idIn && id != idOut && id != idCrop && id != idAt {
+		if id >= idNew && id <= idClipAudio && !(id >= idCanvasW && id <= idPositionY) && id != idStart && id != idIn && id != idOut && id != idCrop && id != idAt {
 			if err := ui.command(id, notification); err != nil {
 				ui.tell(err.Error())
 			}
@@ -1046,11 +1053,12 @@ func main() {
 	button("Transform", 961, 234, 135, idTransform)
 	button("Visual crop", 825, 370, 130, idCropVisual)
 	button("Reset crop", 961, 370, 135, idCropReset)
-	ui.initTransformInspector()
 	label("Split at timeline time", 825, 273, 270)
 	edit("", 825, 297, 155, idAt)
 	button("Split", 986, 296, 110, idSplit)
 	button("Remove clip", 825, 332, 130, idDelete)
+	button("Audio...", 961, 332, 135, idClipAudio)
+	ui.initTransformInspector()
 	ui.timelineLabel = label("TIMELINE / V1 / active track", 12, 423, 180)
 	button("Track: V1 (2)", 196, 419, 128, idTracks)
 	button("Ripple delete", 330, 419, 125, idRippleDelete)

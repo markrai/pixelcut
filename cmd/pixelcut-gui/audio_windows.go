@@ -37,11 +37,13 @@ func (e *editor) syncPreviewLabel() {
 		preview += " / layer opacity not applied"
 	}
 	if !e.stillActive && e.compositeRun == nil && e.layerPlan == nil && !e.compositeResume {
-		if c, ok := e.selected(); ok && c.GainPercent() != 100 {
-			if c.GainPercent() == 0 {
+		if c, ok := e.selected(); ok && !c.AudioDetached {
+			if c.AudioMuted {
+				preview += " / clip muted"
+			} else if c.GainPercent() == 0 {
 				preview += " / clip silent"
-			} else {
-				preview += " / source gain unchanged (use composite)"
+			} else if c.GainPercent() != 100 {
+				preview += fmt.Sprintf(" / clip gain %d%%", c.GainPercent())
 			}
 		}
 	}
@@ -51,6 +53,12 @@ func (e *editor) syncPreviewLabel() {
 func audioClipLabel(c project.Clip) string {
 	if c.AudioDetached {
 		return " / video only"
+	}
+	if c.AudioMuted {
+		return " / muted"
+	}
+	if c.GainPercent() != 100 {
+		return fmt.Sprintf(" / vol %d%%", c.GainPercent())
 	}
 	return ""
 }
