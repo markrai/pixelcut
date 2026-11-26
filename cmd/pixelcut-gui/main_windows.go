@@ -822,11 +822,10 @@ func (e *editor) command(id, notification int) error {
 		if !ok {
 			return fmt.Errorf("select a clip")
 		}
-		a, ed, err := e.model.Project().MediaEdit(c)
+		a, ed, err := e.model.Project().MediaEditWithMute(c, e.track().Muted)
 		if err != nil {
 			return err
 		}
-		ed.Silent = ed.Silent || e.track().Muted
 		if !project.SourceAvailable(a.Path) {
 			return fmt.Errorf("source offline: %s; use Relink", filepath.Base(a.Path))
 		}

@@ -10,10 +10,10 @@ import (
 const (
 	clipGainBase = 9200
 	clipGainDown = 9250
-	clipGainUp
-	clipGainDownTen
-	clipGainUpTen
-	clipGainHeader
+	clipGainUp = 9251
+	clipGainDownTen = 9252
+	clipGainUpTen = 9253
+	clipGainHeader = 9254
 )
 
 var clipGainChoices = [...]int{0, 10, 25, 50, 75, 100, 125, 150, 200, 300, 400}
@@ -53,10 +53,10 @@ func clipAudioItems(c project.Clip) []menuItem {
 		items = append(items, menuItem{id: clipGainBase + i, label: label, enabled: true, checked: gain == percent})
 	}
 	return append(items, separator(),
-		item(clipGainDownTen, "Decrease volume by 10%", gain > 0),
-		item(clipGainUpTen, "Increase volume by 10%", gain < project.MaxGainPercent),
-		item(clipGainDown, "Decrease volume by 1%", gain > 0),
-		item(clipGainUp, "Increase volume by 1%", gain < project.MaxGainPercent))
+		item(clipGainDownTen, "Decrease volume by 10 points", gain > 0),
+		item(clipGainUpTen, "Increase volume by 10 points", gain < project.MaxGainPercent),
+		item(clipGainDown, "Decrease volume by 1 point", gain > 0),
+		item(clipGainUp, "Increase volume by 1 point", gain < project.MaxGainPercent))
 }
 
 func clipAudioChoice(p project.Project, ref project.ClipRef, id int) (project.Project, error) {

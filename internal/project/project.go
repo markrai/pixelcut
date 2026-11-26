@@ -144,6 +144,10 @@ func (p Project) Split(track, clip, rightID string, at int64) (Project, error) {
 }
 
 func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
+	return p.MediaEditWithMute(c, false)
+}
+
+func (p Project) MediaEditWithMute(c Clip, muted bool) (Asset, media.Edit, error) {
 	if err := p.Validate(); err != nil {
 		return Asset{}, media.Edit{}, err
 	}
@@ -157,10 +161,11 @@ func (p Project) MediaEdit(c Clip) (Asset, media.Edit, error) {
 	if c.OpacityPercent() != 100 {
 		return a, media.Edit{}, errors.New("layer opacity requires project composition; selected-clip export cannot apply it")
 	}
-	if !c.AudioDetached && c.EffectiveGainPercent() != 100 && c.EffectiveGainPercent() != 0 {
+	silent := muted || c.AudioDetached || c.EffectiveGainPercent() == 0
+	if !silent && c.GainPercent() != 100 {
 		return a, media.Edit{}, errors.New("clip audio gain requires whole-project export")
 	}
-	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Duration()), Trim: c.In != 0 || c.Out != a.Duration, Silent: c.AudioDetached || c.EffectiveGainPercent() == 0}
+	e := media.Edit{Start: Seconds(c.In), Duration: Seconds(c.Duration()), Trim: c.In != 0 || c.Out != a.Duration, Silent: silent}
 	if c.Crop != nil {
 		e.Crop = &media.Crop{X: c.Crop.X, Y: c.Crop.Y, Width: c.Crop.Width, Height: c.Crop.Height}
 	}
