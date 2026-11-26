@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -59,6 +59,9 @@ func validateAsset(a Asset) error {
 func validateClip(c Clip, a Asset, kind string) error {
 	if _, ok := c.TimelineInterval(); !ok || c.ID == "" || c.AssetID != a.ID || c.Out > a.Duration {
 		return fmt.Errorf("%w %q: invalid identity or interval", ErrInvalidClip, c.ID)
+	}
+	if c.AudioDetached && (kind != VideoTrack || !a.HasAudio) {
+		return fmt.Errorf("%w %q: invalid detached audio state", ErrInvalidClip, c.ID)
 	}
 	if kind == AudioTrack && (!a.HasAudio || c.Crop != nil || c.Transform != nil) {
 		return fmt.Errorf("%w %q: invalid audio clip", ErrInvalidClip, c.ID)
@@ -111,6 +114,9 @@ func (p Project) Validate() error {
 			a, ok := assets[c.AssetID]
 			if !ok || clips[c.ID] {
 				return fmt.Errorf("%w %q: missing asset or duplicate identity", ErrInvalidClip, c.ID)
+			}
+			if c.AudioDetached && p.Version != Version {
+				return fmt.Errorf("%w: detached audio requires version %d", ErrUnsupportedVersion, Version)
 			}
 			if err := validateClip(c, a, t.Kind); err != nil {
 				return err

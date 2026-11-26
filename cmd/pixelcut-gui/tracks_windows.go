@@ -23,6 +23,7 @@ func (e *editor) trackID() string  { return e.model.TrackID() }
 func (e *editor) audioTrack() bool { return e.track().Kind == "audio" }
 
 func (e *editor) syncTrackUI() {
+	e.syncPreviewLabel()
 	if e.timeline != 0 && e.visibleTrack != e.trackID() {
 		e.visibleTrack = e.trackID()
 		e.laneScroll = e.timelineStack().Reveal(e.trackID())
@@ -47,7 +48,7 @@ func (e *editor) switchTrack(id string) {
 	e.stopPreview()
 	e.model.SwitchTrack(id)
 	e.refresh()
-	e.tell("Editing " + id + ". Preview is isolated to the active video track.")
+	e.tell("Editing " + id + ". Preview is isolated to the active track.")
 }
 
 func trackMenuItems(p project.Project, active string, selected []string) []menuItem {

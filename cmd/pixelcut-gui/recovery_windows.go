@@ -218,7 +218,7 @@ func (e *editor) finishRecovery() {
 		e.tell(fmt.Sprintf("Restored session; %d source file(s) offline. References retained; use Relink.", missing))
 		return
 	}
-	if c, ok := e.selected(); e.prefs.RestorePreview && !e.audioTrack() && ok && e.playhead >= c.Start && e.playhead < c.Start+(c.Out-c.In) {
+	if c, ok := e.selected(); e.prefs.RestorePreview && ok && e.playhead >= c.Start && e.playhead < c.Start+(c.Out-c.In) {
 		if err := e.startPreview(true); err != nil {
 			e.tell("Restored session; preview unavailable: " + err.Error())
 			return

@@ -485,16 +485,13 @@ func (e *editor) stopPreview() {
 func (e *editor) play() error { return e.startPreview(false) }
 
 func (e *editor) startPreview(paused bool) error {
-	if e.audioTrack() {
-		return fmt.Errorf("Independent audio preview is not yet supported; select a video track")
-	}
 	c, ok := e.selected()
 	if !ok {
 		return fmt.Errorf("select a timeline clip")
 	}
-	a, _, err := e.model.Project().MediaEdit(c)
-	if err != nil {
-		return err
+	a, ok := e.model.Project().Asset(c.AssetID)
+	if !ok || (e.audioTrack() && !a.HasAudio) {
+		return project.ErrInvalidClip
 	}
 	if !project.SourceAvailable(a.Path) {
 		e.stopPreview()
@@ -515,7 +512,7 @@ func (e *editor) startPreview(paused bool) error {
 		e.playhead = c.Start
 	}
 	generation := e.generation
-	preview, err := launchNativePreview(e.engine, e.host, a, c, e.playhead, e.speed(), e.prefs.HDR, paused, func(err error) {
+	preview, err := launchNativePreview(e.engine, e.host, a, c, e.playhead, e.speed(), e.prefs.HDR, paused, e.audioTrack(), func(err error) {
 		select {
 		case e.previewResults <- previewResult{generation, err}:
 			post.Call(mainWindow, wmPreviewDone, 0, 0)
@@ -665,6 +662,8 @@ func (e *editor) command(id, notification int) error {
 		} else {
 			e.tell("Clip properties applied.")
 		}
+	case menuDetachAudio, menuReattachAudio:
+		return e.editClipAudio(id == menuDetachAudio)
 	case idSplit:
 		c, ok := e.selected()
 		if !ok {
@@ -733,7 +732,7 @@ func (e *editor) command(id, notification int) error {
 		}
 		e.playhead = min(e.playhead, e.endTime())
 		e.refresh()
-		if _, ok := e.selected(); ok && e.model.Count() <= 1 && !e.audioTrack() {
+		if _, ok := e.selected(); ok && e.model.Count() <= 1 {
 			if err := e.startPreview(true); err != nil {
 				e.tell("History restored; preview unavailable: " + err.Error())
 				return nil
@@ -783,7 +782,11 @@ func (e *editor) command(id, notification int) error {
 		e.startJob(func(ctx context.Context) result {
 			var err error
 			if !ed.Trim && ed.Crop == nil && ed.Transform == nil {
-				err = e.engine.Remux(ctx, a.Path, path)
+				if ed.Silent {
+					err = e.engine.RemuxVideoOnly(ctx, a.Path, path)
+				} else {
+					err = e.engine.Remux(ctx, a.Path, path)
+				}
 			} else {
 				err = e.engine.Render(ctx, a.Path, path, ed)
 			}

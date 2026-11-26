@@ -13,6 +13,10 @@ import (
 func (e Engine) MPVPath() (string, error) { return findMPV(e.MPV) }
 
 func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string, paused bool, script string) (*exec.Cmd, error) {
+	return e.EmbeddedPreviewMode(ctx, path, window, start, duration, hdr, inputConfig, ipcServer, paused, script, false)
+}
+
+func (e Engine) EmbeddedPreviewMode(ctx context.Context, path string, window uintptr, start, duration float64, hdr bool, inputConfig, ipcServer string, paused bool, script string, silent bool) (*exec.Cmd, error) {
 	if window == 0 || start < 0 || duration <= 0 {
 		return nil, errors.New("preview requires a host window and positive source interval")
 	}
@@ -25,6 +29,9 @@ func (e Engine) EmbeddedPreview(ctx context.Context, path string, window uintptr
 		return nil, err
 	}
 	args := []string{"--no-config", "--vo=gpu-next", "--hwdec=no", "--wid=" + strconv.FormatUint(uint64(uint32(window)), 10), "--start=" + seconds(start), "--end=" + seconds(start+duration), "--keep-open=yes", "--osc=no", "--input-terminal=no", "--input-default-bindings=no", "--input-builtin-bindings=no", "--input-builtin-drag-and-drop=no", "--hr-seek=yes", "--window-dragging=no", "--cursor-autohide=no"}
+	if silent {
+		args = append(args, "--aid=no")
+	}
 	if script != "" {
 		args = append(args, "--script="+script)
 	}

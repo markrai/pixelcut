@@ -4,6 +4,7 @@ import (
 	"context"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync/atomic"
 	"time"
@@ -186,7 +187,7 @@ type nativePreview struct {
 	done   chan struct{}
 }
 
-func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c project.Clip, marker int64, speed float64, hdr, paused bool, finished func(error)) (*nativePreview, error) {
+func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c project.Clip, marker int64, speed float64, hdr, paused, audioOnly bool, finished func(error)) (*nativePreview, error) {
 	source, ok := c.SourceAt(marker)
 	if !ok {
 		return nil, project.ErrInvalidClip
@@ -209,13 +210,16 @@ func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c p
 		return nil, err
 	}
 	pipe := previewPipeName(name)
-	script, err := writeCropScript()
-	if err != nil {
-		os.Remove(name)
-		cancel()
-		return nil, err
+	var script string
+	var cmd *exec.Cmd
+	if audioOnly {
+		cmd, err = engine.AudioPreview(ctx, a.Path, project.Seconds(source), project.Seconds(c.Out-source), pipe, paused)
+	} else {
+		script, err = writeCropScript()
+		if err == nil {
+			cmd, err = engine.EmbeddedPreviewMode(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script, c.AudioDetached)
+		}
 	}
-	cmd, err := engine.EmbeddedPreview(ctx, a.Path, host, project.Seconds(source), project.Seconds(c.Out-source), hdr, name, pipe, paused, script)
 	if err != nil {
 		os.Remove(script)
 		os.Remove(name)
@@ -231,7 +235,9 @@ func launchNativePreview(engine media.Engine, host uintptr, a project.Asset, c p
 	done := make(chan struct{})
 	clock := newPreviewClock(c, marker, paused)
 	clock.setSpeed(speed)
-	clock.setComposition(a, c.Crop, c.Transform, false)
+	if !audioOnly {
+		clock.setComposition(a, c.Crop, c.Transform, false)
+	}
 	processDone := make(chan struct{})
 	clockDone := make(chan struct{})
 	go func() { defer close(clockDone); clock.observe(ctx, pipe, processDone) }()

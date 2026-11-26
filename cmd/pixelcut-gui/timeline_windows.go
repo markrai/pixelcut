@@ -87,7 +87,7 @@ func (e *editor) clipGeometry(v timeline.View, c project.Clip) (timeline.ClipGeo
 
 func (e *editor) laneClipGeometry(v timeline.View, c project.Clip, l timeline.Lane) (timeline.ClipGeometry, bool) {
 	a, ok := e.model.Project().Asset(c.AssetID)
-	g, visible := v.Clip(c, ok && a.HasAudio && l.Kind == project.VideoTrack)
+	g, visible := v.Clip(c, ok && a.HasAudio && !c.AudioDetached && l.Kind == project.VideoTrack)
 	g.OffsetY = l.Offset()
 	return g, visible
 }
@@ -203,7 +203,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				valid = !e.model.Contains(c.ID) && !(d.ripple && l.TrackID == d.trackID)
 			}
 			a, _ := p.Asset(c.AssetID)
-			geometry, visible := view.Clip(c, a.HasAudio && !audioTrack)
+			geometry, visible := view.Clip(c, a.HasAudio && !c.AudioDetached && !audioTrack)
 			if !visible {
 				continue
 			}
@@ -238,7 +238,7 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 				fill(dc, rect{right - 3, laneTop, right, laneBottom}, palette.accent)
 			}
 			if right-left > 20 {
-				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs", filepath.Base(a.Path), project.Seconds(c.Out-c.In)), palette.text, 4)
+				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs%s", filepath.Base(a.Path), project.Seconds(c.Out-c.In), audioClipLabel(c)), palette.text, 4)
 			}
 			if geometry.LinkedAudio {
 				audioColor := palette.audio

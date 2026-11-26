@@ -120,11 +120,44 @@ func (e *Evaluator) At(at int64) (Evaluation, error) {
 			c = c.Clone()
 			f.Video = append(f.Video, VideoLayer{Contribution: source, Crop: c.Crop, Transform: c.Transform})
 		}
-		if item.asset.HasAudio {
+		if item.asset.HasAudio && !c.AudioDetached {
 			f.Audio = append(f.Audio, AudioContribution{Contribution: source, Linked: t.kind == project.VideoTrack})
 		}
 	}
 	return f, nil
+}
+
+func (e *Evaluator) AudioTarget(trackID string, at int64, advance bool) (AudioContribution, int64, bool) {
+	if at < 0 || at >= e.duration {
+		return AudioContribution{}, at, false
+	}
+	for _, t := range e.tracks {
+		if t.id != trackID || t.kind != project.AudioTrack {
+			continue
+		}
+		i := sort.Search(len(t.clips), func(i int) bool { return t.clips[i].clip.End() > at })
+		if i == len(t.clips) {
+			break
+		}
+		c := t.clips[i].clip
+		if at < c.Start {
+			if !advance {
+				break
+			}
+			at = c.Start
+		}
+		f, err := e.At(at)
+		if err != nil {
+			break
+		}
+		for _, a := range f.Audio {
+			if a.Ref.TrackID == trackID && !a.Linked {
+				return a, at, true
+			}
+		}
+		break
+	}
+	return AudioContribution{}, at, false
 }
 
 func (e *Evaluator) VideoTarget(trackID string, at int64, advance bool) (VideoLayer, int64, bool) {
