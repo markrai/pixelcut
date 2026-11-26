@@ -157,7 +157,9 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	}
 	s := stillSource{source: identity, stream: v, index: index}
 	if len(d.sources) >= 4 {
-		d.sources = d.sources[1:]
+		copy(d.sources, d.sources[1:])
+		d.sources[len(d.sources)-1] = stillSource{}
+		d.sources = d.sources[:len(d.sources)-1]
 	}
 	d.sources = append(d.sources, s)
 	return s, nil
@@ -218,7 +220,7 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 			return cloneStill(entry.frame), nil
 		}
 	}
-	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, "-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1", "-ss", seconds(float64(tick)/1000000), "-i", req.Path, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-vf", graph, "-c:v", "rawvideo", "-threads", "1", "-f", "rawvideo", "-")
+	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, "-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1", "-ss", seconds(float64(tick)/1000000), "-i", req.Path, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-vf", graph, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
 	b, err := cmd.Output()
 	if err != nil {
 		return StillFrame{}, commandError(d.engine.FFmpeg, err)

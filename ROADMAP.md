@@ -31,7 +31,7 @@ Windows acceptance for these recent slices is not recorded here.
 
 ## 2C.R: Architectural stabilization
 
-New product features require stabilization acceptance before merge/release. 2C.2 was merged at the user's direction after CI; physical qualification remains outstanding. 2C.3 and 2C.4 passed automated CI and are merged. 2C.5 is isolated on a feature branch; native qualification remains outstanding.
+New product features require stabilization acceptance before merge/release. 2C.2 was merged at the user's direction after CI; physical qualification remains outstanding. 2C.3 and 2C.4 passed automated CI and are merged. 2C.5 is merged with automated CI and paired performance qualification passed; native qualification remains outstanding.
 Each slice must independently preserve existing functionality and project/recovery
 compatibility. Ownership rules are in [ARCHITECTURE.md](ARCHITECTURE.md).
 The next slice cannot be accepted until its predecessor's verification is recorded.
@@ -60,13 +60,24 @@ from a build alone.
 | 2C.2 | Stacked lanes and cross-track dragging | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45722841420); merged; native acceptance pending |
 | 2C.3 | Independent audio playback, detach/relink | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45725905248); merged; native acceptance pending |
 | 2C.4 | Track visibility, mute, solo, lock | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45729406556); merged; native acceptance pending |
-| 2C.5 | Layering, opacity and picture-in-picture | Layer planning, controls and schematic implemented; CI and native verification pending; decoded compositing deferred to 2C.6 |
-| 2C.6 | Composite preview and continuous timeline playback | Pending |
+| 2C.5 | Layering, opacity and picture-in-picture | [CI passed](https://github.com/markrai/pixelcut/actions/runs/45732847195); merged; native acceptance pending |
+| 2C.6 | Composite preview and continuous timeline playback | In progress; 2C.6.1–2C.6.2 implemented, verification pending |
 | 2D | Whole-project export and explicit output color contracts | Pending |
 | 2E | Audio envelopes, fades, levels and mixing | Pending |
 | 3A | GPU acceleration | Pending |
 | 3B | Transitions, keyframes, speed effects, titles and subtitles | Pending |
 | 4A | Packaging and distribution | Pending |
+
+## 2C.6 staged delivery
+
+| Slice | Deliverable | Status |
+| --- | --- | --- |
+| 2C.6.1 | Timestamped still decoder, bounded source/frame cache | Implemented; CI pending |
+| 2C.6.2 | Static SDR composite, geometry/opacity and Windows preview | Implemented; CI and native verification pending |
+| 2C.6.3 | Continuous multi-layer video playback with persistent decoding | Pending |
+| 2C.6.4 | Audio synchronization, elementary mixing and master clock | Pending |
+| 2C.6.5 | Integrated seeking, scrubbing, gaps and clip boundaries | Pending |
+| 2C.6.6 | Performance, cancellation/resource management and HDR display fidelity qualification | Pending |
 
 2B.4.2 and 2B.4.6 will be scheduled separately. No release dates are assumed.
 

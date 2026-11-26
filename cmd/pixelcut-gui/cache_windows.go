@@ -58,7 +58,7 @@ func (e *editor) checkSourceVersions(force bool) {
 	}
 	if !force && e.restorePending && e.sourcesReady() {
 		e.restorePending = false
-		if e.restoreView == e.view() && e.restoreFingerprint == e.model.Fingerprint() && !e.busy && !e.previewActive() {
+		if e.restoreView == e.view() && e.restoreFingerprint == e.model.Fingerprint() && !e.busy && !e.previewActive() && !e.stillActive && e.layerPlan == nil {
 			e.finishRecovery()
 		}
 	}
