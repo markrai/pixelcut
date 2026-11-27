@@ -3,6 +3,7 @@ package projectexport
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/markrai/pixelcut/internal/media"
@@ -166,10 +167,11 @@ func TestHLGQualificationComparatorRejectsErrors(t *testing.T) {
 			if _, err := compareHLGQualification(f, ref, bad); err == nil {
 				t.Fatal("two-code mixed error accepted")
 			}
+			p = readPixel(ref, n, 0)
 			p.Cb = 63
 			writePixel(bad, n, 0, p)
-			if _, err := compareHLGQualification(f, ref, bad); err == nil {
-				t.Fatal("illegal mixed range accepted")
+			if _, err := compareHLGQualification(f, ref, bad); err == nil || !strings.Contains(err.Error(), "outside legal limited range") {
+				t.Fatalf("illegal mixed range not identified: %v", err)
 			}
 		}
 		if _, err := compareHLGQualification(f, ref, bad[:len(bad)-1]); err == nil {
