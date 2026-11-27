@@ -414,9 +414,11 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 		return r, err
 	}
 	r.SourceVideo = &PreviewScaleSource{Width: v.Width, Height: v.Height, Range: v.Range, ChromaLocation: v.ChromaLocation}
-	if rotation, rotationErr := v.DisplayRotation(); rotationErr == nil {
-		r.SourceVideo.Rotation = &rotation
+	rotation, err := v.DisplayRotation()
+	if err != nil {
+		return r, err
 	}
+	r.SourceVideo.Rotation = &rotation
 	display, err := v.DisplayGeometry()
 	if err != nil {
 		return r, err
@@ -427,7 +429,7 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 	}
 	if options.CorrectChroma {
 		codedWidth := width
-		if *r.SourceVideo.Rotation == -90 || *r.SourceVideo.Rotation == 90 {
+		if rotation == -90 || rotation == 90 {
 			codedWidth = height
 		}
 		plan, err := planPreviewChromaCorrection(v.Width, codedWidth)
