@@ -21,6 +21,13 @@ func TestPreviewBackendPaths(t *testing.T) {
 	if vulkan.referenceBGRA != hybrid.referenceBGRA || vulkan.referencePlanes != hybrid.referencePlanes {
 		t.Fatal("CPU reference changed")
 	}
+	reference, err := previewCheckArgs(Default(), v, req, 2, 4, false)
+	if err != nil || strings.Join(reference, "\x00") != strings.Join(previewPairArgs(req.Path, hybrid.referenceInput, hybrid.referenceBGRA, 4, "bgra"), "\x00") {
+		t.Fatalf("reference arguments changed: %v", err)
+	}
+	if !strings.Contains(vulkan.candidateBGRA, "apply_dolbyvision=0:apply_filmgrain=0") {
+		t.Fatal("unwanted optional color processing enabled")
+	}
 	if _, err := buildPreviewBackendPaths(v, req, 0, 4, PreviewBackendOptions{Backend: "hybrid", VulkanDevice: 2}); err == nil {
 		t.Fatal("hybrid accepted Vulkan device")
 	}

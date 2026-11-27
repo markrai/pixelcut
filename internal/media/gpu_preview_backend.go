@@ -88,7 +88,7 @@ func buildPreviewBackendPaths(v Stream, req StillRequest, first, count int, opti
 			return paths, errors.New("unsupported production output scale boundary")
 		}
 		paths.candidateInput = append([]string{"-init_hw_device", fmt.Sprintf("vulkan=pcvk:%d", options.VulkanDevice), "-filter_hw_device", "pcvk"}, paths.referenceInput...)
-		filter := fmt.Sprintf("libplacebo=w=%d:h=%d:format=yuv420p10le:upscaler=lanczos:downscaler=lanczos:chroma_location=auto:colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:range=tv:peak_detect=0:deband=0:sigmoid=0:disable_linear=1:dithering=none:apply_dovi=0", req.OutputWidth, req.OutputHeight)
+		filter := fmt.Sprintf("libplacebo=w=%d:h=%d:format=yuv420p10le:upscaler=lanczos:downscaler=lanczos:chroma_location=auto:colorspace=bt2020nc:color_primaries=bt2020:color_trc=arib-std-b67:range=tv:peak_detect=0:deband=0:sigmoid=0:disable_linear=1:dithering=none:apply_dolbyvision=0:apply_filmgrain=0", req.OutputWidth, req.OutputHeight)
 		paths.candidatePlanes = prefix + "," + filter + ",format=yuv420p10le"
 		paths.candidateBGRA = paths.candidatePlanes + "," + previewToneMapGraph
 	}
