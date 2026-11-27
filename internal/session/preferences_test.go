@@ -76,3 +76,30 @@ func TestDecodeBackendPreferences(t *testing.T) {
 		t.Fatal("unknown decode preference accepted")
 	}
 }
+
+func TestEncodeBackendPreferences(t *testing.T) {
+	dir := t.TempDir()
+	p := DefaultPreferences()
+	p.DecodeBackend = "cuda"
+	for _, mode := range []string{"", "cpu", "nvenc"} {
+		p.EncodeBackend = mode
+		if err := SavePreferences(dir, p); err != nil {
+			t.Fatal(err)
+		}
+		got, err := LoadPreferences(dir)
+		if err != nil || got != p {
+			t.Fatalf("encode preference round trip: %+v %v", got, err)
+		}
+	}
+	p.EncodeBackend = "auto"
+	if err := SavePreferences(dir, p); err == nil {
+		t.Fatal("unsupported encoder accepted")
+	}
+	if err := SavePreferences(dir, DefaultPreferences()); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadPreferences(dir)
+	if err != nil || got.EncodeBackend != "" {
+		t.Fatal("default encoder not restored")
+	}
+}

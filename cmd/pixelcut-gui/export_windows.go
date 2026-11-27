@@ -149,7 +149,11 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 	if plan.Contract.Audio {
 		audio = "AAC stereo, 48 kHz, 192 kbps (all enabled audio)"
 	}
-	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\nHEVC Main 10 / BT.2020 HLG / limited range\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, fps, float64(plan.VideoFrames)/float64(fps), audio, path)
+	engine := exportEngineForPreferences(e.engine, e.prefs)
+	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\nHEVC Main 10 / BT.2020 HLG / limited range\nEncoder: %s\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, fps, float64(plan.VideoFrames)/float64(fps), engine.EncodeBackendName(), audio, path)
+	if engine.EncodeBackend == media.BackendNVENC {
+		msg += "\n\nExperimental hardware encoding may increase file size. No automatic CPU fallback."
+	}
 	if len(plan.Warnings) > 0 {
 		msg += "\n\n" + strings.Join(plan.Warnings, "\n")
 	}
@@ -173,7 +177,6 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 			retired = append(retired, done)
 		}
 	}
-	engine := e.engine
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &projectExportJob{cancel: cancel}
 	hwnd := mainWindow
@@ -191,7 +194,7 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 			return result{message: "Project export canceled. No output published."}
 		}
 		_, warnings := job.snapshot()
-		message := "Project export complete (" + engine.DecodeBackendName() + " decode): " + path
+		message := "Project export complete (" + engine.DecodeBackendName() + " decode; " + engine.EncodeBackendName() + " encode): " + path
 		if len(warnings) != 0 {
 			message += fmt.Sprintf(" (%d preflight warning(s); use plan-export for details)", len(warnings))
 		}

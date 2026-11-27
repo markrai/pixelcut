@@ -23,8 +23,9 @@ const (
 type Backend string
 
 const (
-	BackendAuto Backend = "auto"
-	BackendCPU  Backend = "cpu"
+	BackendAuto  Backend = "auto"
+	BackendCPU   Backend = "cpu"
+	BackendNVENC Backend = "nvenc"
 )
 
 type BackendDecision struct {
@@ -46,6 +47,11 @@ func SelectVideoBackend(stage VideoStage, requested Backend) (BackendDecision, e
 		d.Selected, d.Reason = BackendCPU, "explicit CPU reference"
 	case BackendAuto:
 		d.Selected, d.Reason = BackendCPU, "automatic GPU selection awaits broader qualification"
+	case BackendNVENC:
+		if stage != StageEncode {
+			return d, fmt.Errorf("backend %q is not qualified for %s", requested, stage)
+		}
+		d.Selected, d.Reason = BackendNVENC, "explicit experimental HEVC Main 10 encoding, device 0, QP 16; no silent fallback"
 	case BackendCUDA:
 		if stage != StageDecode {
 			return d, fmt.Errorf("backend %q is not qualified for %s", requested, stage)
@@ -55,6 +61,24 @@ func SelectVideoBackend(stage VideoStage, requested Backend) (BackendDecision, e
 		return d, fmt.Errorf("backend %q is not qualified for %s", requested, stage)
 	}
 	return d, nil
+}
+
+func ParseEncodeBackend(value string) (Backend, error) {
+	switch Backend(value) {
+	case "", BackendCPU:
+		return BackendCPU, nil
+	case BackendNVENC:
+		return BackendNVENC, nil
+	default:
+		return "", fmt.Errorf("unknown encode backend %q (use cpu or nvenc)", value)
+	}
+}
+
+func (e Engine) EncodeBackendName() string {
+	if e.EncodeBackend == BackendNVENC {
+		return "NVIDIA NVENC (experimental)"
+	}
+	return "Software (x265)"
 }
 
 type DeviceProbe struct {
@@ -121,6 +145,14 @@ func (e Engine) ProbeAcceleration(ctx context.Context, devices bool) (Accelerati
 		return r, err
 	}
 	r.Decisions[0], err = SelectVideoBackend(StageDecode, backend)
+	if err != nil {
+		return r, err
+	}
+	encode, err := ParseEncodeBackend(string(e.EncodeBackend))
+	if err != nil {
+		return r, err
+	}
+	r.Decisions[3], err = SelectVideoBackend(StageEncode, encode)
 	return r, err
 }
 
@@ -253,8 +285,19 @@ func (r AccelerationReport) String() string {
 		fmt.Fprintf(&b, "\n%s: %s (%s)", d.Stage, d.Selected, d.Reason)
 	}
 	b.WriteString("\n\nDevice initialization does not establish Main 10, HDR, frame timing, rendering or encoding support.")
-	if len(r.Decisions) > 0 && r.Decisions[0].Selected == BackendCUDA {
-		b.WriteString(" Experimental CUDA decode requested for composite preview and project export. Other rendering stages remain CPU.")
+	hardware := false
+	for _, d := range r.Decisions {
+		if d.Stage == StageDecode && d.Selected == BackendCUDA {
+			hardware = true
+			b.WriteString(" Experimental CUDA decode requested for composite preview and project export.")
+		}
+		if d.Stage == StageEncode && d.Selected == BackendNVENC {
+			hardware = true
+			b.WriteString(" Experimental NVENC requested for project export; actual availability is checked by the encoder.")
+		}
+	}
+	if hardware {
+		b.WriteString(" Geometry and compositing remain CPU.")
 	} else {
 		b.WriteString(" Rendering remains CPU-only.")
 	}

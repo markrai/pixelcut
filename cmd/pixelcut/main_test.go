@@ -108,3 +108,20 @@ func TestGPUPreviewBackendCommandArguments(t *testing.T) {
 		t.Fatalf("unsupported backend accepted: %v %s", err, out.String())
 	}
 }
+
+func TestExportEncodeBackendArguments(t *testing.T) {
+	var out bytes.Buffer
+	for _, command := range []string{"export-project", "export-video"} {
+		if err := run(context.Background(), []string{command, "-encode", "bogus", "-color", "hlg", "-fps", "30", "project.pixelcut.json", "out.mp4"}, &out); err == nil || !strings.Contains(err.Error(), "unknown encode backend") {
+			t.Fatalf("invalid encode backend for %s: %v", command, err)
+		}
+		out.Reset()
+		if err := run(context.Background(), []string{command, "-h"}, &out); err != nil || !strings.Contains(out.String(), "experimental nvenc") {
+			t.Fatalf("encode flag missing from %s help: %v", command, err)
+		}
+	}
+	out.Reset()
+	if err := run(context.Background(), []string{"plan-export", "-encode", "nvenc", "project.pixelcut.json"}, &out); err == nil {
+		t.Fatal("plan-export accepted runtime encoder selection")
+	}
+}

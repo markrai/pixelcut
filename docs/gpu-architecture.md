@@ -65,3 +65,7 @@ The test-only program_opencl candidate packs normalized HLG layer samples and op
 ## 3A.4d / 3A.5a
 
 OpenCL activation deferred pending physical evidence; CPU composition retained. Hardware encoder qualification now begins at the existing CPU-produced normalized HLG 4:4:4 frame boundary. Share input chroma normalization and output container/color arguments with the current CPU encoder, but isolate NVENC selection in tests. No production backend dispatch change. See [hardware encode qualification](gpu-encode-qualification.md).
+
+## 3A.5c.2 explicit experimental encoder selection
+
+After TITAN functional and longer-export qualification, the stage policy accepts NVENC only for explicitly requested encode, independently of CUDA decode. Automatic policy remains CPU; inventory and initialization never enable a backend. App preferences store the encoder separately, applied to export/diagnostic snapshots only. Public whole-project exports use device 0 and QP16; selected clip rendering is unchanged. No fallback. Resource evidence and physical GUI/CLI acceptance remain open; no default change.

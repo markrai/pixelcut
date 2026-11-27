@@ -154,3 +154,30 @@ func TestAccelerationNewFilterInventory(t *testing.T) {
 		}
 	}
 }
+
+func TestExperimentalEncodePolicy(t *testing.T) {
+	for _, stage := range []VideoStage{StageDecode, StageGeometry, StageComposite, StageEncode} {
+		d, err := SelectVideoBackend(stage, BackendNVENC)
+		if stage == StageEncode {
+			if err != nil || d.Selected != BackendNVENC {
+				t.Fatalf("encode policy: %+v %v", d, err)
+			}
+			r := AccelerationReport{Decisions: []BackendDecision{d}}
+			if !strings.Contains(r.String(), "Experimental NVENC requested") || strings.Contains(r.String(), "Rendering remains CPU-only") {
+				t.Fatal("diagnostic omitted requested encoder")
+			}
+		} else if err == nil || d.Selected != "" {
+			t.Fatalf("NVENC accepted for %s", stage)
+		}
+	}
+	for _, value := range []string{"", "cpu", "nvenc"} {
+		if _, err := ParseEncodeBackend(value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, value := range []string{"auto", "cuda", "bogus"} {
+		if _, err := ParseEncodeBackend(value); err == nil {
+			t.Fatalf("invalid encode backend %q accepted", value)
+		}
+	}
+}

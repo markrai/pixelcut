@@ -8,7 +8,7 @@ import (
 )
 
 func (e *editor) showGPUInfo() error {
-	engine := e.engine
+	engine := exportEngineForPreferences(e.engine, e.prefs)
 	e.stopPreview()
 	e.tell("Inspecting FFmpeg GPU capabilities and attempting device initialization...")
 	e.startJob(func(ctx context.Context) result {
@@ -22,7 +22,7 @@ func (e *editor) showGPUInfo() error {
 }
 
 func (e *editor) presentGPUInfo(report media.AccelerationReport) {
-	e.tell("GPU diagnostics complete. See selected decode backend in the report.")
+	e.tell("GPU diagnostics complete. See selected decode and encode backends in the report.")
 	message := report.String() + "\n\nCtrl+C copies this dialog."
 	user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(message))), uintptr(unsafe.Pointer(u("PixelCut GPU diagnostics"))), 0x40)
 }
