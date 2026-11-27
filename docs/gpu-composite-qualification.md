@@ -38,3 +38,5 @@ set PIXELCUT_OPENCL_DEVICE=
 ```
 
 The selected FFmpeg build must provide OpenCL, program_opencl and rgba64le image upload/download; the driver must expose an OpenCL GPU. Choose the platform.device index using FFmpeg verbose device initialization logs; index 0.0 is not proof of NVIDIA selection. The test logs tool identity and startup-inclusive candidate time (packing, process launch, GPU work, transfer, unpacking), not kernel throughput or sustained performance. Device/driver runtime and physical results remain outstanding. 3A.4c should measure independent CPU/GPU timings including persistent setup and transfers, cancellation and resource use; do not enable compositor from CI or a single fixture. 3A.4d integration or deferral follows.
+
+Local command-level verification: Clang OpenCL 1.2 syntax check passed for the kernel; local FFmpeg exposes program_opencl and its size option. Physical OpenCL initialization failed with no available OpenCL platforms (-1001), so the actual device transport and kernel output are not verified here. Full Go suite remains pending CI.
