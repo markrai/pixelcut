@@ -243,6 +243,10 @@ func RenderProjectObserved(ctx context.Context, engine media.Engine, p project.P
 }
 
 func renderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer) error {
+	return renderProjectWithEncoder(ctx, engine, p, color, fps, includeAudio, discardAudio, output, observe, videoEncoderSpec{})
+}
+
+func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer, spec videoEncoderSpec) error {
 	emit(observe, StagePreflight, 0, 0)
 	out, err := ValidateDestination(output)
 	if err != nil {
@@ -254,7 +258,14 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	}
 	plan := prepared.Plan
 	if engine.DecodeBackend == media.BackendCUDA {
-		plan.Warnings = append(plan.Warnings, "Experimental CUDA video decoding requested; geometry, compositing and encoding remain CPU")
+		warning := "Experimental CUDA video decoding requested; geometry, compositing and encoding remain CPU"
+		if spec.nvenc {
+			warning = "Experimental CUDA video decoding requested; geometry and compositing remain CPU; encoder: " + spec.name()
+		}
+		plan.Warnings = append(plan.Warnings, warning)
+	}
+	if spec.nvenc {
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("Qualification-only NVENC encoder requested (device %d, QP %d); no CPU fallback", spec.device, spec.qp))
 	}
 	if observe != nil {
 		observe(Progress{Stage: StagePreflight, Warnings: append([]string(nil), plan.Warnings...)})
@@ -266,6 +277,9 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		if err := validateAudio(plan); err != nil {
 			return err
 		}
+	}
+	if _, err := spec.args(plan.Contract.Canvas, fps, ""); err != nil {
+		return err
 	}
 	sources := make(map[string]Source, len(prepared.Sources))
 	for _, source := range prepared.Sources {
@@ -281,7 +295,11 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		return err
 	}
 	c := plan.Contract.Canvas
-	encoder := newExportProcess(ctx, engine.FFmpeg, hlgVideoEncoderArgs(c, fps, name)...)
+	args, err := spec.args(c, fps, name)
+	if err != nil {
+		return err
+	}
+	encoder := newExportProcess(ctx, engine.FFmpeg, args...)
 	defer encoder.close()
 	stdin, err := encoder.cmd.StdinPipe()
 	if err != nil {
@@ -289,7 +307,7 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	}
 	encoder.pipe = stdin
 	if err := encoder.cmd.Start(); err != nil {
-		return err
+		return fmt.Errorf("%s encoder start: %w", spec.name(), err)
 	}
 	black := black444(c)
 	frame := make([]byte, len(black))
@@ -298,7 +316,7 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	writer := &progressWriter{dst: stdin, observe: observe, stage: StageVideo, unitBytes: int64(len(frame)), total: plan.VideoFrames}
 	for _, span := range plan.Spans {
 		if err := renderSpan(ctx, engine, indexes, sources, plan, span, writer, black, frame); err != nil {
-			return fmt.Errorf("render span [%d,%d): %w", span.Start, span.End, err)
+			return fmt.Errorf("%s encoder render span [%d,%d): %w", spec.name(), span.Start, span.End, err)
 		}
 	}
 	emit(observe, StageVideoWait, 0, 0)
@@ -306,7 +324,7 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 		return err
 	}
 	if err := encoder.wait(); err != nil {
-		return err
+		return fmt.Errorf("%s encoder finalize: %w", spec.name(), err)
 	}
 	emit(observe, StageVerify, 0, 0)
 	report, err := engine.Inspect(ctx, name)

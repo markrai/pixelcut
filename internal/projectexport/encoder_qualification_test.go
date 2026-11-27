@@ -21,13 +21,7 @@ import (
 const encoderQualificationFrames = 12
 
 func nvencQualificationArgs(c media.CanvasSize, fps, device int, name string) ([]string, error) {
-	contract := media.ExportContract{Color: "hlg", Canvas: c, FPS: fps}
-	if contract.Validate() != nil || c.Width > 4096 || c.Height > 4096 || c.Width%2 != 0 || c.Height%2 != 0 || int64(c.Width)*int64(c.Height) > MaxExportPixels || device < 0 || device > 31 {
-		return nil, errors.New("invalid NVENC qualification contract or device")
-	}
-	args := hlgVideoEncoderInput(c, fps)
-	args = append(args, "-c:v", "hevc_nvenc", "-gpu", strconv.Itoa(device), "-profile:v", "main10", "-preset", "p6", "-tune", "hq", "-rc", "constqp", "-qp", "16", "-pix_fmt", "p010le")
-	return append(args, hlgVideoEncoderOutput(name)...), nil
+	return (videoEncoderSpec{nvenc: true, device: device, qp: 16}).args(c, fps, name)
 }
 
 func TestNVENCQualificationArguments(t *testing.T) {
