@@ -277,7 +277,7 @@ Composite playback and whole-project export now share the same timestamp normali
 
 ### GPU diagnostics (3A.1)
 
-Use Settings > GPU capabilities / device diagnostics, or run `.\pixelcut.exe gpu-info` for the FFmpeg inventory and `.\pixelcut.exe gpu-info -probe-devices` to attempt device initialization. On Windows, `run.bat` rebuilds both the CLI and GUI before opening the editor. After pulling changes, rebuild the binaries; `where pixelcut` helps diagnose an older executable on PATH. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. Rendering remains CPU-only; a successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
+Use Settings > GPU capabilities / device diagnostics, or run `.\pixelcut.exe gpu-info` for the FFmpeg inventory and `.\pixelcut.exe gpu-info -probe-devices` to attempt device initialization. On Windows, `run.bat` rebuilds both the CLI and GUI before opening the editor. After pulling changes, rebuild the binaries; `where pixelcut` helps diagnose an older executable on PATH. The CLI uses its normal PATH-discovered FFmpeg; the GUI uses the configured tool. Diagnostics distinguish advertised components from initialized devices and qualified stages. CPU is the default; explicit experimental CUDA decode and NVENC encode are separate settings. A successful probe does not establish HDR/Main 10 support or activate hardware rendering. See [GPU architecture and qualification](docs/gpu-architecture.md).
 
 ### CUDA HEVC decode qualification (3A.2)
 
@@ -285,7 +285,7 @@ Run `pixelcut gpu-decode-check -frames 120 INPUT` to compare a bounded window of
 
 ### Experimental CUDA decoding (3A.2 integration)
 
-Settings > Video decode: NVIDIA CUDA (experimental) enables explicit NVDEC for composite stills, live composite playback and whole-project export. CPU is the default; Automatic currently resolves to CPU. Source audition (mpv), thumbnails, selected-clip export, geometry, compositing, encoding and audio are unchanged. Unsupported source or CUDA failure stops the operation; select CPU and retry. CLI project exports accept `-decode cpu|auto|cuda`. Changing the setting retires media workers and invalidates the still cache. See [CUDA qualification](docs/gpu-decode-qualification.md) for hardware tests.
+Settings > Video decode: NVIDIA CUDA (experimental) enables explicit NVDEC for composite stills, live composite playback and whole-project export. CPU is the default; Automatic currently resolves to CPU. Source audition (mpv), thumbnails, selected-clip export, geometry, compositing and audio are unchanged; whole-project encoding is selected independently. Unsupported source or CUDA failure stops the operation; select CPU and retry. CLI project exports accept `-decode cpu|auto|cuda`. Changing the setting retires media workers and invalidates the still cache. See [CUDA qualification](docs/gpu-decode-qualification.md) for hardware tests.
 
 ### CUDA scaling qualification (3A.3a)
 
@@ -294,3 +294,14 @@ Run `pixelcut gpu-scale-check -width 960 -height 540 -frames 120 INPUT` to compa
 ### CUDA preview Lanczos qualification (3A.3b)
 
 Run `pixelcut gpu-preview-scale-check -width 960 -height 540 -frames 120 INPUT` to compare the CPU preview against GPU Lanczos scaling before download with the same SDR tone map. Limited-range left-sited HLG, display-sized canvas, even aspect-preserving downscale only. Cardinal display rotation is supported in the candidate; output dimensions are in displayed orientation (e.g. 540x960 for portrait). Exact frame timing and raw output identity are checked; provisional quality limits are worst frame/channel PSNR at least 40 dB and maximum 8-bit channel delta at most 16. The comparison runs both processes concurrently, not as a speed benchmark. Candidate geometry is internal and not enabled in the GUI or export. See [GPU geometry qualification](docs/gpu-geometry-qualification.md).
+
+### Experimental NVIDIA NVENC project export (3A.5c.2)
+
+Settings > Video encoder: NVIDIA NVENC (experimental) opts into HEVC Main 10 hardware encoding for whole-project HLG exports. Software (x265) is the default. The encoder setting persists in app preferences, independently of video decoding; changing it does not restart preview workers or change project files. Selected-clip export, trim, crop and remux are unchanged. The export confirmation identifies the chosen encoder.
+
+```cmd
+pixelcut export-project -color hlg -fps 30 -encode nvenc -progress PROJECT.pixelcut.json OUTPUT.mp4
+pixelcut export-video -color hlg -fps 30 -encode nvenc -discard-audio PROJECT.pixelcut.json OUTPUT.mp4
+```
+
+Use `-encode cpu` or omit the flag for x265. NVENC uses device index 0, p6/hq, constqp 16; no automatic fallback, quality or device tuning yet. Requires FFmpeg with hevc_nvenc and compatible NVIDIA hardware/drivers. Actual encoder failure is reported and no unverified output is published; choose CPU and retry. Output may be larger. Geometry, composition, audio and all color/timing/publication checks remain shared. TITAN whole-project comparison measured approximately 3x speedup on one 10-second Pixel HLG workload across two FFmpeg builds, not a general guarantee. Peak host and VRAM resource evidence and physical GUI acceptance remain pending. See [hardware encoder qualification](docs/gpu-encode-qualification.md).
