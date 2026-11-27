@@ -14,3 +14,26 @@ set PIXELCUT_NVENC_DEVICE=
 ```
 
 Requires FFmpeg with hevc_nvenc and a compatible NVIDIA driver for the opt-in path. Explicit failure if unavailable or metadata/packet/quality verification fails. No publishing or project mutation. Next: diverse spatial and real-media content, bitrate/quality comparison at comparable quality, longer independent timing and memory tests before experimental integration. CPU encoder remains default and only production encoder.
+
+## 3A.5b: spatial, motion and real-source rate/quality comparison
+
+PR #40 merged; CI 46007589621 and performance 46007589542 passed. PR #41 static HDR import fix also merged (CI 46039697815 and performance 46039697772 passed). Physical 3A.5a results have not been supplied.
+
+This test-only comparison isolates the encoder after the production 4:4:4-to-left-sited-4:2:0 normalization boundary. It creates a finite raw planar 10-bit reference once per case (maximum 1 GiB), then passes exactly that file to both encoders. Synthetic testsrc2 is a moving spatial/color-edge pattern, not physically captured HDR. Optional real HLG uses software decoding, explicit source range/chroma normalization to 4:4:4, cardinal rotation and the shared output subsampling graph; no source modifications. The first consecutive decoded frames are re-clocked at 30 fps for this encoder experiment; this is not source VFR or timeline timing qualification. Reference generation excluded from encode timing. Each run verifies the existing output color, Main 10, frame count, duration, zero start and exact packet grid; independently software-decodes and compares every planar sample to the same reference. Report maximum code errors and both worst-frame and pooled MSE PSNR per Y/U/V plane (pooled is not the arithmetic mean of frame PSNRs). Reject wrong counts, extra data and invalid 10-bit codes.
+
+x265 CRF 16 remains baseline. NVENC p6/hq constqp sweeps 12/16/20/24. Select the smallest MP4 among candidates within 1 dB below CPU worst-frame AND pooled PSNR in every plane. This is a provisional relative screen, not perceptual equivalence or an absolute lossy quality gate. Report all tested sizes, errors and timings; no passing candidate fails that case. Selected QP is local to a case, not a production setting. Three independent alternating CPU/selected GPU runs reverify output; report median wall speedup and sweep size ratio. Timing includes disk feed, process initialization, format conversion, transfer, encode and MP4 finalization, excludes comparison and fixture creation. Container bitrate includes overhead; neither pure kernel speed nor sustained long-project throughput. The flat-field gate in 3A.5a remains unchanged.
+
+Physical matrix: 120 frames 360p, 90 frames 1080p, 40 frames 4K, optionally up to 60 real-source frames subject to the same byte cap. Reference plus temporary output in Go test temp directory, no publishing. At 4K the reference alone is about 950 MiB. Disk throughput/cache can affect timing; record peak process and GPU memory, device/driver separately. One overall 15-minute deadline, no fallback. No production integration yet. Ordinary CI runs a small CPU smoke and metric/argument checks.
+
+```cmd
+go test -count=1 -v ./internal/projectexport -run "^Test(EncoderMotionMetric|HLGEncoderMotionQualification)$"
+set PIXELCUT_QUALIFY_NVENC_MOTION=1
+set PIXELCUT_NVENC_DEVICE=0
+set "PIXELCUT_NVENC_MOTION_SOURCE=C:\dev\project\pixelcut\test-media\test.mp4"
+go test -count=1 -v -timeout 17m ./internal/projectexport -run "^TestHLGEncoderMotionQualification$"
+set PIXELCUT_QUALIFY_NVENC_MOTION=
+set PIXELCUT_NVENC_DEVICE=
+set PIXELCUT_NVENC_MOTION_SOURCE=
+```
+
+Run the preceding 3A.5a physical test as well. 3A.5c remains gated on physical color/packet/quality results, representative quality/size tradeoffs and a useful performance benefit, with longer workload/resource review before enabling any experimental encoder.
