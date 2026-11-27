@@ -89,6 +89,9 @@ func prepareEncoderMotionReference(ctx context.Context, engine media.Engine, c e
 		if err != nil {
 			return err
 		}
+		if v.CodecName != "hevc" || v.Profile != "Main 10" {
+			return errors.New("real encoder fixture requires HEVC Main 10")
+		}
 		display, err := v.DisplayGeometry()
 		if err != nil || display.Width != c.canvas.Width || display.Height != c.canvas.Height {
 			return errors.New("real fixture geometry changed")
@@ -354,7 +357,11 @@ func qualifyEncoderMotion(t *testing.T, ctx context.Context, engine media.Engine
 	}
 	var cpuTimes, gpuTimes []time.Duration
 	for round := 0; round < 3; round++ {
-		for _, qp := range []int{[]int{-1, chosen.qp}[round%2], []int{chosen.qp, -1}[round%2]} {
+		order := [2]int{-1, chosen.qp}
+		if round%2 == 1 {
+			order[0], order[1] = order[1], order[0]
+		}
+		for _, qp := range order {
 			r, err := measureEncoderMotion(ctx, engine, c, raw, output, qp, device)
 			if err != nil {
 				t.Fatal(err)

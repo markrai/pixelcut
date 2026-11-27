@@ -37,3 +37,5 @@ set PIXELCUT_NVENC_MOTION_SOURCE=
 ```
 
 Run the preceding 3A.5a physical test as well. 3A.5c remains gated on physical color/packet/quality results, representative quality/size tradeoffs and a useful performance benefit, with longer workload/resource review before enabling any experimental encoder.
+
+Local FFmpeg 7.1.5 command-level CPU smoke produced exactly 110592 reference bytes (12 frames at 64x48), HEVC Main 10 HLG limited-range left-sited output, 12 packets with unique 8000-tick intervals, timebase 1/240000, zero start and duration 96000 ticks. Full Go checkout failed DNS resolution; CI and actual NVENC comparison remain unverified locally.
