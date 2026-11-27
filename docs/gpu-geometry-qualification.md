@@ -123,3 +123,23 @@ set PIXELCUT_QUALIFY_CUDA_CHROMA=
 4K command assumes a real unrotated 3840x2160 limited-range left-sited HEVC Main 10 HLG recording with at least 120 frames; substitute path or swap output dimensions for a portrait recording. 1080p/4K are source resolutions, not preview output sizes. No new activation, thresholds, schema or dependencies. Candidate CI and hardware runs pending.
 
 Local command-level FFmpeg verification: both generated fixtures probe as Main 10, left-sited 10-bit 4:2:0, four frames. The impulse fixture produced four distinct raw SHA-256 results for the four named chroma-location controls, each 82,944 bytes (four 96x72 planar frames). This validates fixture and option execution on the local build only; candidate Go suite and CUDA remain untested locally. Ordinary CI exercises the explicit CPU location control when its FFmpeg advertises both named options; older builds still exercise baseline and timing.
+
+## 3A.3e.1–2: experimental reduced-frame chroma phase correction
+
+PR #34 merged; CI 45901157338 and performance 45901157408 passed. Physical 4K test pattern (3840x2160 to 960x540, November 26 FFmpeg N-129308-g17de9f8597) compared 30 frames: Y/U/V max 1/143/144 against the left-to-left reference; center-to-center control max 1/2/1, left-to-center 1/41/41, center-to-left 1/198/198. Strong evidence for a sampling phase discrepancy, not permission to retag left-sited material. 120-frame SDR result min PSNR 29.3482, max delta 206, 2,969,753 over-limit samples. Uncorrected median CPU 2.3806159 s, CUDA 1.2722023 s (1.87x), startup-inclusive; not a qualified speedup.
+
+For same-subsampling centered scaling, output chroma sample j maps to input coordinate (j+0.5)*r-0.5, where r is coded source width / coded output width. The left-to-left mapping is j*r+(r-1)/4 under the luma-center convention. The hypothesized missing offset is -(1-1/r)/4 in output chroma samples. The experiment applies a normalized seven-coefficient Lanczos3 row convolution at reduced resolution, with 14-bit integer weights summing to 16384. It leaves luma unchanged, filters U and V only, before display rotation and tone mapping. Unity ratio uses no convolution. No relabeling, no second upload or full-size download. Boundary extension, finite window, rounding, clipping and a second resampling step can prevent parity, particularly on saturated edges; this is a hypothesis, not an exact reconstruction or an upstream GPU fix.
+
+Use -correct-chroma to opt into this candidate for the qualification CLI only. -diagnose and -benchmark then use the corrected candidate against the unchanged CPU reference. Run -chroma separately for the original sampling controls. The report records coded widths, signed sampling offset, integer weights and divisor. Quality gate remains 40 dB/16 RGB codes; neither path is production-enabled. CPU edge fixtures simulate center-to-center scaling, apply the correction, verify unchanged luma and reduced U error when controls are supported. Physical opt-in test runs both existing edge and impulse fixtures at 2x, 3x, 4x and 6x downscale. No correction is inferred for other siting, crop or transform.
+
+```cmd
+pixelcut gpu-preview-scale-check -correct-chroma -diagnose -width 960 -height 540 -frames 30 "test-media\4k-test-pattern.mp4"
+pixelcut gpu-preview-scale-check -correct-chroma -diagnose -width 640 -height 360 -frames 30 "test-media\4k-test-pattern.mp4"
+pixelcut gpu-preview-scale-check -correct-chroma -diagnose -width 540 -height 960 -frames 30 "test-media\test.mp4"
+pixelcut gpu-preview-scale-check -correct-chroma -benchmark -width 960 -height 540 -frames 120 "test-media\4k-test-pattern.mp4"
+set PIXELCUT_QUALIFY_CUDA_CHROMA_CORRECTION=1
+go test -count=1 -v ./internal/media -run "^TestPreviewQualificationChromaFixtures$"
+set PIXELCUT_QUALIFY_CUDA_CHROMA_CORRECTION=
+```
+
+Local FFmpeg 7.1.5 command-level software simulation on constant-luma 192x144 edge pattern reduced U maximum error 46→3 at 2x, 61→4 at 3x, and 70→4 at 4x, with unchanged luma. A separate impulse test confirmed convolution row direction. These are not CUDA, real-media or SDR qualification results. Full candidate Go suite and physical comparison pending. If corrected output fails, investigate exact source-coordinate filtering upstream or alternate backend; do not increase limits. 3A.3e.3–5 fidelity, corrected performance and activation remain gated.

@@ -14,9 +14,10 @@ import (
 )
 
 type PreviewScaleOptions struct {
-	Diagnose  bool
-	Chroma    bool
-	Benchmark bool
+	Diagnose      bool
+	Chroma        bool
+	Benchmark     bool
+	CorrectChroma bool
 }
 
 type PreviewQualificationTools struct {
@@ -170,12 +171,12 @@ func (e Engine) timePreviewPath(ctx context.Context, args []string, req StillReq
 	return time.Since(start).Seconds(), nil
 }
 
-func (e Engine) benchmarkPreviewScale(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64) (*PreviewScaleBenchmark, error) {
+func (e Engine) benchmarkPreviewScale(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64, corrected bool) (*PreviewScaleBenchmark, error) {
 	cpu, err := previewCheckArgs(e, v, req, first, len(ticks), false)
 	if err != nil {
 		return nil, err
 	}
-	cuda, err := previewCheckArgs(e, v, req, first, len(ticks), true)
+	cuda, err := previewCheckArgsWithCorrection(e, v, req, first, len(ticks), true, corrected)
 	if err != nil {
 		return nil, err
 	}

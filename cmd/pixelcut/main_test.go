@@ -82,11 +82,18 @@ func TestGPUScaleCheckCommandArguments(t *testing.T) {
 
 func TestGPUPreviewScaleCheckCommandArguments(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") || !strings.Contains(out.String(), "chroma") || !strings.Contains(out.String(), "benchmark") {
+	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") || !strings.Contains(out.String(), "chroma") || !strings.Contains(out.String(), "benchmark") || !strings.Contains(out.String(), "correct-chroma") {
 		t.Fatalf("preview scale help: %v", err)
 	}
 	out.Reset()
 	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-chroma", "-benchmark", "-width", "960", "-height", "540", "-frames", "121", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") {
 		t.Fatal("invalid preview scale interval accepted")
+	}
+}
+
+func TestGPUPreviewScaleCorrectionConflictingFlags(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-chroma", "-correct-chroma", "-width", "960", "-height", "540", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "separately") || !strings.Contains(out.String(), "failed") {
+		t.Fatalf("conflicting chroma flags accepted: %v %s", err, out.String())
 	}
 }
