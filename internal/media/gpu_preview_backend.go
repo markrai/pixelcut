@@ -155,7 +155,7 @@ func (e Engine) CheckPreviewBackend(ctx context.Context, path string, first, cou
 	if first >= index.Count() || count > index.Count()-first {
 		return r, errors.New("preview backend interval exceeds source index")
 	}
-	ticks := index.ticks[first:first+count]
+	ticks := index.ticks[first : first+count]
 	cpu := previewPairArgs(req.Path, paths.referenceInput, paths.referenceBGRA, count, "bgra")
 	candidate := previewPairArgs(req.Path, paths.candidateInput, paths.candidateBGRA, count, "bgra")
 	var quality previewQualityAccumulator
