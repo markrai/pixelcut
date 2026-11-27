@@ -316,14 +316,24 @@ func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p projec
 	writer := &progressWriter{dst: stdin, observe: observe, stage: StageVideo, unitBytes: int64(len(frame)), total: plan.VideoFrames}
 	for _, span := range plan.Spans {
 		if err := renderSpan(ctx, engine, indexes, sources, plan, span, writer, black, frame); err != nil {
-			return fmt.Errorf("%s encoder render span [%d,%d): %w", spec.name(), span.Start, span.End, err)
+			waitErr := encoder.abort()
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			return fmt.Errorf("%s encoder render span [%d,%d): %w", spec.name(), span.Start, span.End, errors.Join(err, waitErr))
 		}
 	}
 	emit(observe, StageVideoWait, 0, 0)
-	if err := stdin.Close(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := stdin.Close(); err != nil {
+		return fmt.Errorf("%s encoder input close: %w", spec.name(), errors.Join(err, encoder.abort()))
+	}
 	if err := encoder.wait(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("%s encoder finalize: %w", spec.name(), err)
 	}
 	emit(observe, StageVerify, 0, 0)

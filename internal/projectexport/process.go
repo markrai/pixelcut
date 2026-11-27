@@ -53,12 +53,17 @@ func (p *exportProcess) wait() error {
 	return nil
 }
 
-func (p *exportProcess) close() {
+func (p *exportProcess) abort() error {
 	p.cancel()
 	if p.pipe != nil {
 		_ = p.pipe.Close()
 	}
 	if !p.waited && p.cmd.Process != nil {
-		_ = p.wait()
+		return p.wait()
 	}
+	return nil
+}
+
+func (p *exportProcess) close() {
+	_ = p.abort()
 }
