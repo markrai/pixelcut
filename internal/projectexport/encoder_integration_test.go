@@ -169,6 +169,10 @@ func TestProjectNVENCIntegration(t *testing.T) {
 				t.Fatalf("frame %d luma %d want %d", tc.frame, got, tc.want)
 			}
 		}
+		center := int(binary.LittleEndian.Uint16(raw[6*frameBytes+2*(72*192+96):]))
+		if center <= 292 || center >= 418 {
+			t.Fatalf("translucent overlap luma %d outside expected blend interval", center)
+		}
 	}
 	bounds := [4]int{0, 192 * 144 * 2, 192 * 144 * 5 / 2, frameBytes}
 	var minPSNR = [3]float64{100, 100, 100}

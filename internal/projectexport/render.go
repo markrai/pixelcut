@@ -258,7 +258,11 @@ func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p projec
 	}
 	plan := prepared.Plan
 	if engine.DecodeBackend == media.BackendCUDA {
-		plan.Warnings = append(plan.Warnings, "Experimental CUDA video decoding requested; geometry and compositing remain CPU; encoder: "+spec.name())
+		warning := "Experimental CUDA video decoding requested; geometry, compositing and encoding remain CPU"
+		if spec.nvenc {
+			warning = "Experimental CUDA video decoding requested; geometry and compositing remain CPU; encoder: " + spec.name()
+		}
+		plan.Warnings = append(plan.Warnings, warning)
 	}
 	if spec.nvenc {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf("Qualification-only NVENC encoder requested (device %d, QP %d); no CPU fallback", spec.device, spec.qp))
