@@ -40,3 +40,24 @@ set PIXELCUT_OPENCL_DEVICE=
 The selected FFmpeg build must provide OpenCL, program_opencl and rgba64le image upload/download; the driver must expose an OpenCL GPU. Choose the platform.device index using FFmpeg verbose device initialization logs; index 0.0 is not proof of NVIDIA selection. The test logs tool identity and startup-inclusive candidate time (packing, process launch, GPU work, transfer, unpacking), not kernel throughput or sustained performance. Device/driver runtime and physical results remain outstanding. 3A.4c should measure independent CPU/GPU timings including persistent setup and transfers, cancellation and resource use; do not enable compositor from CI or a single fixture. 3A.4d integration or deferral follows.
 
 Local command-level verification: Clang OpenCL 1.2 syntax check passed for the kernel; local FFmpeg exposes program_opencl and its size option. Physical OpenCL initialization failed with no available OpenCL platforms (-1001), so the actual device transport and kernel output are not verified here. Full Go suite remains pending CI.
+
+## 3A.4c: persistent strip qualification
+
+PR #38 merged; CI 45934421879 and performance 45934421959 passed. No physical 3A.4b report or CPU benchmark has been supplied. The existing single-frame test remains mandatory. New opt-in finite persistent batches reuse one FFmpeg process and kernel across strips. The shader writes 100 + zero-based FFmpeg kernel frame index into the transport marker; the host rejects stale, reordered, truncated and extra strip outputs. The existing single-frame marker remains 100. See FFmpeg program_opencl source (https://ffmpeg.org/doxygen/trunk/vf__program__opencl_8c_source.html).
+
+Two logical frames per resolution are processed in 120-row strips, 6/18/36 strips at 640x360, 1920x1080 and 3840x2160. The workload alternates two deterministic strip patterns, with full opaque background and inset opaque or 50% layer. It represents the same per-pixel operation count as two full frames but not arbitrary full-frame placement, frame residency, or real-video throughput. No cross-strip filtering occurs at this composition-only boundary. Input atlas is reused, output packed and planar buffers reused, no full 4K atlas or accumulated output frames. At 4K a strip atlas is 14,745,600 bytes and packed output 3,686,400 bytes; these are Go buffer sizes, not a measured process/GPU memory ceiling. Transport volume is still 32 bytes uploaded and 8 bytes downloaded per canvas pixel, plus CPU repacking and pipe copies. No claim of zero-copy. Each batch is bounded to 120 strips and 90 seconds, whole suite eight minutes; no fallback. Actual FFmpeg and GPU allocations remain to be measured.
+
+Separate verification pass compares every strip against the unchanged oracle. Three independent CPU and GPU batches alternate order; timings exclude fixture generation and comparator work but include CPU hash or GPU packing, startup, transfer, unpack and hash. First strip latency includes process startup and buffering; it is not pure setup time. Timed output hashes must equal the verified GPU batch. CPU timing uses the same strip pattern and hash, not the full-canvas baseline benchmark. Active cancellation on first output and a fresh restart are tested physically. Ordinary CI exercises fragmented transport, marker and extra-output rejection, finite input, pre-cancel and limits. No production compositor changes.
+
+```cmd
+set PIXELCUT_OPENCL_DEVICE=0.0
+set PIXELCUT_QUALIFY_OPENCL_COMPOSITE=1
+go test -count=1 -v ./internal/projectexport -run "^TestHLGOpenCLQualification$"
+set PIXELCUT_QUALIFY_OPENCL_COMPOSITE=
+set PIXELCUT_QUALIFY_OPENCL_STREAM=1
+go test -count=1 -v -timeout 10m ./internal/projectexport -run "^TestHLGOpenCLStreamQualification$"
+set PIXELCUT_QUALIFY_OPENCL_STREAM=
+set PIXELCUT_OPENCL_DEVICE=
+```
+
+Record actual device/driver and peak process/GPU memory separately. Do not infer physical pass or beneficial acceleration from CI. 3A.4d remains gated on both physical suites, resource review and meaningful measured end-to-end gain; defer if not worthwhile.
