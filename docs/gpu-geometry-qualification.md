@@ -165,3 +165,7 @@ set PIXELCUT_QUALIFY_PREVIEW_BACKEND=
 ```
 
 Use actual device index for Vulkan CLI when not 0; fixture suite uses index 0. Verify device selection with ffmpeg -hide_banner -loglevel verbose -init_hw_device vulkan=pcvk:0 -f lavfi -i nullsrc=s=64x64 -frames:v 1 -f null -. Local FFmpeg 7.1.5 exposes libplacebo but Vulkan instance initialization returned VK_ERROR_INCOMPATIBLE_DRIVER and the build predates the named chroma_location option. No local Vulkan pixel or timing results; repository checkout DNS unavailable. Candidate CI/physical results pending. Selection rule: retain CPU geometry if no alternative clears the unchanged fidelity gate with a useful reproducible advantage. Do not block 3A.4 or 3A.5 indefinitely on scaling. Review FFmpeg libplacebo options at https://ffmpeg.org/ffmpeg-filters.html#libplacebo and note 4:4:4 internal processing.
+
+## 3A.3g: activation deferred
+
+PR #36 merged, CI 45927059779 and performance 45927059761 passed. Physical hybrid and Vulkan comparisons have not been supplied. Neither candidate is newly authorized by these CI results; geometry remains CPU-only, with explicit experimental CUDA decode unchanged. Keep all existing qualification commands and thresholds. Revisit activation only with physical results, tool/device identity and a reproducible benefit. 3A.4 composition qualification proceeds independently.
