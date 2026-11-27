@@ -21,6 +21,7 @@ import (
 )
 
 const encoderMotionMaxBytes int64 = 1 << 30
+const encoderMotionLosslessQP = -2
 
 type encoderMotionCase struct {
 	name   string
@@ -46,7 +47,13 @@ func encoderMotionArgs(c encoderMotionCase, raw, output string, qp, device int) 
 		return nil, err
 	}
 	base := hlgVideoEncoderArgs(c.canvas, 30, output)
-	if qp != -1 {
+	if qp == encoderMotionLosslessQP {
+		index := slices.Index(base, "-x265-params")
+		if index < 0 || index+1 >= len(base) {
+			return nil, errors.New("missing lossless control encoder options")
+		}
+		base[index+1] += ":lossless=1"
+	} else if qp != -1 {
 		if qp < 0 || qp > 51 {
 			return nil, errors.New("invalid NVENC QP")
 		}
@@ -61,7 +68,7 @@ func encoderMotionArgs(c encoderMotionCase, raw, output string, qp, device int) 
 	if codec < 0 {
 		return nil, errors.New("missing encoder boundary")
 	}
-	args := []string{"-v", "error", "-xerror", "-nostdin", "-filter_threads", "1", "-f", "rawvideo", "-pixel_format", "yuv420p10le", "-video_size", fmt.Sprintf("%dx%d", c.canvas.Width, c.canvas.Height), "-framerate", "30", "-i", raw, "-map", "0:v:0", "-frames:v", strconv.Itoa(c.frames), "-vf", "setsar=1"}
+	args := []string{"-v", "error", "-xerror", "-nostdin", "-filter_threads", "1", "-f", "rawvideo", "-pixel_format", "yuv420p10le", "-video_size", fmt.Sprintf("%dx%d", c.canvas.Width, c.canvas.Height), "-framerate", "30", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv", "-chroma_sample_location", "left", "-i", raw, "-map", "0:v:0", "-frames:v", strconv.Itoa(c.frames), "-vf", "setsar=1"}
 	return append(args, base[codec:]...), nil
 }
 
@@ -309,6 +316,32 @@ func TestEncoderMotionMetric(t *testing.T) {
 	}
 }
 
+func TestEncoderMotionInputColorContract(t *testing.T) {
+	c := encoderMotionCase{canvas: media.CanvasSize{Width: 64, Height: 48}, frames: 12}
+	for _, qp := range []int{encoderMotionLosslessQP, -1, 16} {
+		args, err := encoderMotionArgs(c, "reference.yuv", "output.mp4", qp, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input := slices.Index(args, "-i")
+		if input < 0 {
+			t.Fatal("missing raw input")
+		}
+		for _, pair := range [][2]string{{"-color_primaries", "bt2020"}, {"-color_trc", "arib-std-b67"}, {"-colorspace", "bt2020nc"}, {"-color_range", "tv"}, {"-chroma_sample_location", "left"}} {
+			index := slices.Index(args[:input], pair[0])
+			if index < 0 || index+1 >= input || args[index+1] != pair[1] {
+				t.Fatalf("QP %d missing input color option %v", qp, pair)
+			}
+		}
+		if qp == encoderMotionLosslessQP {
+			index := slices.Index(args, "-x265-params")
+			if index < 0 || !strings.Contains(args[index+1], ":lossless=1") || !slices.Contains(args, "libx265") {
+				t.Fatal("lossless CPU control not selected")
+			}
+		}
+	}
+}
+
 func logEncoderMotion(t *testing.T, c encoderMotionCase, r encoderMotionResult) {
 	t.Helper()
 	t.Logf("case=%s qp=%d frames=%d bytes=%d container_kbps=%.1f wall=%s fps=%.2f min_psnr_yuv=%v aggregate_psnr_yuv=%v max_delta_yuv=%v", c.name, r.qp, c.frames, r.bytes, float64(r.bytes)*8*30/float64(c.frames)/1000, r.elapsed, float64(c.frames)/r.elapsed.Seconds(), r.quality.minPSNR, r.quality.meanPSNR, r.quality.maxDelta)
@@ -331,6 +364,14 @@ func qualifyEncoderMotion(t *testing.T, ctx context.Context, engine media.Engine
 	}
 	if c.source != "" && !sameEncoderMotionSource(c.source, identity) {
 		t.Fatal("source changed during reference generation")
+	}
+	control, err := measureEncoderMotion(ctx, engine, c, raw, output, encoderMotionLosslessQP, device)
+	if err != nil {
+		t.Fatalf("lossless reference control: %v", err)
+	}
+	logEncoderMotion(t, c, control)
+	if control.quality.maxDelta != ([3]int{}) || control.quality.minPSNR != ([3]float64{100, 100, 100}) {
+		t.Fatalf("lossless reference control changed samples: %+v", control.quality)
 	}
 	cpu, err := measureEncoderMotion(ctx, engine, c, raw, output, -1, device)
 	if err != nil {
