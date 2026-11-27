@@ -243,7 +243,11 @@ func RenderProjectObserved(ctx context.Context, engine media.Engine, p project.P
 }
 
 func renderProject(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer) error {
-	return renderProjectWithEncoder(ctx, engine, p, color, fps, includeAudio, discardAudio, output, observe, videoEncoderSpec{})
+	spec, err := projectEncoderSpec(engine)
+	if err != nil {
+		return err
+	}
+	return renderProjectWithEncoder(ctx, engine, p, color, fps, includeAudio, discardAudio, output, observe, spec)
 }
 
 func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer, spec videoEncoderSpec) error {
@@ -265,7 +269,11 @@ func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p projec
 		plan.Warnings = append(plan.Warnings, warning)
 	}
 	if spec.nvenc {
-		plan.Warnings = append(plan.Warnings, fmt.Sprintf("Qualification-only NVENC encoder requested (device %d, QP %d); no CPU fallback", spec.device, spec.qp))
+		warning := "Qualification-only NVENC"
+		if spec.experimental {
+			warning = "Experimental NVENC"
+		}
+		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s encoder requested (device %d, QP %d); no CPU fallback", warning, spec.device, spec.qp))
 	}
 	if observe != nil {
 		observe(Progress{Stage: StagePreflight, Warnings: append([]string(nil), plan.Warnings...)})

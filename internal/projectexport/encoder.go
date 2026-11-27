@@ -23,14 +23,30 @@ func hlgVideoEncoderOutput(name string) []string {
 }
 
 type videoEncoderSpec struct {
-	nvenc  bool
-	device int
-	qp     int
+	nvenc        bool
+	experimental bool
+	device       int
+	qp           int
+}
+
+func projectEncoderSpec(engine media.Engine) (videoEncoderSpec, error) {
+	backend, err := media.ParseEncodeBackend(string(engine.EncodeBackend))
+	if err != nil {
+		return videoEncoderSpec{}, err
+	}
+	decision, err := media.SelectVideoBackend(media.StageEncode, backend)
+	if err != nil {
+		return videoEncoderSpec{}, err
+	}
+	if decision.Selected == media.BackendNVENC {
+		return videoEncoderSpec{nvenc: true, experimental: true, device: 0, qp: 16}, nil
+	}
+	return videoEncoderSpec{}, nil
 }
 
 func (s videoEncoderSpec) args(c media.CanvasSize, fps int, name string) ([]string, error) {
 	if !s.nvenc {
-		if s.device != 0 || s.qp != 0 {
+		if s.experimental || s.device != 0 || s.qp != 0 {
 			return nil, errors.New("CPU encoder does not accept NVENC options")
 		}
 		return hlgVideoEncoderArgs(c, fps, name), nil
@@ -46,6 +62,9 @@ func (s videoEncoderSpec) args(c media.CanvasSize, fps int, name string) ([]stri
 
 func (s videoEncoderSpec) name() string {
 	if s.nvenc {
+		if s.experimental {
+			return "NVENC (experimental)"
+		}
 		return "NVENC (qualification only)"
 	}
 	return "CPU"

@@ -114,8 +114,19 @@ func TestProjectNVENCIntegration(t *testing.T) {
 		out := filepath.Join(dir, strconv.Itoa(i)+".mp4")
 		var events []Progress
 		start := time.Now()
-		if err := renderProjectWithEncoder(ctx, engine, p, "hlg", 30, true, false, out, func(v Progress) { events = append(events, v) }, spec); err != nil {
-			t.Fatal(err)
+		observe := func(v Progress) { events = append(events, v) }
+		var renderErr error
+		if !spec.nvenc || (spec.device == 0 && spec.qp == 16) {
+			selected := engine
+			if spec.nvenc {
+				selected.EncodeBackend = media.BackendNVENC
+			}
+			renderErr = RenderProjectObserved(ctx, selected, p, "hlg", 30, out, observe)
+		} else {
+			renderErr = renderProjectWithEncoder(ctx, engine, p, "hlg", 30, true, false, out, observe, spec)
+		}
+		if renderErr != nil {
+			t.Fatal(renderErr)
 		}
 		elapsed := time.Since(start)
 		if err := checkExportProgress(events, plan); err != nil {
@@ -125,7 +136,7 @@ func TestProjectNVENCIntegration(t *testing.T) {
 			found := false
 			for _, event := range events {
 				for _, warning := range event.Warnings {
-					found = found || strings.Contains(warning, "Qualification-only NVENC")
+					found = found || strings.Contains(warning, "Qualification-only NVENC") || strings.Contains(warning, "Experimental NVENC")
 				}
 			}
 			if !found {
@@ -201,5 +212,34 @@ func TestProjectNVENCIntegration(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(dir, ".pixelcut-*"))
 	if err != nil || len(files) != 0 {
 		t.Fatalf("staged output leaked: %v %v", files, err)
+	}
+}
+
+func TestPublicProjectEncoderPolicy(t *testing.T) {
+	for _, decode := range []media.Backend{"", media.BackendCPU, media.BackendAuto, media.BackendCUDA} {
+		engine := media.Default()
+		engine.DecodeBackend = decode
+		for _, encode := range []media.Backend{"", media.BackendCPU, media.BackendNVENC} {
+			engine.EncodeBackend = encode
+			spec, err := projectEncoderSpec(engine)
+			if err != nil || spec.nvenc != (encode == media.BackendNVENC) {
+				t.Fatalf("independent policy decode=%q encode=%q: %+v %v", decode, encode, spec, err)
+			}
+			if spec.nvenc && (!spec.experimental || spec.device != 0 || spec.qp != 16) {
+				t.Fatal("experimental encoder settings changed")
+			}
+		}
+	}
+	engine := media.Default()
+	engine.EncodeBackend = "bogus"
+	path := filepath.Join(t.TempDir(), "output.mp4")
+	if err := RenderProject(context.Background(), engine, project.New(), "hlg", 30, path); err == nil || !strings.Contains(err.Error(), "unknown encode backend") {
+		t.Fatalf("invalid encode backend: %v", err)
+	}
+	if err := RenderVideo(context.Background(), engine, project.New(), "hlg", 30, true, path); err == nil || !strings.Contains(err.Error(), "unknown encode backend") {
+		t.Fatalf("invalid video-only encode backend: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("invalid encoder published output")
 	}
 }
