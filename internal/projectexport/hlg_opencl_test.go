@@ -51,7 +51,7 @@ float3 encode_hlg(float3 p) {
                           clamp(512.0f + 896.0f * cr, 64.0f, 960.0f)));
 }
 
-__kernel void composite_hlg(write_only image2d_t dst, int frame_index, read_only image2d_t atlas) {
+__kernel void composite_hlg(write_only image2d_t dst, uint frame_index, read_only image2d_t atlas) {
     int2 pos = (int2)(get_global_id(0), get_global_id(1));
     int h = get_image_height(dst);
     if (pos.x >= get_image_width(dst) || pos.y >= h) return;
@@ -73,14 +73,18 @@ __kernel void composite_hlg(write_only image2d_t dst, int frame_index, read_only
         if (p.w == 100.0f) break;
     }
     if (mixed) result = encode_hlg(sum);
-    write_imagef(dst, pos, (float4)(result, 100.0f) / 65535.0f);
+    write_imagef(dst, pos, (float4)(result, 100.0f + (float)frame_index) / 65535.0f);
 }
 `
 
 const openCLCompositeMaxPixels = 1920 * 1080
 
 func packHLGOpenCLAtlas(c media.CanvasSize, layers []layerFrame) ([]byte, error) {
-	if c.Validate() != nil || c.Width > 1920 || c.Height > 1920 || int64(c.Width)*int64(c.Height) > openCLCompositeMaxPixels || len(layers) > MaxVideoLayers {
+	return packHLGOpenCLAtlasInto(c, layers, nil)
+}
+
+func packHLGOpenCLAtlasInto(c media.CanvasSize, layers []layerFrame, atlas []byte) ([]byte, error) {
+	if c.Validate() != nil || c.Width > 4096 || c.Height > 1920 || int64(c.Width)*int64(c.Height) > openCLCompositeMaxPixels || len(layers) > MaxVideoLayers {
 		return nil, errors.New("invalid or oversized OpenCL qualification canvas")
 	}
 	for _, layer := range layers {
@@ -89,7 +93,13 @@ func packHLGOpenCLAtlas(c media.CanvasSize, layers []layerFrame) ([]byte, error)
 			return nil, errors.New("invalid OpenCL qualification layer")
 		}
 	}
-	atlas := make([]byte, c.Width*c.Height*8*MaxVideoLayers)
+	size := c.Width * c.Height * 8 * MaxVideoLayers
+	if cap(atlas) < size {
+		atlas = make([]byte, size)
+	} else {
+		atlas = atlas[:size]
+		clear(atlas)
+	}
 	for i, layer := range layers {
 		b := layer.Bounds
 		n := b.Width * b.Height * 2
@@ -111,15 +121,23 @@ func packHLGOpenCLAtlas(c media.CanvasSize, layers []layerFrame) ([]byte, error)
 }
 
 func unpackHLGOpenCL(c media.CanvasSize, packed []byte) ([]byte, error) {
-	if c.Validate() != nil || c.Width > 1920 || c.Height > 1920 || int64(c.Width)*int64(c.Height) > openCLCompositeMaxPixels || len(packed) != c.Width*c.Height*8 {
+	return unpackHLGOpenCLInto(c, packed, nil, 100)
+}
+
+func unpackHLGOpenCLInto(c media.CanvasSize, packed, out []byte, marker uint16) ([]byte, error) {
+	if c.Validate() != nil || c.Width > 4096 || c.Height > 1920 || int64(c.Width)*int64(c.Height) > openCLCompositeMaxPixels || len(packed) != c.Width*c.Height*8 {
 		return nil, errors.New("invalid OpenCL output extent")
 	}
 	n := c.Width * c.Height
-	out := make([]byte, n*6)
+	if cap(out) < n*6 {
+		out = make([]byte, n*6)
+	} else {
+		out = out[:n*6]
+	}
 	for i := 0; i < n; i++ {
 		offset := i * 8
 		p := ycbcr10{binary.LittleEndian.Uint16(packed[offset:]), binary.LittleEndian.Uint16(packed[offset+2:]), binary.LittleEndian.Uint16(packed[offset+4:])}
-		if p.Y > 1023 || p.Cb > 1023 || p.Cr > 1023 || binary.LittleEndian.Uint16(packed[offset+6:]) != 100 {
+		if p.Y > 1023 || p.Cb > 1023 || p.Cr > 1023 || binary.LittleEndian.Uint16(packed[offset+6:]) != marker {
 			return nil, fmt.Errorf("invalid OpenCL transport at pixel %d", i)
 		}
 		writePixel(out, n*2, i*2, p)
@@ -143,6 +161,13 @@ func (c *openCLCapture) Write(p []byte) (int, error) {
 var openCLDevicePattern = regexp.MustCompile("^([0-9]{1,2})\\.([0-9]{1,2})$")
 
 func openCLCompositeArgs(c media.CanvasSize, device string) ([]string, error) {
+	return openCLCompositeBatchArgs(c, device, 1)
+}
+
+func openCLCompositeBatchArgs(c media.CanvasSize, device string, frames int) ([]string, error) {
+	if frames < 1 || frames > 120 || c.Validate() != nil || c.Width > 4096 || c.Height > 1920 || int64(c.Width)*int64(c.Height) > openCLCompositeMaxPixels {
+		return nil, errors.New("invalid OpenCL batch extent or count")
+	}
 	if !openCLDevicePattern.MatchString(device) {
 		return nil, errors.New("OpenCL device must be a platform.device index")
 	}
@@ -151,7 +176,7 @@ func openCLCompositeArgs(c media.CanvasSize, device string) ([]string, error) {
 		"-init_hw_device", "opencl=pccl:" + device + ",device_type=gpu", "-filter_hw_device", "pccl",
 		"-f", "rawvideo", "-pixel_format", "rgba64le", "-video_size", fmt.Sprintf("%dx%d", c.Width, c.Height*MaxVideoLayers), "-framerate", "1", "-i", "pipe:0",
 		"-filter_threads", "1", "-vf", fmt.Sprintf("hwupload,program_opencl=source=hlg.cl:kernel=composite_hlg:size=%dx%d,hwdownload,format=rgba64le", c.Width, c.Height),
-		"-frames:v", "1", "-c:v", "rawvideo", "-pix_fmt", "rgba64le", "-threads", "1", "-f", "rawvideo", "pipe:1",
+		"-frames:v", fmt.Sprint(frames), "-fps_mode", "passthrough", "-c:v", "rawvideo", "-pix_fmt", "rgba64le", "-threads", "1", "-f", "rawvideo", "pipe:1",
 	}, nil
 }
 
