@@ -15,13 +15,34 @@ func (v Stream) DisplayRotation() (int, error) {
 	if tag := v.Tags["rotate"]; tag != "" && tag != "0" {
 		return 0, errors.New("legacy rotation tag is not supported without a verified display matrix")
 	}
-	if len(v.SideData) == 0 {
+	var d map[string]any
+	seen := make(map[string]bool)
+	for _, side := range v.SideData {
+		kind, ok := side["side_data_type"].(string)
+		if !ok || kind == "" {
+			return 0, errors.New("unsupported video side data (missing type)")
+		}
+		if seen[kind] {
+			return 0, fmt.Errorf("duplicate video side data (%s)", kind)
+		}
+		seen[kind] = true
+		switch kind {
+		case "Display Matrix":
+			d = side
+		case "Mastering display metadata", "Content light level metadata":
+			if _, ok := side["rotation"]; ok {
+				return 0, errors.New("unexpected rotation in static HDR side data")
+			}
+			if _, ok := side["displaymatrix"]; ok {
+				return 0, errors.New("unexpected display matrix in static HDR side data")
+			}
+		default:
+			return 0, fmt.Errorf("unsupported video side data (%s)", kind)
+		}
+	}
+	if d == nil {
 		return 0, nil
 	}
-	if len(v.SideData) != 1 || v.SideData[0]["side_data_type"] != "Display Matrix" {
-		return 0, errors.New("unsupported video side data")
-	}
-	d := v.SideData[0]
 	matrix, ok := d["displaymatrix"].(string)
 	angle, angleOK := d["rotation"].(float64)
 	if !ok || !angleOK {
@@ -65,6 +86,16 @@ func (v Stream) DisplayRotation() (int, error) {
 		return 0, errors.New("unsupported display matrix transform (expected pure rotation)")
 	}
 	return int(angle), nil
+}
+
+func (v Stream) HasStaticHDRMetadata() bool {
+	for _, side := range v.SideData {
+		kind, _ := side["side_data_type"].(string)
+		if kind == "Mastering display metadata" || kind == "Content light level metadata" {
+			return true
+		}
+	}
+	return false
 }
 
 func (v Stream) DisplayGeometry() (Stream, error) {

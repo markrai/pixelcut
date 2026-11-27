@@ -257,6 +257,9 @@ func (e Engine) Render(ctx context.Context, input, output string, edit Edit) err
 	})
 	if err == nil {
 		r.reportExcluded()
+		if v.HasStaticHDRMetadata() {
+			fmt.Fprintln(os.Stderr, "pixelcut: rendered output does not guarantee preservation or recomputation of source static HDR mastering/light-level metadata; source unchanged")
+		}
 	}
 	return err
 }

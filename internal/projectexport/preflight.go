@@ -95,6 +95,9 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 		if err != nil {
 			return Prepared{}, err
 		}
+		if visible[asset.ID] && v.HasStaticHDRMetadata() {
+			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: rendered output does not guarantee preservation or recomputation of source static HDR mastering/light-level metadata; source unchanged", asset.ID))
+		}
 		if visible[asset.ID] && (v.Range != "tv" || v.ChromaLocation != "left") {
 			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, v.Range, v.ChromaLocation))
 		}
