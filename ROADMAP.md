@@ -155,7 +155,7 @@ See [HDR composition qualification](docs/gpu-composite-qualification.md). CPU ge
 | Slice | Scope | Status |
 | --- | --- | --- |
 | 3A.5a | Isolated NVENC Main 10 synthetic flat-color qualification, shared export encoder contract | Merged via PR #40; CI and performance passed; physical results pending |
-| 3A.5b | Spatial/motion/real HLG quality, sustained encode throughput, bitrate and resource qualification | Bounded comparison harness implemented; physical quality, throughput and memory evidence pending |
+| 3A.5b | Spatial/motion/real HLG quality, sustained encode throughput, bitrate and resource qualification | PR #42 merged; initial physical flat-field and motion suites passed, but shared raw color conversion invalidates encoding-only motion fidelity; 3A.5b.1 explicit input color and exact lossless control added; corrected physical retest pending |
 | 3A.5c | Explicit experimental project encoder integration, audio mux and verified publication; or defer | Pending |
 | 3A.5d | Runtime cancellation, fault and no-overwrite acceptance | Pending |
 
