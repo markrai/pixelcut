@@ -143,3 +143,25 @@ set PIXELCUT_QUALIFY_CUDA_CHROMA_CORRECTION=
 ```
 
 Local FFmpeg 7.1.5 command-level software simulation on constant-luma 192x144 edge pattern reduced U maximum error 46→3 at 2x, 61→4 at 3x, and 70→4 at 4x, with unchanged luma. A separate impulse test confirmed convolution row direction. These are not CUDA, real-media or SDR qualification results. Full candidate Go suite and physical comparison pending. If corrected output fails, investigate exact source-coordinate filtering upstream or alternate backend; do not increase limits. 3A.3e.3–5 fidelity, corrected performance and activation remain gated.
+
+## 3A.3f: bounded alternative geometry qualification
+
+PR #35 merged. Physical reduced-frame phase correction on the November 26 FFmpeg build failed the displayed quality gate: 4K 120 frames min PSNR 46.9197 dB, max RGB error 128, 26,934 over-limit samples (previous 2,969,753); 4K 6x min PSNR 39.4373/max 124; original rotated Pixel min PSNR 50.7241/max 40, worse than uncorrected max 27. Synthetic edges passed 2x and 3x, failed 4x and 6x; all four impulse tests passed. Corrected median CPU 1.6416269 s, CUDA 1.3534504 s, 1.21x on this run. No quality gate relaxation or activation. Reduced-frame convolution remains a diagnostic, not the planned production geometry path.
+
+New explicit gpu-preview-backend-check command compares either hybrid (NVDEC, full-size download, exact unchanged CPU geometry/tone map) or vulkan (software HEVC decode, original CPU rotation and source-sized scale, libplacebo replaces only the final scale, software output, existing tone map). Both use unchanged CPU reference, per-plane and displayed comparisons, source identity and indexed frame/hash checks. Hybrid requires exact planar and BGRA equality, not just provisional tolerance. Vulkan requires a recent FFmpeg with libplacebo, Vulkan and named chroma_location option; output BT.2020 HLG limited range 10-bit, negotiated chroma location, Lanczos up/down, no dynamic peak detection, sigmoid scaling, linear scaling, dithering, debanding or Dolby Vision application. libplacebo internally processes 4:4:4 and may not match swscale, so exact chroma preservation is not assumed. Output-plane metadata is not independently audited by the raw framehash contract; a successful report is a screening result, not an HDR or production activation qualification. No direct CUDA-to-Vulkan sharing or zero-copy claim: host upload and reduced download are included. Device index selects the Vulkan physical device exposed to FFmpeg, but the report alone does not establish hardware vs software implementation; verify the device separately.
+
+Optional benchmark reuses three independent startup-inclusive repetitions with alternating order; generic candidate timing fields, existing CUDA benchmark JSON unchanged. Three-minute deadline per command. Quality failure returns nonzero even when timing is available.
+
+```cmd
+pixelcut gpu-preview-backend-check -backend hybrid -benchmark -width 960 -height 540 -frames 120 "test-media\4k-test-pattern.mp4"
+pixelcut gpu-preview-backend-check -backend vulkan -vulkan-device 0 -benchmark -width 960 -height 540 -frames 120 "test-media\4k-test-pattern.mp4"
+pixelcut gpu-preview-backend-check -backend hybrid -width 540 -height 960 -frames 30 "test-media\test.mp4"
+pixelcut gpu-preview-backend-check -backend vulkan -width 540 -height 960 -frames 30 "test-media\test.mp4"
+set PIXELCUT_QUALIFY_PREVIEW_BACKEND=hybrid
+go test -count=1 -v ./internal/media -run "^TestPreviewQualificationChromaFixtures$"
+set PIXELCUT_QUALIFY_PREVIEW_BACKEND=vulkan
+go test -count=1 -v ./internal/media -run "^TestPreviewQualificationChromaFixtures$"
+set PIXELCUT_QUALIFY_PREVIEW_BACKEND=
+```
+
+Use actual device index for Vulkan CLI when not 0; fixture suite uses index 0. Verify device selection with ffmpeg -hide_banner -loglevel verbose -init_hw_device vulkan=pcvk:0 -f lavfi -i nullsrc=s=64x64 -frames:v 1 -f null -. Local FFmpeg 7.1.5 exposes libplacebo but Vulkan instance initialization returned VK_ERROR_INCOMPATIBLE_DRIVER and the build predates the named chroma_location option. No local Vulkan pixel or timing results; repository checkout DNS unavailable. Candidate CI/physical results pending. Selection rule: retain CPU geometry if no alternative clears the unchanged fidelity gate with a useful reproducible advantage. Do not block 3A.4 or 3A.5 indefinitely on scaling. Review FFmpeg libplacebo options at https://ffmpeg.org/ffmpeg-filters.html#libplacebo and note 4:4:4 internal processing.

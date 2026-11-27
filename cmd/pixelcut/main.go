@@ -20,6 +20,7 @@ const usage = `PixelCut - source-aware video editing foundation
 
 Usage:
   pixelcut gpu-info [-probe-devices]
+  pixelcut gpu-preview-backend-check -backend hybrid|vulkan -width W -height H [-start-frame N] [-frames N] [-vulkan-device N] [-benchmark] INPUT
   pixelcut gpu-decode-check [-start-frame N] [-frames N] INPUT
   pixelcut gpu-scale-check -width W -height H [-start-frame N] [-frames N] INPUT
   pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] [-chroma] [-correct-chroma] [-benchmark] INPUT
@@ -42,6 +43,32 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		return nil
 	}
 	switch args[0] {
+	case "gpu-preview-backend-check":
+		fs := flag.NewFlagSet("gpu-preview-backend-check", flag.ContinueOnError)
+		fs.SetOutput(stdout)
+		backend := fs.String("backend", "", "required candidate: hybrid or vulkan")
+		width := fs.Int("width", 0, "required even displayed output width")
+		height := fs.Int("height", 0, "required even displayed output height")
+		first := fs.Int("start-frame", 0, "first source frame ordinal (zero based)")
+		count := fs.Int("frames", 120, "number of consecutive frames (1-120)")
+		device := fs.Int("vulkan-device", 0, "explicit Vulkan device index (0-31)")
+		benchmark := fs.Bool("benchmark", false, "time CPU and candidate separately, three repetitions each")
+		if err := fs.Parse(args[1:]); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil
+			}
+			return err
+		}
+		if fs.NArg() != 1 {
+			return errors.New("usage: pixelcut gpu-preview-backend-check -backend hybrid|vulkan -width W -height H INPUT")
+		}
+		report, err := e.CheckPreviewBackend(ctx, fs.Arg(0), *first, *count, *width, *height, media.PreviewBackendOptions{Backend: *backend, VulkanDevice: *device, Benchmark: *benchmark})
+		enc := json.NewEncoder(stdout)
+		enc.SetIndent("", "  ")
+		if writeErr := enc.Encode(report); writeErr != nil {
+			return writeErr
+		}
+		return err
 	case "gpu-preview-scale-check":
 		fs := flag.NewFlagSet("gpu-preview-scale-check", flag.ContinueOnError)
 		fs.SetOutput(stdout)
