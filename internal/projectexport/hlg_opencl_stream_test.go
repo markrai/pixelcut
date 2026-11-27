@@ -239,16 +239,21 @@ func TestHLGOpenCLStripProtocol(t *testing.T) {
 	}
 }
 
-func cpuOpenCLStripTiming(ctx context.Context, batch openCLStripBatch) (time.Duration, error) {
+func cpuOpenCLStripTiming(ctx context.Context, batch openCLStripBatch, expected [][32]byte) (time.Duration, error) {
 	dst := black444(batch.canvas)
+	digests := make([][32]byte, 0, batch.count)
 	start := time.Now()
 	for i := 0; i < batch.count; i++ {
 		if err := compositeHLG(ctx, dst, batch.canvas, batch.cases[i%len(batch.cases)].layers); err != nil {
 			return 0, err
 		}
-		_ = sha256.Sum256(dst)
+		digests = append(digests, sha256.Sum256(dst))
 	}
-	return time.Since(start), nil
+	elapsed := time.Since(start)
+	if !slices.Equal(digests, expected) {
+		return 0, errors.New("timed CPU batch not repeatable")
+	}
+	return elapsed, nil
 }
 
 func medianOpenCLDuration(values []time.Duration) time.Duration {
@@ -301,6 +306,10 @@ func TestHLGOpenCLStreamQualification(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
+				expected := make([][32]byte, batch.count)
+				for i := range expected {
+					expected[i] = sha256.Sum256(refs[i%len(refs)])
+				}
 				maxDelta, exact, mixed := 0, 0, 0
 				verify, log, err := runOpenCLStripBatch(ctx, ffmpeg, dir, device, batch, func(i int, raw []byte) error {
 					j := i % len(batch.cases)
@@ -327,7 +336,7 @@ func TestHLGOpenCLStreamQualification(t *testing.T) {
 							}
 							gpu, first = append(gpu, r.total), append(first, r.first)
 						} else {
-							d, err := cpuOpenCLStripTiming(ctx, batch)
+							d, err := cpuOpenCLStripTiming(ctx, batch, expected)
 							if err != nil {
 								t.Fatal(err)
 							}
