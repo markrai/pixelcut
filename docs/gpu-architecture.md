@@ -61,3 +61,7 @@ The 3A.4 candidate boundary begins with normalized limited-range BT.2020 HLG pla
 ## 3A.4b isolated OpenCL composition experiment
 
 The test-only program_opencl candidate packs normalized HLG layer samples and opacity into a bounded 16-bit four-channel atlas, performs the scene-linear source-over operation in a GPU kernel, then downloads and compares the exact/one-code gates at the existing CPU-visible boundary. FFmpeg is the execution host; explicit GPU index and device-type constraint, no fallback or product dispatch. Atlas packing, transfer and process startup are not free; persistent execution and compact representations require measured justification. See [HDR composition qualification](gpu-composite-qualification.md).
+
+## 3A.4d / 3A.5a
+
+OpenCL activation deferred pending physical evidence; CPU composition retained. Hardware encoder qualification now begins at the existing CPU-produced normalized HLG 4:4:4 frame boundary. Share input chroma normalization and output container/color arguments with the current CPU encoder, but isolate NVENC selection in tests. No production backend dispatch change. See [hardware encode qualification](gpu-encode-qualification.md).

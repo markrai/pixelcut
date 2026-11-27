@@ -61,3 +61,7 @@ set PIXELCUT_OPENCL_DEVICE=
 ```
 
 Record actual device/driver and peak process/GPU memory separately. Do not infer physical pass or beneficial acceleration from CI. 3A.4d remains gated on both physical suites, resource review and meaningful measured end-to-end gain; defer if not worthwhile.
+
+## 3A.4d: activation deferred
+
+PR #39 merged at 44a4700643efdc0693ca8efda972e3cc74efafb2; CI 45935143312 and performance 45935143309 passed. Physical single-frame and persistent OpenCL reports, meaningful comparative performance and peak memory evidence have not been supplied. Production composition stays CPU-only. This is a reversible deferral, not a claim that OpenCL failed. Existing test harness and thresholds remain available. 3A.5 encoding proceeds independently.
