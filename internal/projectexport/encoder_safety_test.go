@@ -189,6 +189,42 @@ func TestProjectEncoderRuntimeSafety(t *testing.T) {
 				requireEncoderMissing(t, out)
 				requireEncoderNoStages(t, dir)
 			})
+			t.Run("corrupt-staged-mux", func(t *testing.T) {
+				dir := t.TempDir()
+				out := filepath.Join(dir, "corrupt-mux.mp4")
+				var videoStage string
+				var verifies int
+				var inject error
+				done := false
+				err := render(ctx, out, func(v Progress) {
+					done = done || v.Stage == StageDone
+					if v.Stage != StageVerify {
+						return
+					}
+					verifies++
+					files, err := filepath.Glob(filepath.Join(dir, ".pixelcut-*"))
+					if err != nil || len(files) != verifies || verifies > 2 {
+						inject = fmt.Errorf("unexpected staged files at verification %d: %v %v", verifies, files, err)
+						return
+					}
+					if verifies == 1 {
+						videoStage = files[0]
+						return
+					}
+					for _, file := range files {
+						if file != videoStage {
+							inject = os.Truncate(file, 0)
+							return
+						}
+					}
+					inject = fmt.Errorf("missing staged mux")
+				})
+				if err == nil || inject != nil || verifies != 2 || done {
+					t.Fatalf("corrupted mux: %v injection=%v verifies=%d done=%t", err, inject, verifies, done)
+				}
+				requireEncoderMissing(t, out)
+				requireEncoderNoStages(t, dir)
+			})
 			t.Run("source-mutation", func(t *testing.T) {
 				dir := t.TempDir()
 				out := filepath.Join(dir, "changed.mp4")
