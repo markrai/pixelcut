@@ -180,21 +180,37 @@ func (e Engine) benchmarkPreviewScale(ctx context.Context, v Stream, req StillRe
 	if err != nil {
 		return nil, err
 	}
-	r := &PreviewScaleBenchmark{Frames: len(ticks), CPUSeconds: []float64{}, CUDASeconds: []float64{}}
+	r, err := e.benchmarkPreviewPaths(ctx, req, ticks, cpu, cuda, "cuda")
+	return &PreviewScaleBenchmark{
+		Frames: r.Frames, CPUSeconds: r.CPUSeconds, CUDASeconds: r.CandidateSeconds,
+		CPUMedianSeconds: r.CPUMedianSeconds, GPUMedianSeconds: r.CandidateMedianSeconds,
+	}, err
+}
+
+type PreviewBackendBenchmark struct {
+	Frames                 int       `json:"frames"`
+	CPUSeconds             []float64 `json:"cpu_seconds"`
+	CandidateSeconds       []float64 `json:"candidate_seconds"`
+	CPUMedianSeconds       float64   `json:"cpu_median_seconds"`
+	CandidateMedianSeconds float64   `json:"candidate_median_seconds"`
+}
+
+func (e Engine) benchmarkPreviewPaths(ctx context.Context, req StillRequest, ticks []int64, cpu, candidate []string, name string) (*PreviewBackendBenchmark, error) {
+	r := &PreviewBackendBenchmark{Frames: len(ticks), CPUSeconds: []float64{}, CandidateSeconds: []float64{}}
 	for round := 0; round < 3; round++ {
-		for _, hardware := range []bool{round%2 == 1, round%2 != 1} {
-			args, target, name := cpu, &r.CPUSeconds, "CPU"
-			if hardware {
-				args, target, name = cuda, &r.CUDASeconds, "CUDA"
+		for _, alternative := range []bool{round%2 == 1, round%2 != 1} {
+			args, target, label := cpu, &r.CPUSeconds, "CPU"
+			if alternative {
+				args, target, label = candidate, &r.CandidateSeconds, name
 			}
 			seconds, err := e.timePreviewPath(ctx, args, req, ticks)
 			if err != nil {
-				return r, fmt.Errorf("%s benchmark round %d: %w", name, round+1, err)
+				return r, fmt.Errorf("%s benchmark round %d: %w", label, round+1, err)
 			}
 			*target = append(*target, seconds)
 		}
 	}
 	r.CPUMedianSeconds = medianPreviewSeconds(r.CPUSeconds)
-	r.GPUMedianSeconds = medianPreviewSeconds(r.CUDASeconds)
+	r.CandidateMedianSeconds = medianPreviewSeconds(r.CandidateSeconds)
 	return r, nil
 }

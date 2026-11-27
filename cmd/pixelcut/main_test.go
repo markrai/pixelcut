@@ -97,3 +97,14 @@ func TestGPUPreviewScaleCorrectionConflictingFlags(t *testing.T) {
 		t.Fatalf("conflicting chroma flags accepted: %v %s", err, out.String())
 	}
 }
+
+func TestGPUPreviewBackendCommandArguments(t *testing.T) {
+	var out bytes.Buffer
+	if err := run(context.Background(), []string{"gpu-preview-backend-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "vulkan-device") {
+		t.Fatalf("backend help: %v %s", err, out.String())
+	}
+	out.Reset()
+	if err := run(context.Background(), []string{"gpu-preview-backend-check", "-backend", "auto", "-width", "960", "-height", "540", "source.mp4"}, &out); err == nil || !strings.Contains(out.String(), "failed") {
+		t.Fatalf("unsupported backend accepted: %v %s", err, out.String())
+	}
+}

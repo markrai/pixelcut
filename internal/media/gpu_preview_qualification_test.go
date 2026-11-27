@@ -39,6 +39,7 @@ func TestPreviewQualificationChromaFixtures(t *testing.T) {
 	}
 	physical := os.Getenv("PIXELCUT_QUALIFY_CUDA_CHROMA") == "1"
 	corrected := os.Getenv("PIXELCUT_QUALIFY_CUDA_CHROMA_CORRECTION") == "1"
+	alternative := os.Getenv("PIXELCUT_QUALIFY_PREVIEW_BACKEND")
 	for _, fixture := range []struct {
 		name, cb, cr string
 	}{
@@ -104,6 +105,19 @@ func TestPreviewQualificationChromaFixtures(t *testing.T) {
 			}
 			if seconds, err := e.timePreviewPath(ctx, bgra, req, index.ticks); err != nil || seconds <= 0 {
 				t.Fatalf("CPU independent timing: %f %v", seconds, err)
+			}
+			if alternative != "" {
+				for _, size := range []CanvasSize{{96, 72}, {64, 48}, {48, 36}, {32, 24}} {
+					r, err := e.CheckPreviewBackend(ctx, path, 0, 4, size.Width, size.Height, PreviewBackendOptions{Backend: alternative})
+					raw, marshalErr := json.MarshalIndent(r, "", "  ")
+					if marshalErr != nil {
+						t.Fatal(marshalErr)
+					}
+					t.Log(string(raw))
+					if err != nil {
+						t.Errorf("alternative %s qualification %dx%d: %v", alternative, size.Width, size.Height, err)
+					}
+				}
 			}
 			if corrected {
 				for _, size := range []CanvasSize{{96, 72}, {64, 48}, {48, 36}, {32, 24}} {
