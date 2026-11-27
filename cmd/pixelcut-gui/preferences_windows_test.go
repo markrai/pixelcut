@@ -97,3 +97,26 @@ func TestDecodeBackendMenuAndEngine(t *testing.T) {
 		}
 	}
 }
+
+func TestEncodeBackendMenuIndependentOfPreview(t *testing.T) {
+	p := session.DefaultPreferences()
+	p.DecodeBackend = "cuda"
+	preview := engineForPreferences(p)
+	for _, mode := range []string{"", "cpu", "nvenc"} {
+		p.EncodeBackend = mode
+		for _, id := range []int{prefEncodeCPU, prefEncodeNVENC} {
+			item, ok := findMenuItem(preferenceItems(p), id)
+			want := (id == prefEncodeNVENC) == (mode == "nvenc")
+			if !ok || !item.enabled || item.checked != want {
+				t.Fatalf("encoder menu mode %q: %+v", mode, item)
+			}
+		}
+		if engineForPreferences(p) != preview {
+			t.Fatal("encoder-only preference changed preview engine")
+		}
+		export := exportEngineForPreferences(preview, p)
+		if export.DecodeBackend != media.BackendCUDA || export.EncodeBackend != media.Backend(mode) {
+			t.Fatal("export snapshot lost independent backend selection")
+		}
+	}
+}

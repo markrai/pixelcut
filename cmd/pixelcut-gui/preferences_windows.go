@@ -38,6 +38,8 @@ const (
 	prefDecodeCPU
 	prefDecodeAuto
 	prefDecodeCUDA
+	prefEncodeCPU
+	prefEncodeNVENC
 )
 
 func engineForPreferences(p session.Preferences) media.Engine {
@@ -53,6 +55,11 @@ func engineForPreferences(p session.Preferences) media.Engine {
 	}
 	e.DecodeBackend = media.Backend(p.DecodeBackend)
 	return e
+}
+
+func exportEngineForPreferences(engine media.Engine, p session.Preferences) media.Engine {
+	engine.EncodeBackend = media.Backend(p.EncodeBackend)
+	return engine
 }
 
 func (e *editor) loadPreferences() {
@@ -179,6 +186,8 @@ func preferenceItems(p session.Preferences) []menuItem {
 		separator(), prefChecked(prefDecodeCPU, "Video decode: CPU (reference)", p.DecodeBackend == "" || p.DecodeBackend == "cpu"),
 		prefChecked(prefDecodeAuto, "Video decode: Automatic (currently CPU)", p.DecodeBackend == "auto"),
 		prefChecked(prefDecodeCUDA, "Video decode: NVIDIA CUDA (experimental)", p.DecodeBackend == "cuda"),
+		separator(), prefChecked(prefEncodeCPU, "Video encoder: Software (x265)", p.EncodeBackend == "" || p.EncodeBackend == "cpu"),
+		prefChecked(prefEncodeNVENC, "Video encoder: NVIDIA NVENC (experimental)", p.EncodeBackend == "nvenc"),
 		item(prefGPUInfo, "GPU capabilities / device diagnostics...", true),
 		separator(), item(prefReset, "Reset preferences to defaults...", true))
 	return items
@@ -236,12 +245,22 @@ func (e *editor) showPreferences() error {
 		p.DecodeBackend = "auto"
 	case prefDecodeCUDA:
 		if p.DecodeBackend != "cuda" {
-			msg := "Experimental CUDA decoding applies to composite preview and whole-project export. HEVC Main 10 HLG only. Geometry, compositing and encoding remain CPU. CUDA failures stop the operation; select CPU to recover. Enable CUDA decoding?"
+			msg := "Experimental CUDA decoding applies to composite preview and whole-project export. HEVC Main 10 HLG only. Geometry and compositing remain CPU; export encoding is selected separately. CUDA failures stop the operation; select CPU to recover. Enable CUDA decoding?"
 			if r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(msg))), uintptr(unsafe.Pointer(u("Experimental CUDA decode"))), 0x134); r != 6 {
 				return nil
 			}
 		}
 		p.DecodeBackend = "cuda"
+	case prefEncodeCPU:
+		p.EncodeBackend = ""
+	case prefEncodeNVENC:
+		if p.EncodeBackend != "nvenc" {
+			msg := "Experimental NVENC applies to whole-project HLG export only, using NVIDIA device 0 and QP 16. Requires compatible FFmpeg and NVIDIA drivers. Output may be larger; failures stop export without CPU fallback. Select Software (x265) to recover. Enable NVENC?"
+			if r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(msg))), uintptr(unsafe.Pointer(u("Experimental NVENC encode"))), 0x134); r != 6 {
+				return nil
+			}
+		}
+		p.EncodeBackend = "nvenc"
 	case prefGPUInfo:
 		return e.showGPUInfo()
 	case prefReset:
