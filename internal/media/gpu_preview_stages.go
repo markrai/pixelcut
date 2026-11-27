@@ -109,10 +109,14 @@ type previewStageGraphs struct {
 }
 
 func buildPreviewStageGraphs(v Stream, req StillRequest, first, count int) (previewStageGraphs, error) {
+	return buildPreviewStageGraphsWithCorrection(v, req, first, count, false)
+}
+
+func buildPreviewStageGraphsWithCorrection(v Stream, req StillRequest, first, count int, corrected bool) (previewStageGraphs, error) {
 	if first < 0 || count < 1 || count > maxPreviewScaleFrames || first > MaxIndexedFrames-count {
 		return previewStageGraphs{}, errors.New("invalid stage diagnostic interval")
 	}
-	cuda, err := previewScaleCandidate(v, req)
+	cuda, err := previewScaleCandidateWithCorrection(v, req, corrected)
 	if err != nil {
 		return previewStageGraphs{}, err
 	}
@@ -157,8 +161,8 @@ func (e Engine) comparePreviewPlanes(ctx context.Context, req StillRequest, firs
 	}, nil
 }
 
-func (e Engine) diagnosePreviewStages(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64, out *PreviewScaleDiagnostics) error {
-	graphs, err := buildPreviewStageGraphs(v, req, first, len(ticks))
+func (e Engine) diagnosePreviewStages(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64, out *PreviewScaleDiagnostics, corrected bool) error {
+	graphs, err := buildPreviewStageGraphsWithCorrection(v, req, first, len(ticks), corrected)
 	if err != nil {
 		return err
 	}

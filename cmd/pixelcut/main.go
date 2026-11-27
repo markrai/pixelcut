@@ -22,7 +22,7 @@ Usage:
   pixelcut gpu-info [-probe-devices]
   pixelcut gpu-decode-check [-start-frame N] [-frames N] INPUT
   pixelcut gpu-scale-check -width W -height H [-start-frame N] [-frames N] INPUT
-  pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] [-chroma] [-benchmark] INPUT
+  pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] [-chroma] [-correct-chroma] [-benchmark] INPUT
   pixelcut inspect INPUT
   pixelcut remux INPUT OUTPUT.mp4
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
@@ -52,6 +52,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		diagnose := fs.Bool("diagnose", false, "also compare pre-tone-map 10-bit planes and CPU geometry order")
 		chroma := fs.Bool("chroma", false, "test explicit CPU chroma sampling controls (implies diagnose)")
 		benchmark := fs.Bool("benchmark", false, "time CPU and CUDA separately, three repetitions each")
+		correctChroma := fs.Bool("correct-chroma", false, "test experimental reduced-frame chroma phase correction (separate from -chroma)")
 		if err := fs.Parse(args[1:]); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
 				return nil
@@ -59,9 +60,9 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 			return err
 		}
 		if fs.NArg() != 1 {
-			return errors.New("usage: pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] [-chroma] [-benchmark] INPUT")
+			return errors.New("usage: pixelcut gpu-preview-scale-check -width W -height H [-start-frame N] [-frames N] [-diagnose] [-chroma] [-correct-chroma] [-benchmark] INPUT")
 		}
-		report, err := e.CheckCUDAPreviewScaleWithOptions(ctx, fs.Arg(0), *first, *count, *width, *height, media.PreviewScaleOptions{Diagnose: *diagnose, Chroma: *chroma, Benchmark: *benchmark})
+		report, err := e.CheckCUDAPreviewScaleWithOptions(ctx, fs.Arg(0), *first, *count, *width, *height, media.PreviewScaleOptions{Diagnose: *diagnose, Chroma: *chroma, Benchmark: *benchmark, CorrectChroma: *correctChroma})
 		enc := json.NewEncoder(stdout)
 		enc.SetIndent("", "  ")
 		if writeErr := enc.Encode(report); writeErr != nil {

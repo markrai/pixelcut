@@ -82,7 +82,7 @@ func TestGPUScaleCheckCommandArguments(t *testing.T) {
 
 func TestGPUPreviewScaleCheckCommandArguments(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") || !strings.Contains(out.String(), "chroma") || !strings.Contains(out.String(), "benchmark") {
+	if err := run(context.Background(), []string{"gpu-preview-scale-check", "-h"}, &out); err != nil || !strings.Contains(out.String(), "start-frame") || !strings.Contains(out.String(), "chroma") || !strings.Contains(out.String(), "benchmark") || !strings.Contains(out.String(), "correct-chroma") {
 		t.Fatalf("preview scale help: %v", err)
 	}
 	out.Reset()

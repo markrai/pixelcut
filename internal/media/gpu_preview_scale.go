@@ -19,6 +19,10 @@ import (
 const maxPreviewScaleFrames = 120
 
 func previewScaleCandidate(v Stream, req StillRequest) (string, error) {
+	return previewScaleCandidateWithCorrection(v, req, false)
+}
+
+func previewScaleCandidateWithCorrection(v Stream, req StillRequest, corrected bool) (string, error) {
 	if err := validateCUDADecodeSource(v); err != nil {
 		return "", err
 	}
@@ -53,18 +57,31 @@ func previewScaleCandidate(v Stream, req StillRequest) (string, error) {
 		w, h = h, w
 	}
 	filters := []string{fmt.Sprintf("scale_cuda=w=%d:h=%d:format=p010le:interp_algo=lanczos:passthrough=0", w, h), cudaDownloadFilter}
+	if corrected {
+		plan, err := planPreviewChromaCorrection(v.Width, w)
+		if err != nil {
+			return "", err
+		}
+		if plan.ShiftChromaSamples != 0 {
+			filters = append(filters, plan.filter())
+		}
+	}
 	filters = append(filters, displayRotationFilters(rotation)...)
 	return strings.Join(filters, ","), nil
 }
 
 func (e Engine) previewCUDAPipeline(v Stream, req StillRequest, temporal, graph string, candidate bool) ([]string, string, error) {
+	return e.previewCUDAPipelineWithCorrection(v, req, temporal, graph, candidate, false)
+}
+
+func (e Engine) previewCUDAPipelineWithCorrection(v Stream, req StillRequest, temporal, graph string, candidate, corrected bool) ([]string, string, error) {
 	if !candidate {
 		return e.VideoDecodePipeline(v, temporal+","+graph, true)
 	}
 	if e.DecodeBackend != BackendCUDA {
 		return nil, "", errors.New("CUDA preview scale candidate requires explicit CUDA decode")
 	}
-	prefix, err := previewScaleCandidate(v, req)
+	prefix, err := previewScaleCandidateWithCorrection(v, req, corrected)
 	if err != nil {
 		return nil, "", err
 	}
@@ -118,6 +135,7 @@ type PreviewScaleReport struct {
 	Tools         *PreviewQualificationTools `json:"tools,omitempty"`
 	Chroma        []PreviewChromaControl     `json:"chroma_controls,omitempty"`
 	Benchmark     *PreviewScaleBenchmark     `json:"benchmark,omitempty"`
+	Correction    *PreviewChromaCorrection   `json:"correction,omitempty"`
 }
 
 type previewQualityAccumulator struct {
@@ -186,6 +204,10 @@ func (q PreviewScaleQuality) withinLimits() bool {
 }
 
 func previewCheckArgs(e Engine, v Stream, req StillRequest, first, count int, cuda bool) ([]string, error) {
+	return previewCheckArgsWithCorrection(e, v, req, first, count, cuda, false)
+}
+
+func previewCheckArgsWithCorrection(e Engine, v Stream, req StillRequest, first, count int, cuda, corrected bool) ([]string, error) {
 	if first < 0 || count < 1 || count > maxPreviewScaleFrames || first > MaxIndexedFrames-count {
 		return nil, errors.New("invalid preview scale check interval (1-120 frames)")
 	}
@@ -206,7 +228,7 @@ func previewCheckArgs(e Engine, v Stream, req StillRequest, first, count int, cu
 	graph = strings.Join(filters, ",")
 	if cuda {
 		e.DecodeBackend = BackendCUDA
-		input, graph, err = e.previewCUDAPipeline(v, req, temporal, "", true)
+		input, graph, err = e.previewCUDAPipelineWithCorrection(v, req, temporal, "", true, corrected)
 		if err != nil {
 			return nil, err
 		}
@@ -283,11 +305,15 @@ func (p *previewCheckChild) close() {
 }
 
 func (e Engine) comparePreviewScale(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64, hardware bool) (PreviewScaleQuality, int, error) {
+	return e.comparePreviewScaleWithCorrection(ctx, v, req, first, ticks, hardware, false)
+}
+
+func (e Engine) comparePreviewScaleWithCorrection(ctx context.Context, v Stream, req StillRequest, first int, ticks []int64, hardware, corrected bool) (PreviewScaleQuality, int, error) {
 	cpuArgs, err := previewCheckArgs(e, v, req, first, len(ticks), false)
 	if err != nil {
 		return PreviewScaleQuality{}, 0, err
 	}
-	gpuArgs, err := previewCheckArgs(e, v, req, first, len(ticks), hardware)
+	gpuArgs, err := previewCheckArgsWithCorrection(e, v, req, first, len(ticks), hardware, corrected)
 	if err != nil {
 		return PreviewScaleQuality{}, 0, err
 	}
@@ -366,6 +392,9 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 		width < 2 || height < 2 || width > MaxStillSide || height > MaxStillSide || width%2 != 0 || height%2 != 0 {
 		return r, errors.New("invalid preview scale dimensions or interval (even dimensions up to 960; 1-120 frames)")
 	}
+	if options.CorrectChroma && options.Chroma {
+		return r, errors.New("run -chroma controls separately from -correct-chroma")
+	}
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancel()
 	identity, err := mediacache.Identify(path)
@@ -393,8 +422,19 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 		return r, err
 	}
 	req := StillRequest{Path: identity.Path, Width: display.Width, Height: display.Height, Canvas: CanvasSize{display.Width, display.Height}, OutputWidth: width, OutputHeight: height}
-	if _, err = previewScaleCandidate(v, req); err != nil {
+	if _, err = previewScaleCandidateWithCorrection(v, req, options.CorrectChroma); err != nil {
 		return r, err
+	}
+	if options.CorrectChroma {
+		codedWidth := width
+		if *r.SourceVideo.Rotation == -90 || *r.SourceVideo.Rotation == 90 {
+			codedWidth = height
+		}
+		plan, err := planPreviewChromaCorrection(v.Width, codedWidth)
+		if err != nil {
+			return r, err
+		}
+		r.Correction = &plan
 	}
 	index, err := e.ExportFrames(ctx, identity.Path)
 	if err != nil {
@@ -404,7 +444,7 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 		return r, errors.New("preview scale interval exceeds source index")
 	}
 	started := time.Now()
-	r.Quality, r.Compared, err = e.comparePreviewScale(ctx, v, req, first, index.ticks[first:first+count], true)
+	r.Quality, r.Compared, err = e.comparePreviewScaleWithCorrection(ctx, v, req, first, index.ticks[first:first+count], true, options.CorrectChroma)
 	r.WallSeconds = time.Since(started).Seconds()
 	if err != nil {
 		return r, err
@@ -414,7 +454,7 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 	}
 	if options.Diagnose || options.Chroma {
 		r.Stages = &PreviewScaleDiagnostics{}
-		if err = e.diagnosePreviewStages(ctx, v, req, first, index.ticks[first:first+count], r.Stages); err != nil {
+		if err = e.diagnosePreviewStages(ctx, v, req, first, index.ticks[first:first+count], r.Stages, options.CorrectChroma); err != nil {
 			return r, err
 		}
 		if !unchanged(identity.Path, identity) {
@@ -428,7 +468,7 @@ func (e Engine) CheckCUDAPreviewScaleWithOptions(ctx context.Context, path strin
 		}
 	}
 	if options.Benchmark {
-		r.Benchmark, err = e.benchmarkPreviewScale(ctx, v, req, first, index.ticks[first:first+count])
+		r.Benchmark, err = e.benchmarkPreviewScale(ctx, v, req, first, index.ticks[first:first+count], options.CorrectChroma)
 		if err != nil {
 			return r, err
 		}
