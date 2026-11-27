@@ -3,6 +3,7 @@ package projectexport
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/markrai/pixelcut/internal/media"
@@ -38,6 +39,11 @@ func TestPrepareRevalidatesSourceAndRecordsNormalization(t *testing.T) {
 	}
 	if err := prepared.VerifySources(ctx); err == nil {
 		t.Fatal("changed source accepted after preflight")
+	}
+	i.report.Streams[0].SideData = []map[string]any{{"side_data_type": "Mastering display metadata"}, {"side_data_type": "Content light level metadata"}}
+	static, err := Prepare(ctx, i, p, "hlg", 30)
+	if err != nil || !strings.Contains(strings.Join(static.Plan.Warnings, " "), "static HDR mastering/light-level metadata") {
+		t.Fatalf("static HDR metadata warning missing: %v", err)
 	}
 	i.report.Streams[0].ChromaLocation = "center"
 	normalized, err := Prepare(ctx, i, p, "hlg", 30)
