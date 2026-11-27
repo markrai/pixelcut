@@ -51,3 +51,9 @@ PR #28 merged at 5e8da14b957fa004a311ca0d755485120416f223; CI 45882080825 and pa
 ## 3A.3b preview scale candidate
 
 PR #29 merged at 41d3ec06ff2c2b0ab7f3008b2d4905507739bf21; CI 45885116645 and performance 45885116756 passed. User reported 240/240 exact nearest-neighbor frame matches. The next candidate moves only a simple aspect-preserving preview downscale onto CUDA using Lanczos; the existing CPU tone map remains shared. Still and stream decoder integration has an internal qualification-only switch. Ordinary CPU and experimental CUDA decode behavior remain unchanged. No candidate geometry selected by the product stage policy. Qualification is against displayed SDR pixels, not HDR export precision.
+
+## 3A.3g geometry decision and 3A.4a composition boundary
+
+PR #36 merged at b70b7d9a23c4cdd181157d16fe6b1b2459701766; CI 45927059779 and performance 45927059761 passed. No physical hybrid/Vulkan reports are recorded. Production geometry remains CPU-only; activation is deferred, not a claim that Vulkan failed. Existing explicit experimental CUDA decode remains independent. No automatic backend preference or new fallback.
+
+The 3A.4 candidate boundary begins with normalized limited-range BT.2020 HLG planar 10-bit 4:4:4 layer rectangles in CPU memory, with integer placement and opacity. It ends with a CPU-visible frame of the same representation before encoder chroma subsampling. Test the HDR compositor independently of decoding, geometry, tone mapping, encoding and audio. The CPU compositor remains the oracle; exact black/opaque pass-through (including excursion values), source-over ordering and a provisional one-code maximum error on mixed pixels are separate gates. See [HDR composition qualification](gpu-composite-qualification.md).

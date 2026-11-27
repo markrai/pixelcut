@@ -130,11 +130,22 @@ See [audio processing contract](docs/audio-processing.md). The shared mixer cons
 | --- | --- | --- |
 | 3A.1 | Bounded capability inventory, optional device initialization and CPU-first stage policy | Merged via PR #24; CI passed; Windows CUDA/D3D11VA/D3D12VA/Vulkan initialization observed |
 | 3A.2 | Hardware HEVC decode, exact frame selection and CPU-readable 10-bit parity | PR #27 merged; CI passed; user 240/240 frame parity; experimental renderer integration merged via PR #28; CI and performance passed; physical acceptance pending |
-| 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a merged via PR #29; CI and performance passed; user 240/240 nearest-neighbor frame parity at 1080p to 540p. 3A.3b merged via PR #30; CI and performance passed; real source rejection traced to -90 display rotation; cardinal-rotation candidate merged via PR #32; CI and performance passed; synthetic GPU quality failed max-delta gate (19 > 16); 3A.3c merged via PR #33; CI and performance passed; November FFmpeg luminance max 1 and synthetic still/stream pass, real chroma/SDR gate still fails; 3A.3d merged via PR #34; CI and performance passed; 4K center-to-center control max Y/U/V 1/2/1 vs left-to-left 1/143/144, uncorrected median speedup 1.87x but quality fails; 3A.3e merged via PR #35; physical corrected 4K and rotated Pixel quality gates failed; 6/8 synthetic cases passed, corrected median 1.21x but unqualified; 3A.3f hybrid and Vulkan/libplacebo qualification implemented; physical results and backend selection pending; 3A.3g integration or explicit deferral pending |
-| 3A.4 | GPU layer compositing with explicit HLG linear-light contract | Pending |
+| 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a merged via PR #29; CI and performance passed; user 240/240 nearest-neighbor frame parity at 1080p to 540p. 3A.3b merged via PR #30; CI and performance passed; real source rejection traced to -90 display rotation; cardinal-rotation candidate merged via PR #32; CI and performance passed; synthetic GPU quality failed max-delta gate (19 > 16); 3A.3c merged via PR #33; CI and performance passed; November FFmpeg luminance max 1 and synthetic still/stream pass, real chroma/SDR gate still fails; 3A.3d merged via PR #34; CI and performance passed; 4K center-to-center control max Y/U/V 1/2/1 vs left-to-left 1/143/144, uncorrected median speedup 1.87x but quality fails; 3A.3e merged via PR #35; physical corrected 4K and rotated Pixel quality gates failed; 6/8 synthetic cases passed, corrected median 1.21x but unqualified; 3A.3f merged via PR #36; CI 45927059779 and performance 45927059761 passed; physical hybrid/Vulkan results not recorded; 3A.3g production geometry activation deferred, CPU geometry retained; qualification commands remain available |
+| 3A.4 | GPU layer compositing with explicit HLG linear-light contract | 3A.4a reference fixture matrix and candidate comparator implemented; CI pending; accelerated candidate pending |
 | 3A.5 | Hardware HEVC Main 10 encode with verified color/timing/publication | Pending |
 | 3A.6 | GPU/CPU parity, fallback, performance and physical qualification | Pending |
 
 See [GPU architecture and qualification](docs/gpu-architecture.md). Capability advertisement, successful device initialization and qualified rendering are independent gates. The CPU reference remains mandatory and no GPU stage is selectable in 3A.1.
 
 See [CUDA decode qualification](docs/gpu-decode-qualification.md). Ordinary preview/export defaults to CPU; explicit experimental CUDA mode applies to composite preview and whole-project export. [CUDA geometry qualification](docs/gpu-geometry-qualification.md) begins with an explicit scale check. Product geometry remains CPU-only.
+
+## 3A.4 staged delivery
+
+| Slice | Scope | Status |
+| --- | --- | --- |
+| 3A.4a | Deterministic CPU composition oracle, exact opaque/black coverage, mixed 10-bit comparison and CPU benchmarks | Implemented; CI pending |
+| 3A.4b | Isolated GPU composition candidate over normalized 4:4:4 layer surfaces | Pending |
+| 3A.4c | Physical candidate fidelity, transfer cost, cancellation and resource qualification | Pending |
+| 3A.4d | Explicit experimental integration or defer if no useful qualified acceleration | Pending |
+
+See [HDR composition qualification](docs/gpu-composite-qualification.md). CPU geometry is retained; 3A.4 does not depend on activation of 3A.3 geometry candidates.
