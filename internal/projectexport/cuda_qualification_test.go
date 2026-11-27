@@ -51,7 +51,7 @@ func TestExperimentalCUDAProjectExportParity(t *testing.T) {
 	if err := RenderProject(ctx, gpu, p, "hlg", 30, out); err != nil {
 		t.Fatal(err)
 	}
-	report, err = cpu.Inspect(ctx, out)
+	report, err := cpu.Inspect(ctx, out)
 	if err != nil {
 		t.Fatal(err)
 	}
