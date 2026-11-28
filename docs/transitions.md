@@ -40,3 +40,20 @@ set PIXELCUT_QUALIFY_TRANSITION_GPU=
 ### 3B.1b physical fixture correction
 
 The initial TITAN opt-in transition run failed before encoding during CUDA pre-encode frame reads (EOF). The generated source was 64x48, below the 144x144 HEVC minimum documented for Ada NVDEC ([NVIDIA Video Decoder capabilities](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvdec-video-decoder-api-prog-guide/index.html#video-decoder-capabilities)). This is a likely fixture cause, not yet confirmed by a successful physical rerun. Use 192x144 for both CPU and physical GPU transition runs, matching the existing qualified CUDA project fixture; retain identical timing, sample checks and exact CPU/CUDA hash gate. Derive decoded frame byte count from dimensions. Export decoder short-read errors now abort/reap the process and retain bounded FFmpeg stderr plus clip, span, output frame and source ordinal/tick context. No automatic fallback or weakened checks. Physical transition qualification remains pending.
+
+## 3B.1c composite preview
+
+PR #52 merged and CI 46095107530 / performance 46095107531 passed. TITAN rerun of TestRenderHLGTransition passed in 3.95s, all four CPU/CUDA and x265/NVENC combinations, exact pre-encode parity, output/audio/cancellation gates. This supersedes the earlier pending physical export note.
+
+Compile now admits transitions for both export and preview. LayerPlan.ActiveTransition is the shared coverage/decoder-budget gate; DecodeLayers includes the outgoing handle for source identity checks and retention. The original window controls both frame sampling and source ticks, including seeks and off-grid boundaries. Ordinary audio evaluation and source audition remain separate. The still worker and live sequence both use RenderStill. At the incoming track position, mix the two tone-mapped BGRA frames using BT.709 inverse/forward transfer approximations and fixed-point linear values, preserving exact endpoints. This is an SDR approximation after per-source tone mapping, not the tone map of the HDR export composite. Ordinary opacity and overlay behavior remain unchanged. No extra intermediate image beyond the two source frames and output; bounded transfer tables. Retain outgoing clip ID through the dissolve and retire at its end; existing stream decoder restarts only for discontinuous tick/geometry and existing cancellation handles process lifetime. Source identity checks include both contributors, including still worker publication. Existing 10fps cap and audio-master clock remain. GUI creation still deferred.
+
+Unit tests cover midpoint, seek, off-grid boundaries, source change, audio mapping and unsupported geometry. Real HLG test checks aligned still/stream pixels, two decoder reuse/retirement, and optional exact CPU/CUDA SDR parity. Physical preview acceptance pending.
+
+```cmd
+git pull
+set PIXELCUT_QUALIFY_TRANSITION_PREVIEW_GPU=1
+go test -count=1 -v -timeout 3m ./internal/composition -run "^TestTransitionPreviewRealMedia$"
+set PIXELCUT_QUALIFY_TRANSITION_PREVIEW_GPU=
+```
+
+Next 3B.1d: native controls, explicit composite-only audition labeling and physical UI acceptance. Mixed-media 3A.7 follows before keyframes; no SDR import change here.
