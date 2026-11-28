@@ -61,6 +61,9 @@ func (e *Evaluator) PlanLayers(at int64) (LayerPlan, error) {
 			plan.Transitions = append(plan.Transitions, PlannedTransition{Window: sample.Window, From: outgoing})
 		}
 	}
+	if _, _, err := plan.ActiveTransition(); err != nil {
+		return LayerPlan{}, err
+	}
 	return plan, nil
 }
 

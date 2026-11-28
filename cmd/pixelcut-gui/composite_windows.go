@@ -36,7 +36,7 @@ func newStillWorker(engine media.Engine, disk *mediacache.Cache) *service.Latest
 			return stillPreviewResult{}, err
 		}
 		sources := make(map[string]mediacache.Source)
-		for _, layer := range req.plan.Layers {
+		for _, layer := range req.plan.DecodeLayers() {
 			path := layer.Layer.Asset.Path
 			if _, ok := sources[path]; ok {
 				continue

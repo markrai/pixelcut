@@ -62,23 +62,16 @@ type Evaluator struct {
 	transitions     *TransitionEvaluator
 }
 
-func Compile(p project.Project) (*Evaluator, error) {
-	return compile(p, false)
-}
-
 func CompileForExport(p project.Project) (*Evaluator, error) {
-	return compile(p, true)
+	return Compile(p)
 }
 
-func compile(p project.Project, allowTransitions bool) (*Evaluator, error) {
+func Compile(p project.Project) (*Evaluator, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
 	e := &Evaluator{duration: p.EndTime(), canvas: p.CompositionCanvas(), boundaries: []int64{0}}
 	if p.HasVideoTransitions() {
-		if !allowTransitions {
-			return nil, ErrTransitionRenderingUnavailable
-		}
 		var err error
 		e.transitions, err = CompileTransitions(p)
 		if err != nil {

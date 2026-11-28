@@ -38,7 +38,7 @@ func frameCeiling(at int64, fps int) int64 {
 }
 
 func Build(p project.Project, color string, fps int) (Plan, error) {
-	e, err := composition.CompileForExport(p)
+	e, err := composition.Compile(p)
 	if err != nil {
 		return Plan{}, err
 	}
