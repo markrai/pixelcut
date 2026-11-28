@@ -168,6 +168,17 @@ See [hardware encode qualification](docs/gpu-encode-qualification.md).
 | --- | --- | --- |
 | 3A.6a | Public four-backend project export matrix, VFR and real HLG, exact decode parity, combined cancellation/recovery | Merged via PR #47; CI 46084546731 and performance 46084546689 passed; TITAN physical PASS |
 | 3A.6b | Physical process-tree and GPU resource measurements | Merged via PR #48; CI 46087443630 and performance 46087443669 passed; physical resource evidence pending |
-| 3A.6c | Public GUI/CLI acceptance, compatibility and architectural closeout | Compatibility regressions, cancellation classification, confirmation and closeout checklist implemented; CI and physical acceptance pending |
+| 3A.6c | Public GUI/CLI acceptance, compatibility and architectural closeout | Merged via PR #49; CI 46089908035 and performance 46089908038 passed; physical acceptance pending |
 
 See [integrated GPU qualification](docs/gpu-integrated-qualification.md).
+
+## 3B.1 staged transition delivery
+
+| Slice | Scope | Status |
+| --- | --- | --- |
+| 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Implemented; CI pending |
+| 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | Pending |
+| 3B.1c | Composite still/stream preview and preview/export timing parity | Pending |
+| 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Pending |
+
+See [video transitions](docs/transitions.md). The first slice is model-only; no GUI creation or transition rendering is exposed. The outstanding GPU resource and public-path acceptance gates remain open.
