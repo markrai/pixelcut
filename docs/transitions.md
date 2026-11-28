@@ -12,8 +12,27 @@ Project schema 10 adds optional transition_in on the incoming clip: kind (cross-
 
 ## Rendering boundary
 
-CompileTransitions snapshots immutable per-track windows, respects video visibility/solo, and binary-searches active windows without allocating per-frame schedules. It provides source intervals and exact fixed-point weights for future shared evaluation. Existing composition Compile rejects any project containing transitions until render integration is implemented, rather than silently exporting a hard cut. Selected-clip export also rejects a participating clip. This is a deliberate temporary internal gate: do not hand-create schema 10 transition projects for daily editing yet.
+CompileTransitions snapshots immutable per-track windows, respects video visibility/solo, and binary-searches active windows without allocating per-frame schedules. It provides source intervals and exact fixed-point weights for future shared evaluation. Ordinary composition Compile still rejects projects containing transitions until preview integration is implemented. CompileForExport explicitly admits transitions; whole-project export supports the bounded subset below rather than silently exporting a hard cut. Selected-clip export also rejects a participating clip. Preview remains a deliberate temporary gate: do not hand-create schema 10 transition projects for daily editing yet.
 
 3B.1b must integrate transition windows into shared evaluation and export spans, decode the outgoing handle with original source timestamps, and mix both track contributions in scene-linear BT.2020 HLG before composition with other tracks. Geometry/coverage and static opacity need explicit semantics; a dissolve is not equivalent to fading one translucent layer over another. Preserve ordinary opaque fast paths and bounded decoder/frame memory, source verification, cancellation and publication. Begin with bounded supported geometry/opacity cases; reject unimplemented cases explicitly. No duplicate CPU/GPU pipelines; both encoders consume identical normalized HDR frames. 3B.1c must implement matching preview semantics (SDR output remains approximate) including continuous/seek behavior. 3B.1d exposes GUI controls only after preview/export support, with native physical qualification. Crossfade audio, additional wipes, centered transitions and timeline shortening are outside the initial contract.
 
 PR #49 merged and CI 46089908035 / performance 46089908038 passed. GPU resource and public-path physical evidence remain outstanding; no default hardware policy change.
+
+## 3B.1b HDR export
+
+PR #50 merged at 1a7de9383866b82a0357cc5e9af0f4b21d51e3fd; CI 46090963388 and performance 46090963422 passed.
+
+Export explicitly opts into the immutable composition evaluator. Transition ends split edit spans; existing audio contributions retain original clip intervals and sample mapping. LayerPlan records the outgoing handle with planned geometry separately from ordinary incoming layer. Span retains the original window even when unrelated edits split it, so weights never restart. Preflight includes the outgoing asset; each decoder uses its own source index, existing HLG normalization and geometry. The decoder pair occupies two of the existing four simultaneous decoder slots; one transition at a time, both endpoints must be 100% opaque and cover the full composition canvas after geometry. Other ordinary layers may coexist within that budget. Partial coverage, nonunity endpoint opacity and simultaneous transitions fail before rendering. Hidden/solo-excluded transitions do not contribute. No extra full-frame intermediate buffer.
+
+The shared HDR compositor substitutes a track-local opaque contribution at the incoming layer's stack position, mixing scene-linear outgoing and incoming RGB with the exact fixed-point weight sampled at the CFR frame tick. Translucent overlays above it participate in the same linear accumulation and final quantization, with no intermediate HLG rounding. Opaque uncovered endpoints retain exact source codes; mixed pixels use the existing limited-range/clamping contract. Non-transition spans use the existing opaque and mixed paths. x265 and NVENC share the resulting 4:4:4 stream. Source identity, cancellation, audio mux, output verification and no-overwrite publication unchanged. This slice makes no performance claim for dissolves.
+
+Ordinary CI tests model/evaluator span boundaries, unsupported geometry, simultaneous transitions and decoder budget, analytical linear-light black/white midpoint (luma 828, not code-space 502), layered blend, exact endpoint, cancellation and real CPU FFmpeg HLG export with audio hash equality to a hard cut. Physical opt-in exercises all four public backend combinations on the same short synthetic fixture and requires exact pre-encode CPU/CUDA hashes. No actual GPU qualification yet.
+
+```cmd
+git pull
+set PIXELCUT_QUALIFY_TRANSITION_GPU=1
+go test -count=1 -v -timeout 4m ./internal/projectexport -run "^TestRenderHLGTransition$"
+set PIXELCUT_QUALIFY_TRANSITION_GPU=
+```
+
+3B.1c remains preview integration, including source handle seeking, boundary sampling and explicit SDR approximation; GUI controls remain gated until preview support. GPU resource and GUI physical acceptance from 3A remain outstanding.

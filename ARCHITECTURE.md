@@ -539,3 +539,7 @@ The media package owns a bounded FFmpeg capability report, explicit stage identi
 ## 3B.1a video transition foundation
 
 Schema 10 adds an optional incoming cross-dissolve referencing the adjacent preceding video clip by stable ID; version 9 audio envelopes remain supported. No ordinary overlap, timeline shift or audio extension. Exact integer windows use the outgoing source tail and incoming head; transition compilation is immutable and respects track policy. Model validation protects adjacency, handles and locks; clipboard remaps paired identities; existing history owns edits. Composition and selected-clip export fail closed for unsupported transition rendering. Future transition mix belongs at the shared track-local linear-light boundary, not a new GPU graph or GUI state owner. See [transition contract](docs/transitions.md).
+
+## 3B.1b HDR transition export
+
+Export opts into the transition-aware evaluator; preview remains gated. A span carries the outgoing handle and immutable window in addition to its ordinary layer plan. The existing renderer consumes two decoder slots for one opaque full-canvas dissolve; one active dissolve, four total decoders, no extra full-frame buffer. Both source frames are mixed as one track-local opaque contribution in the shared scene-linear HLG accumulation, preserving stacking and a single final quantization. Existing audio intervals, source checks, encoder selection, verification and publication remain authoritative. Unsupported coverage fails preflight. See [transition contract](docs/transitions.md).

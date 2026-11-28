@@ -1,6 +1,7 @@
 package composition
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -45,5 +46,40 @@ func TestTransitionEvaluatorExactWindow(t *testing.T) {
 	}
 	if _, err := Compile(p); err != nil {
 		t.Fatalf("ordinary project no longer compiles: %v", err)
+	}
+}
+
+func TestTransitionExportEvaluatorBoundaries(t *testing.T) {
+	p := fixture(t)
+	ref := project.ClipRef{TrackID: "V1", ClipID: "later"}
+	q, err := p.SetVideoTransition(ref, &project.VideoTransition{Kind: project.CrossDissolve, FromClipID: "early", Duration: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, err := CompileForExport(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		at, next int64
+		active   bool
+	}{{29, 30, false}, {30, 35, true}, {35, 38, true}, {38, 40, false}} {
+		f, err := e.At(tc.at)
+		if err != nil || f.NextBoundary != tc.next {
+			t.Fatalf("boundary at %d: %+v %v", tc.at, f, err)
+		}
+		plan, err := e.PlanLayers(tc.at)
+		if err != nil || (len(plan.Transitions) == 1) != tc.active {
+			t.Fatalf("transition plan at %d: %+v %v", tc.at, plan, err)
+		}
+		if tc.active {
+			tr := plan.Transitions[0]
+			if tr.From.Layer.SourceTime != 120+tc.at-30 || tr.From.Layer.SourceInterval != (project.Interval{Start: 120, End: 128}) {
+				t.Fatal("outgoing handle mapping incorrect")
+			}
+			if _, err := RenderStill(context.Background(), nil, plan, 640); !errors.Is(err, ErrTransitionRenderingUnavailable) {
+				t.Fatalf("still renderer ignored transition: %v", err)
+			}
+		}
 	}
 }
