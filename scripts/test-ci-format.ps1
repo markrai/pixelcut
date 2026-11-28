@@ -42,6 +42,7 @@ Push-Location -LiteralPath $work
 try {
     Copy-Item -LiteralPath (Join-Path $root 'ci.bat') -Destination $work
     Copy-Item -LiteralPath (Join-Path $root 'scripts/ci.ps1') -Destination (Join-Path $work 'scripts')
+    Copy-Item -LiteralPath (Join-Path $root 'scripts/ci-diagnostics.ps1') -Destination (Join-Path $work 'scripts')
     & git init -q
     if ($LASTEXITCODE -ne 0) { throw 'git init failed' }
     [System.IO.File]::WriteAllText((Join-Path $work '.gitignore'), "/ci-reports/" + [Environment]::NewLine, $utf8)
@@ -105,3 +106,4 @@ try {
     Pop-Location
     Remove-Item -LiteralPath $work -Recurse -Force
 }
+exit 0

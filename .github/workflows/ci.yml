@@ -96,6 +96,9 @@ jobs:
       - name: Verify local CI formatting diagnostics
         shell: powershell
         run: ./scripts/test-ci-format.ps1
+      - name: Verify local CI failure excerpts
+        shell: powershell
+        run: ./scripts/test-ci-diagnostics.ps1
       - name: Project model and desktop input tests with coverage
         shell: pwsh
         run: |
