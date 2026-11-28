@@ -177,7 +177,7 @@ See [integrated GPU qualification](docs/gpu-integrated-qualification.md).
 | Slice | Scope | Status |
 | --- | --- | --- |
 | 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Merged via PR #50; CI 46090963388 and performance 46090963422 passed |
-| 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | Implemented for opaque full-canvas pairs; CI and physical GPU evidence pending |
+| 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | Implemented for opaque full-canvas pairs; PR #51 merged; initial physical CUDA fixture failed below documented minimum HEVC resolution; corrected fixture and diagnostics pending physical rerun |
 | 3B.1c | Composite still/stream preview and preview/export timing parity | Pending |
 | 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Pending |
 

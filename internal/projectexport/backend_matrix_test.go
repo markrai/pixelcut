@@ -70,7 +70,7 @@ func matrixPreEncodeHashes(ctx context.Context, engine media.Engine, prepared Pr
 		h := sha256.New()
 		w := &progressWriter{dst: h, unitBytes: int64(len(frame)), total: span.EndFrame - span.FirstFrame}
 		if err := renderSpan(ctx, engine, &indexes, sources, plan, span, w, black, frame); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("pre-encode span [%d,%d): %w", span.Start, span.End, err)
 		}
 		if w.written != (span.EndFrame-span.FirstFrame)*int64(len(frame)) {
 			return nil, errors.New("incorrect pre-encode byte count")

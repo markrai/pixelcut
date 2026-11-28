@@ -2,6 +2,7 @@ package projectexport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -49,6 +50,13 @@ func (p *exportProcess) wait() error {
 	p.cancel()
 	if err != nil {
 		return fmt.Errorf("FFmpeg: %w: %s", err, p.tail.data)
+	}
+	return nil
+}
+
+func (p *exportProcess) readFrame(reader io.Reader, dst []byte) error {
+	if _, err := io.ReadFull(reader, dst); err != nil {
+		return errors.Join(err, p.abort())
 	}
 	return nil
 }
