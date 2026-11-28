@@ -108,8 +108,8 @@ func (d *layerDecoder) frame(tick int64) ([]byte, error) {
 		return nil, errors.New("source frame selection outside decoder interval")
 	}
 	for d.current < target {
-		if _, err := io.ReadFull(d.reader, d.pixels); err != nil {
-			return nil, fmt.Errorf("read source frame: %w", err)
+		if err := d.process.readFrame(d.reader, d.pixels); err != nil {
+			return nil, fmt.Errorf("read source frame ordinal %d at source tick %d: %w", d.current+1, tick, err)
 		}
 		d.current++
 	}
@@ -177,7 +177,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		for i, d := range decoders {
 			pixels, err := d.frame(sourceTick(d.layer, tick, span.Start))
 			if err != nil {
-				return fmt.Errorf("%s decode: %w", engine.DecodeBackendName(), err)
+				return fmt.Errorf("clip %s (%s decode), output frame %d, span [%d,%d): %w", d.layer.Layer.Ref.ClipID, engine.DecodeBackendName(), n, span.Start, span.End, err)
 			}
 			layers[i] = layerFrame{Pixels: pixels, Bounds: d.layer.Geometry.Bounds, Opacity: d.layer.Layer.Opacity}
 		}

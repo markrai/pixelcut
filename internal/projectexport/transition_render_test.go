@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -68,8 +69,10 @@ func TestRenderHLGTransition(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 	dir := t.TempDir()
+	const width, height = 192, 144
+	t.Logf("transition fixture=%dx%d physical=%t ffmpeg=%s ffprobe=%s", width, height, physical, engine.FFmpeg, engine.FFprobe)
 	src := filepath.Join(dir, "source.mp4")
-	cmd := exec.CommandContext(ctx, engine.FFmpeg, "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=64x48:r=10:d=1,format=yuv420p10le,geq=lum='if(lt(N,2),280,if(lt(N,6),64,940))':cb=512:cr=512,setsar=1", "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=48000:duration=1", "-c:v", "libx265", "-x265-params", "pools=1:frame-threads=1:log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited:chromaloc=0", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv", "-chroma_sample_location", "left", "-tag:v", "hvc1", "-c:a", "aac", src)
+	cmd := exec.CommandContext(ctx, engine.FFmpeg, "-v", "error", "-f", "lavfi", "-i", fmt.Sprintf("nullsrc=s=%dx%d:r=10:d=1,format=yuv420p10le,geq=lum='if(lt(N,2),280,if(lt(N,6),64,940))':cb=512:cr=512,setsar=1", width, height), "-f", "lavfi", "-i", "sine=frequency=997:sample_rate=48000:duration=1", "-c:v", "libx265", "-x265-params", "pools=1:frame-threads=1:log-level=error:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc:range=limited:chromaloc=0", "-color_primaries", "bt2020", "-color_trc", "arib-std-b67", "-colorspace", "bt2020nc", "-color_range", "tv", "-chroma_sample_location", "left", "-tag:v", "hvc1", "-c:a", "aac", src)
 	if data, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("fixture: %v %s", err, data)
 	}
@@ -87,7 +90,7 @@ func TestRenderHLGTransition(t *testing.T) {
 	}
 	p := project.New()
 	p.Assets = []project.Asset{a}
-	p.CanvasWidth, p.CanvasHeight = 64, 48
+	p.CanvasWidth, p.CanvasHeight = width, height
 	p.Tracks[0].Clips = []project.Clip{{ID: "first", AssetID: "a", Out: 200000}, {ID: "next", AssetID: "a", Start: 200000, In: 600000, Out: 1000000}}
 	q, err := p.SetVideoTransition(project.ClipRef{TrackID: "V1", ClipID: "next"}, &project.VideoTransition{Kind: project.CrossDissolve, FromClipID: "first", Duration: 200000})
 	if err != nil {
@@ -138,7 +141,7 @@ func TestRenderHLGTransition(t *testing.T) {
 			t.Fatalf("%s transition changed decoded audio: %v", mode.name, err)
 		}
 		raw, err := exec.CommandContext(ctx, engine.FFmpeg, "-v", "error", "-hwaccel", "none", "-i", out, "-map", "0:v:0", "-c:v", "rawvideo", "-threads", "1", "-pix_fmt", "yuv420p10le", "-fps_mode", "passthrough", "-f", "rawvideo", "-").Output()
-		const frameBytes = 64 * 48 * 3
+		const frameBytes = width * height * 3
 		if err != nil || len(raw) != 18*frameBytes {
 			t.Fatalf("%s decoded output: %d %v", mode.name, len(raw), err)
 		}

@@ -36,3 +36,7 @@ set PIXELCUT_QUALIFY_TRANSITION_GPU=
 ```
 
 3B.1c remains preview integration, including source handle seeking, boundary sampling and explicit SDR approximation; GUI controls remain gated until preview support. GPU resource and GUI physical acceptance from 3A remain outstanding.
+
+### 3B.1b physical fixture correction
+
+The initial TITAN opt-in transition run failed before encoding during CUDA pre-encode frame reads (EOF). The generated source was 64x48, below the 144x144 HEVC minimum documented for Ada NVDEC ([NVIDIA Video Decoder capabilities](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.1/nvdec-video-decoder-api-prog-guide/index.html#video-decoder-capabilities)). This is a likely fixture cause, not yet confirmed by a successful physical rerun. Use 192x144 for both CPU and physical GPU transition runs, matching the existing qualified CUDA project fixture; retain identical timing, sample checks and exact CPU/CUDA hash gate. Derive decoded frame byte count from dimensions. Export decoder short-read errors now abort/reap the process and retain bounded FFmpeg stderr plus clip, span, output frame and source ordinal/tick context. No automatic fallback or weakened checks. Physical transition qualification remains pending.
