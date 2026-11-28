@@ -7,7 +7,7 @@ import (
 )
 
 var ErrImportOnlySource = errors.New("source is media-bin only: confirm inferred SDR tags or wait for PQ rendering support")
-var ErrMixedExportUnavailable = errors.New("SDR/PQ export is not available yet; use HLG-only timeline footage")
+var ErrMixedExportUnavailable = errors.New("selected SDR/PQ clip export is not available; use whole-project HLG export for SDR")
 
 func (a Asset) Classified() bool {
 	return a.ColorFamily != ""

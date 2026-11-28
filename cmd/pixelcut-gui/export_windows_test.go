@@ -95,7 +95,7 @@ func TestProjectExportConfirmationBackendSelection(t *testing.T) {
 					t.Fatalf("missing confirmation text %q", expected)
 				}
 			}
-			if strings.Contains(msg, "Experimental hardware encoding") != (encode == media.BackendNVENC) || strings.Contains(msg, "Experimental CUDA decoding uses") != (decode == media.BackendCUDA) {
+			if strings.Contains(msg, "Experimental hardware encoding") != (encode == media.BackendNVENC) || strings.Contains(msg, "Experimental CUDA decoding applies") != (decode == media.BackendCUDA) {
 				t.Fatalf("incorrect experimental warnings: %s", msg)
 			}
 		}

@@ -45,6 +45,8 @@ func (r *renderIndexes) get(ctx context.Context, engine media.Engine, source Sou
 }
 
 type layerDecoder struct {
+	ctx     context.Context
+	engine  media.Engine
 	process *exportProcess
 	reader  io.ReadCloser
 	index   *media.FrameIndex
@@ -59,6 +61,7 @@ func sourceTick(layer composition.PlannedLayer, tick, spanStart int64) int64 {
 }
 
 func openLayer(ctx context.Context, engine media.Engine, indexes *renderIndexes, source Source, layer composition.PlannedLayer, span Span, plan Plan) (*layerDecoder, error) {
+	engine = exportDecodeEngine(engine, source.Asset)
 	index, err := indexes.get(ctx, engine, source)
 	if err != nil {
 		return nil, err
@@ -99,7 +102,7 @@ func openLayer(ctx context.Context, engine media.Engine, indexes *renderIndexes,
 		return nil, err
 	}
 	b := layer.Geometry.Bounds
-	return &layerDecoder{process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
+	return &layerDecoder{ctx: ctx, engine: engine, process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
 }
 
 func (d *layerDecoder) frame(tick int64) ([]byte, error) {
@@ -107,11 +110,17 @@ func (d *layerDecoder) frame(tick int64) ([]byte, error) {
 	if !ok || target < d.current || target > d.last {
 		return nil, errors.New("source frame selection outside decoder interval")
 	}
+	changed := d.current < target
 	for d.current < target {
 		if err := d.process.readFrame(d.reader, d.pixels); err != nil {
 			return nil, fmt.Errorf("read source frame ordinal %d at source tick %d: %w", d.current+1, tick, err)
 		}
 		d.current++
+	}
+	if changed && d.layer.Layer.Asset.ColorFamily == media.ColorSDR709 {
+		if err := convertSDRFrame(d.ctx, d.pixels, d.layer.Geometry.Bounds.Width, d.layer.Geometry.Bounds.Height); err != nil {
+			return nil, err
+		}
 	}
 	return d.pixels, nil
 }
@@ -155,7 +164,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		}
 		decoder, err := openLayer(ctx, engine, indexes, source, layer, span, plan)
 		if err != nil {
-			return fmt.Errorf("clip %s (%s decode): %w", layer.Layer.Ref.ClipID, engine.DecodeBackendName(), err)
+			return fmt.Errorf("clip %s (%s decode): %w", layer.Layer.Ref.ClipID, exportDecodeEngine(engine, source.Asset).DecodeBackendName(), err)
 		}
 		if span.Transition != nil && layer.Layer.Ref == span.Transition.Window.To {
 			transitionIndex = len(decoders)
@@ -177,7 +186,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		for i, d := range decoders {
 			pixels, err := d.frame(sourceTick(d.layer, tick, span.Start))
 			if err != nil {
-				return fmt.Errorf("clip %s (%s decode), output frame %d, span [%d,%d): %w", d.layer.Layer.Ref.ClipID, engine.DecodeBackendName(), n, span.Start, span.End, err)
+				return fmt.Errorf("clip %s (%s decode), output frame %d, span [%d,%d): %w", d.layer.Layer.Ref.ClipID, d.engine.DecodeBackendName(), n, span.Start, span.End, err)
 			}
 			layers[i] = layerFrame{Pixels: pixels, Bounds: d.layer.Geometry.Bounds, Opacity: d.layer.Layer.Opacity}
 		}

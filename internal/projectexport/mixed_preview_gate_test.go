@@ -1,7 +1,6 @@
 package projectexport
 
 import (
-	"errors"
 	"path/filepath"
 	"testing"
 
@@ -9,7 +8,7 @@ import (
 	"github.com/markrai/pixelcut/internal/project"
 )
 
-func TestMixedPreviewDoesNotEnableExport(t *testing.T) {
+func TestMixedTimelineEnablesHLGExport(t *testing.T) {
 	p := project.New()
 	p.Assets = []project.Asset{
 		{ID: "hlg", Path: filepath.Join(t.TempDir(), "hlg.mp4"), Duration: 1000000, Width: 192, Height: 144, Range: "tv"},
@@ -27,7 +26,11 @@ func TestMixedPreviewDoesNotEnableExport(t *testing.T) {
 	if err := ValidateTransitionLayout(q); err != nil {
 		t.Fatalf("mixed transition layout: %v", err)
 	}
-	if _, err := Build(q, "hlg", 30); !errors.Is(err, project.ErrMixedExportUnavailable) {
-		t.Fatalf("mixed export not gated: %v", err)
+	plan, err := Build(q, "hlg", 30)
+	if err != nil || len(plan.Warnings) == 0 {
+		t.Fatalf("mixed export planning: %v", err)
+	}
+	if _, err := Build(q, "sdr", 30); err == nil {
+		t.Fatal("native SDR export unexpectedly enabled")
 	}
 }

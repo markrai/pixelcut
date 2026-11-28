@@ -100,3 +100,7 @@ Explicitly tagged HLG sources may include the two recognized FFprobe stream-side
 ## Experimental project encoder selection
 
 Whole-project export uses x265 by default. Explicit `-encode nvenc` on `export-project` or `export-video`, or the desktop Settings encoder preference, uses NVENC Main 10 (device 0, QP 16). The same geometry, HLG composition, audio mux, output validation and hard-link publication path is used. No fallback. Selected-clip exports retain their existing behavior. See [hardware encode qualification](gpu-encode-qualification.md) for evidence and remaining resource/physical acceptance.
+
+## 3A.7c mixed SDR/HLG sources
+
+Whole-project HLG export accepts explicitly tagged or confirmed inferred BT.709 SDR in addition to the existing HLG contract. The fixed scene-referred mapping is documented in [mixed-media.md](mixed-media.md#3a7c-whole-project-hlg-output-with-sdr-sources). SDR uses CPU decoding and maps reference white to 75% HLG signal; HLG-only exports retain their previous path. Both x265 and NVENC use the same normalized compositor output. Native SDR output, PQ rendering and selected SDR clip export remain unsupported. No source bytes are altered.

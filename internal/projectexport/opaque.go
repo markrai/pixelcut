@@ -28,7 +28,14 @@ func layerFilter(layer composition.PlannedLayer, source Source, first, last int)
 	if source.Chroma != "left" && source.Chroma != "center" {
 		return "", errors.New("unsupported source chroma siting")
 	}
-	normalize := fmt.Sprintf("zscale=rangein=%s:range=limited:chromalin=%s:matrixin=2020_ncl:matrix=2020_ncl:primariesin=2020:primaries=2020:transferin=arib-std-b67:transfer=arib-std-b67:filter=lanczos", rangeName, source.Chroma)
+	if source.Asset.Classified() && source.Asset.ColorFamily != media.ColorSDR709 {
+		return "", errors.New("unsupported classified export source")
+	}
+	matrix, primaries, transfer := "2020_ncl", "2020", "arib-std-b67"
+	if source.Asset.ColorFamily == media.ColorSDR709 {
+		matrix, primaries, transfer = "709", "709", "709"
+	}
+	normalize := fmt.Sprintf("zscale=rangein=%s:range=limited:chromalin=%s:matrixin=%s:matrix=%s:primariesin=%s:primaries=%s:transferin=%s:transfer=%s:filter=lanczos", rangeName, source.Chroma, matrix, matrix, primaries, primaries, transfer, transfer)
 	filters := []string{fmt.Sprintf("select=between(n\\,%d\\,%d)", first, last), normalize, "format=yuv444p10le"}
 	switch source.Rotation {
 	case 0:
@@ -130,7 +137,11 @@ func validateVideo(plan Plan, discardAudio bool) error {
 			if asset.Range == "" {
 				asset.Range = "tv"
 			}
-			if _, err := layerFilter(layer, Source{Asset: asset, Chroma: "left"}, 0, 0); err != nil {
+			chroma := "left"
+			if asset.Classified() {
+				chroma = asset.Chroma
+			}
+			if _, err := layerFilter(layer, Source{Asset: asset, Chroma: chroma}, 0, 0); err != nil {
 				return err
 			}
 		}

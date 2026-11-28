@@ -139,7 +139,7 @@ func projectExportConfirmation(plan projectexport.Plan, engine media.Engine, pat
 		msg += "\n\nExperimental hardware encoding may increase file size. No automatic CPU fallback."
 	}
 	if engine.DecodeBackend == media.BackendCUDA {
-		msg += "\n\nExperimental CUDA decoding uses CPU geometry and composition. No automatic CPU fallback."
+		msg += "\n\nExperimental CUDA decoding applies to eligible HLG sources. SDR uses CPU decoding by design. Geometry and composition use CPU. No automatic CPU fallback after a CUDA failure."
 	}
 	if len(plan.Warnings) > 0 {
 		msg += "\n\n" + strings.Join(plan.Warnings, "\n")
