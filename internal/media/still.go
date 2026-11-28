@@ -24,6 +24,7 @@ type StillRequest struct {
 	SourceEnd     int64
 	Width, Height int
 	Range         string
+	Color         SourceColor
 	Canvas        CanvasSize
 	Crop          *Crop
 	Transform     *Transform
@@ -67,6 +68,16 @@ func stillFilter(req StillRequest) (string, error) {
 		return "", errors.New("layer exceeds static preview intermediate frame budget")
 	}
 	var filters []string
+	sdr := req.Color.Family == ColorSDR709
+	if sdr {
+		graph, err := sdrPreviewGraph(req.Color)
+		if err != nil {
+			return "", err
+		}
+		filters = append(filters, graph)
+	} else if req.Color.Family != "" {
+		return "", errors.New("unsupported classified preview source")
+	}
 	if c := req.Crop; c != nil {
 		filters = append(filters, fmt.Sprintf("crop=%d:%d:%d:%d", c.Width, c.Height, c.X, c.Y))
 	}
@@ -91,7 +102,10 @@ func stillFilter(req StillRequest) (string, error) {
 		filters = append(filters, fmt.Sprintf("crop=%d:%d:%d:%d", p.Width, p.Height, p.SourceX, p.SourceY))
 	}
 	w, h := max(2, (req.OutputWidth+1)&^1), max(2, (req.OutputHeight+1)&^1)
-	filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", w, h), previewToneMapGraph)
+	filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", w, h))
+	if !sdr {
+		filters = append(filters, previewToneMapGraph)
+	}
 	if w != req.OutputWidth || h != req.OutputHeight {
 		filters = append(filters, fmt.Sprintf("scale=%d:%d:flags=lanczos", req.OutputWidth, req.OutputHeight))
 	}
@@ -113,6 +127,7 @@ type stillSource struct {
 	source mediacache.Source
 	stream Stream
 	raw    Stream
+	color  SourceColor
 	index  *FrameIndex
 }
 
@@ -149,11 +164,22 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	if err != nil {
 		return stillSource{}, err
 	}
+	color := SourceColor{}
 	if err = v.ValidateHLG(); err != nil {
-		return stillSource{}, err
+		color, err = v.ClassifySourceColor()
+		if err != nil {
+			return stillSource{}, err
+		}
+		if color.Family != ColorSDR709 {
+			return stillSource{}, errors.New("PQ preview not available")
+		}
+		if err := r.ValidateClassifiedImportStreams(); err != nil {
+			return stillSource{}, err
+		}
 	}
 	raw := v
-	if _, _, err := d.engine.VideoDecodePipeline(raw, "", false); err != nil {
+	engine := previewEngineForSource(d.engine, color)
+	if _, _, err := engine.VideoDecodePipeline(raw, "", false); err != nil {
 		return stillSource{}, err
 	}
 	v, err = v.DisplayGeometry()
@@ -164,8 +190,8 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 		return stillSource{}, errors.New("source exceeds static preview frame budget")
 	}
 	var index *FrameIndex
-	if d.engine.DecodeBackend == BackendCUDA {
-		index, err = d.engine.ExportFrames(ctx, path)
+	if engine.DecodeBackend == BackendCUDA {
+		index, err = engine.ExportFrames(ctx, path)
 	} else {
 		index, err = d.engine.CachedFrames(ctx, d.disk, path)
 	}
@@ -175,7 +201,7 @@ func (d *StillDecoder) source(ctx context.Context, identity mediacache.Source, p
 	if !unchanged(path, identity) {
 		return stillSource{}, errors.New("source changed during frame indexing")
 	}
-	s := stillSource{source: identity, stream: v, raw: raw, index: index}
+	s := stillSource{source: identity, stream: v, raw: raw, color: color, index: index}
 	if len(d.sources) >= 4 {
 		copy(d.sources, d.sources[1:])
 		d.sources[len(d.sources)-1] = stillSource{}
@@ -219,12 +245,10 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 	if err != nil {
 		return StillFrame{}, err
 	}
-	if s.stream.Width != req.Width || s.stream.Height != req.Height || (req.Range != "" && req.Range != s.stream.Range) {
-		return StillFrame{}, errors.New("source geometry or color range changed; relink required")
+	if err := s.validateRequest(req); err != nil {
+		return StillFrame{}, err
 	}
-	if req.Transform != nil && s.stream.Range != "tv" {
-		return StillFrame{}, errors.New("canvas transforms require limited-range HLG")
-	}
+	engine := previewEngineForSource(d.engine, s.color)
 	tick, ok := s.index.AtOrBefore(req.Tick)
 	if !ok {
 		return StillFrame{}, errors.New("no source frame at or before requested time")
@@ -241,12 +265,12 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 		}
 	}
 	args := []string{"-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1"}
-	if d.engine.DecodeBackend == BackendCUDA {
+	if engine.DecodeBackend == BackendCUDA {
 		ordinal, ok := s.index.OrdinalAtOrBefore(req.Tick)
 		if !ok {
 			return StillFrame{}, errors.New("missing CUDA source ordinal")
 		}
-		input, filter, err := d.engine.previewCUDAPipeline(s.raw, req, fmt.Sprintf("select=eq(n\\,%d)", ordinal), graph, d.previewScale)
+		input, filter, err := engine.previewCUDAPipeline(s.raw, req, fmt.Sprintf("select=eq(n\\,%d)", ordinal), graph, d.previewScale)
 		if err != nil {
 			return StillFrame{}, err
 		}
@@ -258,12 +282,12 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 	}
 	args = append(args, "-i", req.Path, "-map", "0:v:0", "-frames:v", "1", "-an", "-sn", "-dn", "-vf", graph, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
 	cmd := exec.CommandContext(ctx, d.engine.FFmpeg, args...)
-	if d.engine.DecodeBackend == BackendCUDA {
+	if engine.DecodeBackend == BackendCUDA {
 		cmd.WaitDelay = 2 * time.Second
 	}
 	b, err := cmd.Output()
 	if err != nil {
-		return StillFrame{}, fmt.Errorf("%s still decode: %w", d.engine.DecodeBackendName(), commandError(d.engine.FFmpeg, err))
+		return StillFrame{}, fmt.Errorf("%s still decode: %w", engine.DecodeBackendName(), commandError(d.engine.FFmpeg, err))
 	}
 	frame := StillFrame{Width: req.OutputWidth, Height: req.OutputHeight, Pixels: b}
 	if !frame.Valid() {
@@ -277,4 +301,23 @@ func (d *StillDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame
 	}
 	d.store(key, frame)
 	return frame, nil
+}
+
+func (s stillSource) validateRequest(req StillRequest) error {
+	if s.stream.Width != req.Width || s.stream.Height != req.Height {
+		return errors.New("source geometry changed; relink required")
+	}
+	if s.color.Family == ColorSDR709 {
+		if req.Color != s.color || req.Range != s.color.Range {
+			return errors.New("source color classification changed; relink required")
+		}
+	} else {
+		if req.Color.Family != "" || (req.Range != "" && req.Range != s.stream.Range) {
+			return errors.New("source color classification or range changed; relink required")
+		}
+		if req.Transform != nil && s.stream.Range != "tv" {
+			return errors.New("canvas transforms require limited-range HLG")
+		}
+	}
+	return nil
 }

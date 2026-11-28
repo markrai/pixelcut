@@ -26,6 +26,8 @@ type previewStream struct {
 	cmd      *exec.Cmd
 	pipe     io.ReadCloser
 	stderr   *capabilityOutput
+	color    SourceColor
+	backend  string
 }
 
 func (s *previewStream) close() {
@@ -97,11 +99,8 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 	if err != nil {
 		return nil, err
 	}
-	if source.stream.Width != req.Width || source.stream.Height != req.Height || (req.Range != "" && req.Range != source.stream.Range) {
-		return nil, errors.New("source geometry or color range changed; relink required")
-	}
-	if req.Transform != nil && source.stream.Range != "tv" {
-		return nil, errors.New("canvas transforms require limited-range HLG")
+	if err := source.validateRequest(req); err != nil {
+		return nil, err
 	}
 	at, ok := source.index.AtOrBefore(req.Tick)
 	if !ok {
@@ -110,7 +109,7 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	engine := d.indexer.engine
+	engine := previewEngineForSource(d.indexer.engine, source.color)
 	args := []string{"-v", "error", "-nostdin", "-threads", "2", "-filter_threads", "1"}
 	filter := streamFilter(graph, req.Tick-at)
 	if engine.DecodeBackend == BackendCUDA {
@@ -131,11 +130,8 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 	args = append(args, "-i", req.Path, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", filter, "-c:v", "rawvideo", "-pix_fmt", "bgra", "-threads", "1", "-f", "rawvideo", "-")
 	run, cancel := context.WithCancel(d.ctx)
 	cmd := exec.CommandContext(run, engine.FFmpeg, args...)
-	var stderr *capabilityOutput
-	if engine.DecodeBackend == BackendCUDA {
-		stderr = &capabilityOutput{}
-		cmd.Stderr = stderr
-	}
+	stderr := &capabilityOutput{}
+	cmd.Stderr = stderr
 	cmd.WaitDelay = 2 * time.Second
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -147,7 +143,7 @@ func (d *StreamDecoder) open(ctx context.Context, req StillRequest, identity med
 		_ = pipe.Close()
 		return nil, err
 	}
-	return &previewStream{identity: identity, graph: graph, width: req.OutputWidth, height: req.OutputHeight, next: req.Tick, cancel: cancel, cmd: cmd, pipe: pipe, stderr: stderr}, nil
+	return &previewStream{identity: identity, graph: graph, width: req.OutputWidth, height: req.OutputHeight, next: req.Tick, cancel: cancel, cmd: cmd, pipe: pipe, stderr: stderr, color: req.Color, backend: engine.DecodeBackendName()}, nil
 }
 
 func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFrame, error) {
@@ -172,7 +168,7 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 	if s != nil && s.identity != identity {
 		return StillFrame{}, errors.New("source changed during continuous preview")
 	}
-	if s != nil && (s.next != req.Tick || s.graph != graph || s.width != req.OutputWidth || s.height != req.OutputHeight) {
+	if s != nil && (s.next != req.Tick || s.color != req.Color || s.graph != graph || s.width != req.OutputWidth || s.height != req.OutputHeight) {
 		d.retire(req.ClipID)
 		s = nil
 	}
@@ -201,9 +197,9 @@ func (d *StreamDecoder) Decode(ctx context.Context, req StillRequest) (StillFram
 		if err != nil {
 			if s.stderr != nil && len(s.stderr.data) > 0 {
 				detail := string(s.stderr.data[:min(len(s.stderr.data), 1024)])
-				return StillFrame{}, fmt.Errorf("CUDA continuous decoder: %w: %s", err, detail)
+				return StillFrame{}, fmt.Errorf("%s continuous decoder: %w: %s", s.backend, err, detail)
 			}
-			return StillFrame{}, fmt.Errorf("%s continuous decoder: %w", d.indexer.engine.DecodeBackendName(), err)
+			return StillFrame{}, fmt.Errorf("%s continuous decoder: %w", s.backend, err)
 		}
 		return StillFrame{}, errors.New("source changed during frame decode")
 	}

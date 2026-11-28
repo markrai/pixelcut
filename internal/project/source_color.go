@@ -61,3 +61,10 @@ func (p Project) HasClassifiedClips() bool {
 	}
 	return false
 }
+
+func (a Asset) PreviewColor() media.SourceColor {
+	if !a.Classified() {
+		return media.SourceColor{}
+	}
+	return a.SourceColor()
+}
