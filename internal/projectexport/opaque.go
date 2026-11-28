@@ -28,6 +28,9 @@ func layerFilter(layer composition.PlannedLayer, source Source, first, last int)
 	if source.Chroma != "left" && source.Chroma != "center" {
 		return "", errors.New("unsupported source chroma siting")
 	}
+	if source.Asset.Classified() && source.Asset.ColorFamily != media.ColorSDR709 {
+		return "", errors.New("unsupported classified export source")
+	}
 	matrix, primaries, transfer := "2020_ncl", "2020", "arib-std-b67"
 	if source.Asset.ColorFamily == media.ColorSDR709 {
 		matrix, primaries, transfer = "709", "709", "709"
