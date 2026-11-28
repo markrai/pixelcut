@@ -1,12 +1,17 @@
 [CmdletBinding()]
 param(
     [switch]$FormatOnly,
-    [switch]$Paired
+    [switch]$Paired,
+    [switch]$VerboseOutput
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $script:stage = 'Initialization'
+$script:results = [ordered]@{}
+$script:details = [ordered]@{}
+$script:failureExcerpt = @()
+$script:stageStarted = $false
 
 function Require-Tool {
     param([string]$Name)
@@ -22,20 +27,34 @@ function Invoke-Logged {
         [string]$Tool,
         [string[]]$Arguments,
         [string]$Log,
-        [switch]$Append
+        [switch]$Append,
+        [switch]$ReportOnly
     )
     $exe = Require-Tool $Tool
     $writer = [System.IO.StreamWriter]::new($Log, [bool]$Append, [System.Text.UTF8Encoding]::new($false))
     $previous = $ErrorActionPreference
+    $tail = [System.Collections.Generic.Queue[string]]::new()
+    $errors = [System.Collections.Generic.List[string]]::new()
     try {
         $ErrorActionPreference = 'Continue'
         & $exe @Arguments 2>&1 | ForEach-Object {
             $line = $_.ToString()
             $writer.WriteLine($line)
-            Write-Host $line
+            if ($VerboseOutput -and -not $ReportOnly) {
+                Write-Host $line
+            }
+            if ($tail.Count -ge 8) { $null = $tail.Dequeue() }
+            $short = if ($line.Length -gt 400) { $line.Substring(0, 400) + ' ...' } else { $line }
+            $tail.Enqueue($short)
+            if ($errors.Count -lt 12 -and $line -match '(^\s*--- FAIL:|^FAIL\b|^#\s|\.go:\d+:|\b(error|fatal|panic):|WARNING: DATA RACE)') {
+                $errors.Add($short)
+            }
         }
         $code = $LASTEXITCODE
         if ($code -ne 0) {
+            if (-not $ReportOnly -and -not $VerboseOutput) {
+                $script:failureExcerpt = if ($errors.Count -gt 0) { @($errors.ToArray()) } else { @($tail.ToArray()) }
+            }
             throw "$Tool exited with code $code. See $Log"
         }
     } finally {
@@ -53,17 +72,27 @@ function Invoke-Checked {
     }
 }
 
+function Complete-Stage {
+    if ($script:stageStarted) {
+        $script:results[$script:stage] = 'PASS'
+        $script:stageStarted = $false
+        Write-Host "PASS: $script:stage" -ForegroundColor Green
+    }
+}
+
 function Begin-Stage {
     param([string]$Name)
+    Complete-Stage
     $script:stage = $Name
-    Write-Host ""
-    Write-Host "=== $Name ==="
+    $script:stageStarted = $true
+    $script:results[$Name] = 'RUNNING'
+    Write-Host "RUN:  $Name"
 }
 
 function Write-FormatLine {
-    param([string]$Log, [string]$Message)
+    param([string]$Log, [string]$Message, [switch]$ReportOnly)
     [System.IO.File]::AppendAllText($Log, $Message + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
-    Write-Host $Message
+    if (-not $ReportOnly) { Write-Host $Message }
 }
 
 function Scan-FormatChunk {
@@ -80,10 +109,10 @@ function Scan-FormatChunk {
     if ($code -ne 0) {
         Write-FormatLine $Log "gofmt could not parse or read source files (exit $code):"
         foreach ($line in $lines) {
-            Write-FormatLine $Log ($line.ToString())
+            Write-FormatLine $Log ($line.ToString()) -ReportOnly
         }
-        $detail = ($lines | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
-        throw "gofmt scan failed (exit $code):$([Environment]::NewLine)$detail"
+        $script:failureExcerpt = @($lines | Select-Object -First 12 | ForEach-Object { $_.ToString() })
+        throw "gofmt scan failed (exit $code). See $Log"
     }
     foreach ($line in $lines) {
         if (-not [string]::IsNullOrWhiteSpace($line.ToString())) {
@@ -117,27 +146,48 @@ function Check-Formatting {
     if ($chunk.Count -gt 0) {
         $bad += @(Scan-FormatChunk $chunk $log)
     }
-    Write-FormatLine $log "Checked $checked Go files; $($bad.Count) require formatting."
-    if ($bad.Count -gt 0) {
-        Write-FormatLine $log 'Files requiring formatting:'
+    $crlfOnly = 0
+    $realBad = [System.Collections.Generic.List[string]]::new()
+    $utf8 = [System.Text.UTF8Encoding]::new($false, $true)
+    $temp = Join-Path $Reports 'format-check.go.tmp'
+    try {
         foreach ($file in $bad) {
-            Write-FormatLine $log "  $file"
+            $path = (Resolve-Path -LiteralPath $file).ProviderPath
+            $source = $utf8.GetString([System.IO.File]::ReadAllBytes($path))
+            $normalized = $source.Replace("`r`n", "`n")
+            $target = $file
+            if ($normalized -cne $source) {
+                [System.IO.File]::WriteAllText($temp, $normalized, $utf8)
+                $remaining = @(Scan-FormatChunk @($temp) $log)
+                if ($remaining.Count -eq 0) {
+                    $crlfOnly++
+                    Write-FormatLine $log "CRLF only (ignored): $file" -ReportOnly
+                    continue
+                }
+                $target = $temp
+            }
+            $realBad.Add($file)
+            Write-FormatLine $log "=== Formatting diff: $file ===" -ReportOnly
+            Invoke-Logged gofmt @('-d', $target) $log -Append -ReportOnly
         }
-        Write-FormatLine $log ''
-        Write-FormatLine $log 'Run these commands from the repository root to fix:'
-        foreach ($file in $bad) {
-            Write-FormatLine $log ('  gofmt -w "{0}"' -f $file)
+    } finally {
+        if (Test-Path -LiteralPath $temp) {
+            Remove-Item -LiteralPath $temp -Force
         }
-        Write-FormatLine $log ''
-        Write-FormatLine $log 'Formatting differences (read-only):'
-        foreach ($file in $bad) {
-            Write-FormatLine $log "=== $file ==="
-            Invoke-Logged gofmt @('-d', $file) $log -Append
-        }
-        $paths = $bad -join [Environment]::NewLine
-        throw "Go formatting check failed: $($bad.Count) file(s). No files were modified.$([Environment]::NewLine)$paths$([Environment]::NewLine)See $log"
     }
-    Write-FormatLine $log 'Go formatting passed.'
+    $detail = "Checked $checked Go files; $($realBad.Count) require formatting; $crlfOnly CRLF-only differences ignored."
+    $script:details[$script:stage] = $detail
+    $script:formatFailures = @($realBad | Select-Object -First 10)
+    $script:formatFailureCount = $realBad.Count
+    Write-FormatLine $log $detail -ReportOnly
+    if ($realBad.Count -gt 0) {
+        Write-FormatLine $log 'Files requiring formatting:' -ReportOnly
+        foreach ($file in $realBad) {
+            Write-FormatLine $log ('  gofmt -w "{0}"' -f $file) -ReportOnly
+        }
+        throw "Go formatting check failed: $($realBad.Count) file(s). No files were modified."
+    }
+    Write-FormatLine $log 'Go formatting passed.' -ReportOnly
 }
 
 function Run-Benchmark {
@@ -195,6 +245,13 @@ function Run-Paired {
 
 $exitCode = 0
 $reports = $null
+$script:formatFailures = @()
+$script:formatFailureCount = 0
+$planned = @('Check Go formatting')
+if (-not $FormatOnly) {
+    $planned += @('Check prerequisites', 'Environment', 'Go tests and coverage (all native Windows packages)', 'Visual crop Lua tests', 'Go vet', 'Portable race checks (native Windows)', 'Project baseline benchmarks', 'Composition benchmarks', 'Composite preview allocation benchmarks', 'HLG linear-light blend benchmark', 'Windows CLI and GUI builds (CGO disabled)')
+    if ($Paired) { $planned += @('Benchmark report validation', 'Paired benchmark qualification') }
+}
 Push-Location -LiteralPath $root
 try {
     if ($FormatOnly -and $Paired) {
@@ -279,15 +336,58 @@ try {
             Run-Paired $python $reports
         }
     }
-    Write-Host ""
-    Write-Host 'LOCAL CI PASSED' -ForegroundColor Green
+    Complete-Stage
 } catch {
     $exitCode = 1
-    Write-Host ""
-    Write-Host "LOCAL CI FAILED: $script:stage" -ForegroundColor Red
-    Write-Host $_.Exception.Message
+    $script:results[$script:stage] = 'FAIL'
+    $script:details[$script:stage] = if ($script:details.Contains($script:stage)) { $script:details[$script:stage] + ' ' + $_.Exception.Message } else { $_.Exception.Message }
 } finally {
+    Write-Host ""
+    $summary = [System.Collections.Generic.List[string]]::new()
+    $summary.Add('=== LOCAL CI SUMMARY ===')
+    Write-Host '=== LOCAL CI SUMMARY ==='
+    if ($script:results.Contains('Initialization')) { $planned = @('Initialization') + $planned }
+    foreach ($name in $planned) {
+        $status = if ($script:results.Contains($name)) { $script:results[$name] } else { 'NOT RUN' }
+        $color = if ($status -eq 'PASS') { 'Green' } elseif ($status -eq 'FAIL') { 'Red' } else { 'DarkGray' }
+        $line = '{0,-8} {1}' -f $status, $name
+        $summary.Add($line)
+        Write-Host $line -ForegroundColor $color
+        if ($script:details.Contains($name)) {
+            $line = '         ' + $script:details[$name]
+            $summary.Add($line)
+            Write-Host $line
+        }
+    }
+    if ($script:failureExcerpt.Count -gt 0) {
+        $summary.Add('Failure excerpt:')
+        Write-Host 'Failure excerpt:'
+        foreach ($line in $script:failureExcerpt) {
+            $summary.Add([string]$line)
+            Write-Host $line
+        }
+    }
+    if ($script:formatFailureCount -gt 0) {
+        $summary.Add('Formatting fixes (first 10):')
+        Write-Host 'Formatting fixes (first 10):'
+        foreach ($file in $script:formatFailures) {
+            $line = '  gofmt -w "{0}"' -f $file
+            $summary.Add($line)
+            Write-Host $line
+        }
+        if ($script:formatFailureCount -gt 10) {
+            $line = "  $($script:formatFailureCount - 10) more; see formatting.txt."
+            $summary.Add($line)
+            Write-Host $line
+        }
+    }
+    $verdict = if ($exitCode -eq 0) { 'LOCAL CI PASSED' } else { "LOCAL CI FAILED: $script:stage" }
+    $summary.Add($verdict)
+    Write-Host $verdict -ForegroundColor $(if ($exitCode -eq 0) { 'Green' } else { 'Red' })
     if ($null -ne $reports) {
+        $summaryPath = Join-Path $reports 'summary.txt'
+        [System.IO.File]::WriteAllLines($summaryPath, $summary.ToArray(), [System.Text.UTF8Encoding]::new($false))
+        Write-Host "Summary: $summaryPath"
         Write-Host "Reports: $reports"
     }
     Pop-Location

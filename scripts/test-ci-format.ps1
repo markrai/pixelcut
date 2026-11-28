@@ -5,11 +5,12 @@ New-Item -ItemType Directory -Path (Join-Path $work 'scripts') -Force | Out-Null
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 
 function Run-FormatCheck {
-    param([int]$Expected)
+    param([int]$Expected, [switch]$Full)
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $lines = @(& cmd.exe /d /c 'ci.bat -FormatOnly' 2>&1)
+        $command = if ($Full) { 'ci.bat' } else { 'ci.bat -FormatOnly' }
+        $lines = @(& cmd.exe /d /c $command 2>&1)
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
@@ -52,13 +53,21 @@ try {
     & git add -- tracked.go
     if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
 
-    $output = Run-FormatCheck 1
+    $output = Run-FormatCheck 1 -Full
     $report = Latest-FormatReport
-    foreach ($value in @('Checked 2 Go files; 2 require formatting.', 'gofmt -w "tracked.go"', 'gofmt -w "untracked space.go"', 'Formatting differences (read-only):', 'func bad() { println(1) }')) {
+    foreach ($value in @('Checked 2 Go files; 2 require formatting;', 'gofmt -w "tracked.go"', 'gofmt -w "untracked space.go"')) {
         Assert-Contains $output $value
         Assert-Contains $report $value
     }
     Assert-Contains $output 'LOCAL CI FAILED: Check Go formatting'
+    Assert-Contains $output 'LOCAL CI SUMMARY'
+    Assert-Contains $output 'NOT RUN  Go vet'
+    $directory = Get-ChildItem -LiteralPath 'ci-reports' -Directory | Select-Object -First 1
+    $summary = Get-Content -LiteralPath (Join-Path $directory.FullName 'summary.txt') -Raw
+    Assert-Contains $summary 'FAIL     Check Go formatting'
+    Assert-Contains $summary 'NOT RUN  Go vet'
+    Assert-Contains $report 'func bad() { println(1) }'
+    if ($output.Contains('func bad() { println(1) }') -or $output.Contains('diff ')) { throw 'Formatting diff leaked to console' }
     if ([System.IO.File]::ReadAllText($tracked) -ne $source -or [System.IO.File]::ReadAllText($untracked) -ne $source) {
         throw 'Formatting check modified source files'
     }
@@ -68,7 +77,22 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Fixture formatting failed' }
     $output = Run-FormatCheck 0
     Assert-Contains $output 'LOCAL CI PASSED'
-    Assert-Contains (Latest-FormatReport) 'Checked 2 Go files; 0 require formatting.'
+    Assert-Contains (Latest-FormatReport) 'Checked 2 Go files; 0 require formatting;'
+
+    Remove-Item -LiteralPath 'ci-reports' -Recurse -Force
+    $clean = [System.IO.File]::ReadAllText($tracked).Replace("`r`n", "`n").Replace("`n", "`r`n")
+    [System.IO.File]::WriteAllText($tracked, $clean, $utf8)
+    $output = Run-FormatCheck 0
+    Assert-Contains $output '1 CRLF-only differences ignored.'
+    Assert-Contains (Latest-FormatReport) 'CRLF only (ignored): tracked.go'
+    if ([System.IO.File]::ReadAllText($tracked) -cne $clean) { throw 'CRLF source modified' }
+
+    Remove-Item -LiteralPath 'ci-reports' -Recurse -Force
+    [System.IO.File]::WriteAllText($tracked, $source.Replace("`r`n", "`n").Replace("`n", "`r`n"), $utf8)
+    $output = Run-FormatCheck 1
+    Assert-Contains $output '1 require formatting; 0 CRLF-only differences ignored.'
+    Assert-Contains $output 'gofmt -w "tracked.go"'
+    Assert-Contains (Latest-FormatReport) 'func bad() { println(1) }'
 
     Remove-Item -LiteralPath 'ci-reports' -Recurse -Force
     [System.IO.File]::WriteAllText($tracked, "package fixture`nfunc broken(", $utf8)
