@@ -1,3 +1,49 @@
+function Require-Tool {
+    param([string]$Name)
+    $command = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $command) {
+        throw "Required tool not found on PATH: $Name"
+    }
+    return $command.Source
+}
+
+function Invoke-Logged {
+    param(
+        [string]$Tool,
+        [string[]]$Arguments,
+        [string]$Log,
+        [switch]$Append,
+        [switch]$ReportOnly
+    )
+    $exe = Require-Tool $Tool
+    $writer = [System.IO.StreamWriter]::new($Log, [bool]$Append, [System.Text.UTF8Encoding]::new($false))
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & $exe @Arguments 2>&1 | ForEach-Object {
+            $line = $_.ToString()
+            $writer.WriteLine($line)
+            if ($VerboseOutput -and -not $ReportOnly) {
+                Write-Host $line
+            }
+        }
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+        $writer.Dispose()
+    }
+    if ($code -ne 0) {
+        if (-not $ReportOnly -and -not $VerboseOutput) {
+            try {
+                $script:failureExcerpt = @(Get-CIFailureExcerpt -Log $Log)
+            } catch {
+                $script:failureExcerpt = @("Could not extract failure excerpt: $($_.Exception.Message)", "See the original command log: $Log")
+            }
+        }
+        throw "$Tool exited with code $code. See $Log"
+    }
+}
+
 function Get-CIFailureExcerpt {
     param([Parameter(Mandatory = $true)][string]$Log)
 

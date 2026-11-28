@@ -40,7 +40,44 @@ try {
     $excerpt = @(Read-Excerpt $lines)
     if ($excerpt.Count -gt 37) { throw 'Excerpt is not bounded' }
     Assert-Contains ($excerpt -join ' ') 'additional failure markers omitted'
-    Write-Host 'CI failure excerpt regression passed.'
+    $VerboseOutput = $false
+    $script:failureExcerpt = @()
+    $nativeLog = Join-Path $work 'native-command.txt'
+    $fixture = Join-Path $work 'fail.cmd'
+    [System.IO.File]::WriteAllLines($fixture, @('@echo off', 'echo === RUN   TestNativeFailure', 'echo     native_test.go:42: expected 1, got 2', 'echo --- FAIL: TestNativeFailure', 'echo FAIL example.test', 'exit /b 7'), [System.Text.Encoding]::ASCII)
+    Push-Location -LiteralPath $work
+    try {
+        $caught = $null
+        try {
+            Invoke-Logged cmd.exe @('/d', '/c', 'fail.cmd') $nativeLog
+        } catch {
+            $caught = $_.Exception.Message
+        }
+        Assert-Contains $caught 'cmd.exe exited with code 7.'
+        $excerpt = $script:failureExcerpt -join [Environment]::NewLine
+        Assert-Contains $excerpt '--- FAIL: TestNativeFailure'
+        Assert-Contains $excerpt 'native_test.go:42: expected 1, got 2'
+        Assert-Contains ([System.IO.File]::ReadAllText($nativeLog)) 'FAIL example.test'
+        $handle = [System.IO.File]::Open($nativeLog, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        $handle.Dispose()
+
+        function Get-CIFailureExcerpt {
+            param([string]$Log)
+            throw 'Injected diagnostic failure'
+        }
+        $caught = $null
+        try {
+            Invoke-Logged cmd.exe @('/d', '/c', 'fail.cmd') $nativeLog
+        } catch {
+            $caught = $_.Exception.Message
+        }
+        Assert-Contains $caught 'cmd.exe exited with code 7.'
+        Assert-Contains ($script:failureExcerpt -join [Environment]::NewLine) 'Injected diagnostic failure'
+        Assert-Contains ([System.IO.File]::ReadAllText($nativeLog)) 'FAIL example.test'
+    } finally {
+        Pop-Location
+    }
+    Write-Host 'CI failure excerpt and native logging regression passed.'
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force
 }
