@@ -37,7 +37,7 @@ func TestCacheHitSkipsProbe(t *testing.T) {
 	if id == "" {
 		t.Fatal("fixture tool identity unavailable")
 	}
-	key := mediacache.MakeKey(s, "metadata", id, "")
+	key := mediacache.MakeKey(s, "metadata", id, importMetadataCacheContract)
 	b, err := json.Marshal(Report{Streams: []Stream{sampleStream()}})
 	if err != nil {
 		t.Fatal(err)

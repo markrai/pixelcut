@@ -80,8 +80,10 @@ func (e Engine) CachedFrames(ctx context.Context, c *mediacache.Cache, path stri
 	return f, err
 }
 
+const importMetadataCacheContract = "source-color-v2"
+
 func (e Engine) CachedImportReport(ctx context.Context, c *mediacache.Cache, path string) (Report, error) {
-	s, key, ok := cacheRequest(c, path, "metadata", e.FFprobe, "")
+	s, key, ok := cacheRequest(c, path, "metadata", e.FFprobe, importMetadataCacheContract)
 	if ok {
 		if b, hit := c.Get(key); hit {
 			var r Report
@@ -99,7 +101,18 @@ func (e Engine) CachedImportReport(ctx context.Context, c *mediacache.Cache, pat
 	}
 	r.Format = nil
 	for i := range r.Streams {
-		r.Streams[i].Tags = nil
+		stream := &r.Streams[i]
+		tags := stream.Tags
+		stream.Tags = nil
+		if rotate, ok := tags["rotate"]; ok {
+			stream.Tags = map[string]string{"rotate": rotate}
+		}
+		if stream.CodecType == "data" && tags["handler_name"] == "MetaHandle" {
+			if stream.Tags == nil {
+				stream.Tags = make(map[string]string)
+			}
+			stream.Tags["handler_name"] = "MetaHandle"
+		}
 	}
 	if ok && ctx.Err() == nil {
 		if b, err := json.Marshal(r); err == nil {

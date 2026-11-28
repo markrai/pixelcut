@@ -59,6 +59,13 @@ func missingColorTag(s string) bool {
 	return s == "" || s == "unknown" || s == "unspecified" || s == "N/A"
 }
 
+func sourceSAR(s string) string {
+	if s == "0:1" {
+		return ""
+	}
+	return s
+}
+
 func (v Stream) ClassifySourceColor() (SourceColor, error) {
 	c := SourceColor{Codec: v.CodecName, PixelFormat: v.PixelFormat, Range: v.Range, Chroma: v.ChromaLocation}
 	if v.ValidateHLG() == nil {
@@ -108,7 +115,7 @@ func (v Stream) ClassifySourceColor() (SourceColor, error) {
 		{v.Primaries, "bt709", DefaultPrimaries},
 		{v.Transfer, "bt709", DefaultTransfer},
 		{v.Matrix, "bt709", DefaultMatrix},
-		{v.SampleAspectRatio, "1:1", DefaultSAR},
+		{sourceSAR(v.SampleAspectRatio), "1:1", DefaultSAR},
 	} {
 		if _, err := resolve(tag.value, tag.want, tag.bit); err != nil {
 			return SourceColor{}, err
