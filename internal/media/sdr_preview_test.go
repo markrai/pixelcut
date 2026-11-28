@@ -42,7 +42,7 @@ func TestSDRPreviewRealMedia(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	path := filepath.Join(t.TempDir(), "sdr.mp4")
-	runFF(t, "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=192x144:r=10:d=0.5,geq=lum='if(lt(N,2),16,235)':cb=128:cr=128,setsar=1", "-c:v", "libx264", "-threads", "2", "-pix_fmt", "yuv420p", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-chroma_sample_location", "left", path)
+	runFF(t, "-v", "error", "-f", "lavfi", "-i", "nullsrc=s=192x144:r=10:d=0.5,format=yuv420p,geq=lum='if(lt(N,2),16,235)':cb=128:cr=128,setsar=1,setparams=range=limited:color_primaries=bt709:color_trc=bt709:colorspace=bt709", "-c:v", "libx264", "-threads", "2", "-pix_fmt", "yuv420p", "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv:chromaloc=0", "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-chroma_sample_location", "left", "-movflags", "+write_colr", path)
 	e := Default()
 	report, err := e.Inspect(ctx, path)
 	if err != nil {
@@ -53,8 +53,10 @@ func TestSDRPreviewRealMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	c, err := v.ClassifySourceColor()
-	if err != nil || c.Family != ColorSDR709 {
-		t.Fatalf("fixture classification: %+v %v", c, err)
+	t.Logf("SDR fixture probe: codec=%s pixel_format=%s primaries=%q transfer=%q matrix=%q range=%q chroma=%q SAR=%q", v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix, v.Range, v.ChromaLocation, v.SampleAspectRatio)
+	want := SourceColor{Family: ColorSDR709, Codec: "h264", PixelFormat: "yuv420p", Range: "tv", Chroma: "left"}
+	if err != nil || c != want {
+		t.Fatalf("fixture classification: got %+v want %+v: %v", c, want, err)
 	}
 	e.DecodeBackend = BackendCUDA
 	still := NewStillDecoder(e)
