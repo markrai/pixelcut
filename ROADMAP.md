@@ -133,7 +133,7 @@ See [audio processing contract](docs/audio-processing.md). The shared mixer cons
 | 3A.3 | GPU geometry, scaling and transfer boundaries | 3A.3a merged via PR #29; CI and performance passed; user 240/240 nearest-neighbor frame parity at 1080p to 540p. 3A.3b merged via PR #30; CI and performance passed; real source rejection traced to -90 display rotation; cardinal-rotation candidate merged via PR #32; CI and performance passed; synthetic GPU quality failed max-delta gate (19 > 16); 3A.3c merged via PR #33; CI and performance passed; November FFmpeg luminance max 1 and synthetic still/stream pass, real chroma/SDR gate still fails; 3A.3d merged via PR #34; CI and performance passed; 4K center-to-center control max Y/U/V 1/2/1 vs left-to-left 1/143/144, uncorrected median speedup 1.87x but quality fails; 3A.3e merged via PR #35; physical corrected 4K and rotated Pixel quality gates failed; 6/8 synthetic cases passed, corrected median 1.21x but unqualified; 3A.3f merged via PR #36; CI 45927059779 and performance 45927059761 passed; physical hybrid/Vulkan results not recorded; 3A.3g production geometry activation deferred, CPU geometry retained; qualification commands remain available |
 | 3A.4 | GPU layer compositing with explicit HLG linear-light contract | 3A.4a merged via PR #37; CI 45931536401 and performance 45931536468 passed; 3A.4b merged via PR #38; CI 45934421879 and performance 45934421959 passed; 3A.4c merged via PR #39; CI 45935143312 and performance 45935143309 passed; physical fidelity, performance and memory review pending; 3A.4d production activation deferred |
 | 3A.5 | Hardware HEVC Main 10 encode with verified color/timing/publication | 3A.5a merged via PR #40; CI 46007589621 and performance 46007589542 passed; 3A.5b/3A.5c.1/3A.5d physical functional and performance PASS on TITAN; explicit experimental NVENC selection implemented; resource measurements and public GUI/CLI acceptance pending |
-| 3A.6 | GPU/CPU parity, fallback, performance and physical qualification | 3A.6a merged and physical PASS; 3A.6b automated resource sampling implemented; physical resource evidence pending |
+| 3A.6 | GPU/CPU parity, fallback, performance and physical qualification | 3A.6a merged and physical PASS; 3A.6b merged; 3A.6c compatibility and closeout implemented; physical resource/GUI acceptance remains open |
 
 See [GPU architecture and qualification](docs/gpu-architecture.md). Capability advertisement, successful device initialization and qualified rendering are independent gates. The CPU reference remains mandatory and no GPU stage is selectable in 3A.1.
 
@@ -167,7 +167,7 @@ See [hardware encode qualification](docs/gpu-encode-qualification.md).
 | Slice | Scope | Status |
 | --- | --- | --- |
 | 3A.6a | Public four-backend project export matrix, VFR and real HLG, exact decode parity, combined cancellation/recovery | Merged via PR #47; CI 46084546731 and performance 46084546689 passed; TITAN physical PASS |
-| 3A.6b | Physical process-tree and GPU resource measurements | Windows opt-in automated sampler implemented; CI and physical results pending |
-| 3A.6c | Public GUI/CLI acceptance, compatibility and architectural closeout | Pending |
+| 3A.6b | Physical process-tree and GPU resource measurements | Merged via PR #48; CI 46087443630 and performance 46087443669 passed; physical resource evidence pending |
+| 3A.6c | Public GUI/CLI acceptance, compatibility and architectural closeout | Compatibility regressions, cancellation classification, confirmation and closeout checklist implemented; CI and physical acceptance pending |
 
 See [integrated GPU qualification](docs/gpu-integrated-qualification.md).

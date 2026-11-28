@@ -129,6 +129,24 @@ func (e *editor) showExportMenu() error {
 	return e.exportProject(p, fps)
 }
 
+func projectExportConfirmation(plan projectexport.Plan, engine media.Engine, path string) string {
+	audio := "No enabled audio"
+	if plan.Contract.Audio {
+		audio = "AAC stereo, 48 kHz, 192 kbps (all enabled audio)"
+	}
+	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\nHEVC Main 10 / BT.2020 HLG / limited range\nDecoder: %s\nEncoder: %s\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, plan.Contract.FPS, float64(plan.VideoFrames)/float64(plan.Contract.FPS), engine.DecodeBackendName(), engine.EncodeBackendName(), audio, path)
+	if engine.EncodeBackend == media.BackendNVENC {
+		msg += "\n\nExperimental hardware encoding may increase file size. No automatic CPU fallback."
+	}
+	if engine.DecodeBackend == media.BackendCUDA {
+		msg += "\n\nExperimental CUDA decoding uses CPU geometry and composition. No automatic CPU fallback."
+	}
+	if len(plan.Warnings) > 0 {
+		msg += "\n\n" + strings.Join(plan.Warnings, "\n")
+	}
+	return msg
+}
+
 func (e *editor) exportProject(p project.Project, fps int) error {
 	if e.busy || e.model.Project().Fingerprint() != p.Fingerprint() {
 		return fmt.Errorf("project changed; reopen the export menu")
@@ -145,18 +163,8 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 	if err != nil {
 		return err
 	}
-	audio := "No enabled audio"
-	if plan.Contract.Audio {
-		audio = "AAC stereo, 48 kHz, 192 kbps (all enabled audio)"
-	}
 	engine := exportEngineForPreferences(e.engine, e.prefs)
-	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\nHEVC Main 10 / BT.2020 HLG / limited range\nEncoder: %s\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, fps, float64(plan.VideoFrames)/float64(fps), engine.EncodeBackendName(), audio, path)
-	if engine.EncodeBackend == media.BackendNVENC {
-		msg += "\n\nExperimental hardware encoding may increase file size. No automatic CPU fallback."
-	}
-	if len(plan.Warnings) > 0 {
-		msg += "\n\n" + strings.Join(plan.Warnings, "\n")
-	}
+	msg := projectExportConfirmation(plan, engine, path)
 	r, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(msg))), uintptr(unsafe.Pointer(u("Export whole project"))), 0x134)
 	if r != 6 {
 		return nil
@@ -196,7 +204,7 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 		_, warnings := job.snapshot()
 		message := "Project export complete (" + engine.DecodeBackendName() + " decode; " + engine.EncodeBackendName() + " encode): " + path
 		if len(warnings) != 0 {
-			message += fmt.Sprintf(" (%d preflight warning(s); use plan-export for details)", len(warnings))
+			message += fmt.Sprintf(" (%d preflight warning(s))", len(warnings))
 		}
 		if levels := job.audioLevels(); err == nil && levels.Frames > 0 {
 			message = fmt.Sprintf("PCM peak L %s / R %s dBFS; clipped channel samples: %d | ", media.PeakLabel(levels.Peak[0]), media.PeakLabel(levels.Peak[1]), levels.ClipCount()) + message

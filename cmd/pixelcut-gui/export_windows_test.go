@@ -82,3 +82,22 @@ func TestExportLevelSummarySurvivesStageChange(t *testing.T) {
 		t.Fatal("final export stage erased audio statistics")
 	}
 }
+
+func TestProjectExportConfirmationBackendSelection(t *testing.T) {
+	plan := projectexport.Plan{Contract: media.ExportContract{Color: "hlg", FPS: 30, Canvas: media.CanvasSize{Width: 1920, Height: 1080}, Audio: true}, VideoFrames: 30, Warnings: []string{"source warning"}}
+	for _, decode := range []media.Backend{"", media.BackendCPU, media.BackendAuto, media.BackendCUDA} {
+		for _, encode := range []media.Backend{"", media.BackendCPU, media.BackendNVENC} {
+			engine := media.Default()
+			engine.DecodeBackend, engine.EncodeBackend = decode, encode
+			msg := projectExportConfirmation(plan, engine, "new.mp4")
+			for _, expected := range []string{"Decoder: " + engine.DecodeBackendName(), "Encoder: " + engine.EncodeBackendName(), "Existing files will not be overwritten.", "source warning", "AAC stereo"} {
+				if !strings.Contains(msg, expected) {
+					t.Fatalf("missing confirmation text %q", expected)
+				}
+			}
+			if strings.Contains(msg, "Experimental hardware encoding") != (encode == media.BackendNVENC) || strings.Contains(msg, "Experimental CUDA decoding uses") != (decode == media.BackendCUDA) {
+				t.Fatalf("incorrect experimental warnings: %s", msg)
+			}
+		}
+	}
+}

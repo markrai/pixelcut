@@ -250,7 +250,12 @@ func renderProject(ctx context.Context, engine media.Engine, p project.Project, 
 	return renderProjectWithEncoder(ctx, engine, p, color, fps, includeAudio, discardAudio, output, observe, spec)
 }
 
-func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer, spec videoEncoderSpec) error {
+func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p project.Project, color string, fps int, includeAudio, discardAudio bool, output string, observe Observer, spec videoEncoderSpec) (resultErr error) {
+	defer func() {
+		if resultErr != nil && ctx.Err() != nil && !errors.Is(resultErr, ctx.Err()) {
+			resultErr = errors.Join(ctx.Err(), resultErr)
+		}
+	}()
 	emit(observe, StagePreflight, 0, 0)
 	out, err := ValidateDestination(output)
 	if err != nil {
