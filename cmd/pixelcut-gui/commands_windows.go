@@ -11,7 +11,7 @@ func commandRequirement(id int) editorstate.Requirement {
 	switch id {
 	case idApply, idSplit, idClipAudio, menuClipMute, menuSelectAsset, menuRevealClip, menuRelinkClip, menuReplaceClip:
 		return editorstate.SingleClip
-	case idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio, menuLayerOpacity, menuLayerPreset:
+	case idCropVisual, idCropReset, idTransform, idExport, idFrameBack, idFrameForward, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio, menuLayerOpacity, menuLayerPreset, menuTransitionDuration, menuTransitionRemove:
 		return editorstate.VideoClip
 	case idCopy, idCut, idDuplicate, idDelete, idRippleDelete:
 		return editorstate.SelectedClips
@@ -35,7 +35,7 @@ func (e *editor) availability() editorstate.Availability {
 func trackCommandAllowed(id int, a editorstate.Availability) error {
 	if a.TrackLocked {
 		switch id {
-		case idApply, idSplit, idCropVisual, idCropReset, idTransform, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio, menuLayerOpacity, menuLayerPreset, idClipAudio, menuClipMute, idCut, idDuplicate, idDelete, idRippleDelete, idAdd, idPaste, menuPasteHere, menuGapHere:
+		case idApply, idSplit, idCropVisual, idCropReset, idTransform, idSetIn, idSetOut, menuDetachAudio, menuReattachAudio, menuLayerOpacity, menuLayerPreset, menuTransitionDuration, menuTransitionRemove, idClipAudio, menuClipMute, idCut, idDuplicate, idDelete, idRippleDelete, idAdd, idPaste, menuPasteHere, menuGapHere:
 			return project.ErrTrackLocked
 		}
 	}

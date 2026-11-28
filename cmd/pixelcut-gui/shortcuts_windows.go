@@ -197,6 +197,13 @@ func (e *editor) previewActive() bool {
 }
 
 func (e *editor) togglePreview() error {
+	if !e.playing() && !e.stillActive && e.clock == nil && e.model.Project().HasVideoTransitions() {
+		return e.startCompositePlayback()
+	}
+	return e.toggleSourceOrCompositePreview()
+}
+
+func (e *editor) toggleSourceOrCompositePreview() error {
 	if e.playing() {
 		return e.pausePreview()
 	}

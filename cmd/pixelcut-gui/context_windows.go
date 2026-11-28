@@ -42,6 +42,7 @@ type timelineMenuState struct {
 	count                                                            int
 	detachAudio, reattachAudio                                       bool
 	clipAudio, clipMuted                                             bool
+	transition, removeTransition                                     bool
 	audioTrack                                                       bool
 	frameSnap                                                        bool
 	offline                                                          bool
@@ -69,6 +70,11 @@ func timelineMenuItems(s timelineMenuState) []menuItem {
 		}
 		if single && !s.audioTrack {
 			items = append(items, separator(), item(menuDetachAudio, "Detach source audio", s.detachAudio), item(menuReattachAudio, "Reattach matching audio", s.reattachAudio), separator(), item(menuLayerOpacity, "Layer opacity...", true), item(menuLayerPreset, "Layer placement / picture-in-picture...", true))
+			label := "Add cross-dissolve..."
+			if s.removeTransition {
+				label = "Cross-dissolve duration..."
+			}
+			items = append(items, separator(), item(menuTransitionDuration, label, s.transition && !s.offline), item(menuTransitionRemove, "Remove cross-dissolve", s.removeTransition))
 		}
 	} else {
 		items = append(items, item(menuPasteHere, "Paste here", s.pasteHere), item(idPaste, "Paste at playhead\tCtrl+V", s.paste),
@@ -237,6 +243,12 @@ func (e *editor) timelineContext(lp uintptr) {
 		s.count = len(e.selectionIDs())
 		if c, ok := e.selected(); ok {
 			s.split = e.playhead > c.Start && e.playhead < c.Start+(c.Out-c.In)
+			if !e.audioTrack() {
+				ref := project.ClipRef{TrackID: e.trackID(), ClipID: c.ID}
+				from, limit, err := transitionHandle(e.model.Project(), ref)
+				s.transition = err == nil && limit > 0 && !e.offline(from.Path)
+				s.removeTransition = c.TransitionIn != nil
+			}
 			if a, ok := e.model.Project().Asset(c.AssetID); ok {
 				s.offline = e.offline(a.Path)
 				s.detachAudio = a.HasAudio && !c.AudioDetached
@@ -258,6 +270,8 @@ func (e *editor) timelineContext(lp uintptr) {
 	}
 	var err error
 	switch id {
+	case menuTransitionDuration, menuTransitionRemove:
+		err = e.transitionAction(id, screen)
 	case idClipAudio, menuClipMute:
 		err = e.clipAudioAction(id, screen)
 	case menuLayerOpacity, menuLayerPreset, menuLayerLayout, menuCompositeStill, menuCompositePlay, menuSourcePlay:

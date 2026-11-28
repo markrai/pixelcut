@@ -78,7 +78,7 @@ func (e *editor) layerAction(id int, screen point) error {
 	}
 	if id == menuSourcePlay {
 		e.stopPreview()
-		return e.togglePreview()
+		return e.toggleSourceOrCompositePreview()
 	}
 	p := e.model.Project()
 	if id == menuLayerCanvas {
