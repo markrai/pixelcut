@@ -183,21 +183,37 @@ func matrixRunCase(t *testing.T, ctx context.Context, base media.Engine, p proje
 			var mem runtime.MemStats
 			runtime.ReadMemStats(&mem)
 			peak := mem.HeapAlloc
+			var resources *matrixResourceSession
+			if rounds == 3 && os.Getenv("PIXELCUT_QUALIFY_GPU_RESOURCES") == "1" {
+				var err error
+				resources, err = startMatrixResources(ctx)
+				if err != nil {
+					t.Fatalf("resource baseline for %s: %v", mode.name, err)
+				}
+			}
 			start := time.Now()
 			last := start
 			t.Logf("start=%s round=%d mode=%s", start.Format(time.RFC3339Nano), round+1, mode.name)
 			var events []Progress
-			if err := RenderProjectObserved(ctx, engine, p, "hlg", 30, out, func(v Progress) {
+			renderErr := RenderProjectObserved(ctx, engine, p, "hlg", 30, out, func(v Progress) {
 				events = append(events, v)
 				if time.Since(last) >= 250*time.Millisecond || v.Stage == StageDone {
 					runtime.ReadMemStats(&mem)
 					peak = max(peak, mem.HeapAlloc)
 					last = time.Now()
 				}
-			}); err != nil {
-				t.Fatalf("%s round %d: %v", mode.name, round+1, err)
-			}
+			})
 			elapsed := time.Since(start)
+			if resources != nil {
+				summary, err := resources.stop()
+				t.Logf("resources round=%d mode=%s %s", round+1, mode.name, summary)
+				if err != nil {
+					t.Errorf("resource evidence incomplete for %s: %v", mode.name, err)
+				}
+			}
+			if renderErr != nil {
+				t.Fatalf("%s round %d: %v", mode.name, round+1, renderErr)
+			}
 			if err := matrixVerifyProgress(events, plan, mode); err != nil {
 				t.Fatal(err)
 			}
@@ -233,6 +249,9 @@ func matrixRunCase(t *testing.T, ctx context.Context, base media.Engine, p proje
 func TestIntegratedGPUBackendMatrix(t *testing.T) {
 	if os.Getenv("PIXELCUT_QUALIFY_GPU_MATRIX") != "1" {
 		t.Skip("physical integrated GPU matrix is opt-in")
+	}
+	if os.Getenv("PIXELCUT_QUALIFY_GPU_RESOURCES") == "1" && runtime.GOOS != "windows" {
+		t.Fatal("resource qualification requires Windows")
 	}
 	base := encoderSafetyEngine(t, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)
