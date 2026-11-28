@@ -551,3 +551,7 @@ The same evaluator and LayerPlan.ActiveTransition validation now serve HDR expor
 ## 3B.1d transition controls
 
 Native context commands select duration using real source-handle bounds and validate a candidate project through the shared export planner before committing. Marker uses timeline span geometry; no persistent GUI transition state. Existing editor transactions own save/undo/redo; preview switches to composite at midpoint after successful changes. Explicit source audition remains separate. Subsequent incompatible edits fail closed at render validation. See [transition contract](docs/transitions.md).
+
+## 3A.7a mixed-media classification
+
+A separate import constructor classifies SDR/PQ into a comparable persisted descriptor; missing HD 8-bit SDR tags are explicitly tracked, never substituted into source files. Strict HLG report/render contracts are unchanged. Project validation is the authoritative bin-only gate for classified sources until their preview and export consumers are ready. Schema 11 preserves v10 transition interpretation and earlier schemas. See [mixed-media contract](docs/mixed-media.md).

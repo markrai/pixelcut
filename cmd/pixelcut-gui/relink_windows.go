@@ -57,7 +57,7 @@ func (e *editor) refreshMediaList() {
 		} else if !e.sourceChecked[a.Path] {
 			prefix = "[CHECKING] "
 		}
-		listAdd(h, fmt.Sprintf("%s%s  [%dx%d]", prefix, filepath.Base(a.Path), a.Width, a.Height))
+		listAdd(h, fmt.Sprintf("%s%s  [%dx%d]%s", prefix, filepath.Base(a.Path), a.Width, a.Height, assetColorLabel(a)))
 	}
 	send.Call(h, lbSet, uintptr(e.model.AssetIndex()), 0)
 	if len(e.model.Project().Assets) > 0 && int(top) >= 0 {
@@ -202,7 +202,7 @@ func verifyRelink(ctx context.Context, engine media.Engine, p project.Project, o
 	if !sourceMatches(stamp.Path, stamp) {
 		return change, p, fmt.Errorf("candidate changed during inspection")
 	}
-	a, err := project.FromReport(old.ID, stamp.Path, report)
+	a, err := project.FromImportReport(old.ID, stamp.Path, report)
 	if err != nil {
 		return change, p, err
 	}

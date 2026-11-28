@@ -2,6 +2,7 @@ package project
 
 import (
 	"errors"
+	"fmt"
 	"math"
 	"sort"
 )
@@ -35,6 +36,9 @@ func (p Project) PlaceAssets(trackID string, assetIDs, clipIDs []string, start, 
 		a, ok := p.Asset(id)
 		if !ok || (p.Tracks[ti].Kind == AudioTrack && !a.HasAudio) || a.Duration <= 0 || a.Duration > math.MaxInt64-duration {
 			return result, errors.New("invalid placement source or duration")
+		}
+		if a.ImportOnly() {
+			return result, fmt.Errorf("asset %s: %w", a.ID, ErrImportOnlySource)
 		}
 		clips = append(clips, Clip{ID: clipIDs[i], AssetID: id, Start: duration, Out: a.Duration})
 		duration += a.Duration

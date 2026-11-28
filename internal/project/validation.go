@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == FadeVersion || version == EnvelopeVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == FadeVersion || version == EnvelopeVersion || version == TransitionVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -61,12 +61,22 @@ func validateAsset(a Asset) error {
 	if a.Range != "" && a.Range != "tv" && a.Range != "pc" {
 		return fmt.Errorf("%w %q: unsupported color range", ErrInvalidAsset, a.ID)
 	}
+	if a.ColorFamily == "" {
+		if a.ColorDefaults != 0 || a.Codec != "" || a.PixelFormat != "" || a.Chroma != "" {
+			return fmt.Errorf("%w %q: incomplete source color descriptor", ErrInvalidAsset, a.ID)
+		}
+	} else if a.ColorFamily == media.ColorHLG || a.SourceColor().Validate() != nil || (a.ColorDefaults != 0 && (max(a.Width, a.Height) < 1280 || min(a.Width, a.Height) < 720)) {
+		return fmt.Errorf("%w %q: invalid classified color descriptor", ErrInvalidAsset, a.ID)
+	}
 	return nil
 }
 
 func validateClip(c Clip, a Asset, kind string) error {
 	if _, ok := c.TimelineInterval(); !ok || c.ID == "" || c.AssetID != a.ID || c.Out > a.Duration {
 		return fmt.Errorf("%w %q: invalid identity or interval", ErrInvalidClip, c.ID)
+	}
+	if a.ImportOnly() {
+		return fmt.Errorf("%w %q: %w", ErrInvalidClip, c.ID, ErrImportOnlySource)
 	}
 	if c.AudioDetached && (kind != VideoTrack || !a.HasAudio) {
 		return fmt.Errorf("%w %q: invalid detached audio state", ErrInvalidClip, c.ID)
@@ -119,6 +129,9 @@ func (p Project) Validate() error {
 		if err := validateAsset(a); err != nil {
 			return err
 		}
+		if a.ImportOnly() && p.Version < Version {
+			return fmt.Errorf("%w: classified media requires version %d", ErrUnsupportedVersion, Version)
+		}
 		if _, ok := assets[a.ID]; ok {
 			return fmt.Errorf("%w %q: duplicate identity", ErrInvalidAsset, a.ID)
 		}
@@ -169,8 +182,8 @@ func (p Project) Validate() error {
 				return fmt.Errorf("%w: %w on track %q at clip %q", ErrInvalidClip, ErrOverlap, t.ID, c.ID)
 			}
 			if c.TransitionIn != nil {
-				if p.Version < Version {
-					return fmt.Errorf("%w: video transitions require version %d", ErrUnsupportedVersion, Version)
+				if p.Version < TransitionVersion {
+					return fmt.Errorf("%w: video transitions require version %d", ErrUnsupportedVersion, TransitionVersion)
 				}
 				if t.Kind != VideoTrack || i == 0 {
 					return fmt.Errorf("%w: transition requires an adjacent preceding video clip", ErrInvalidTransition)

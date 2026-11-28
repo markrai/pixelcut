@@ -179,10 +179,19 @@ See [integrated GPU qualification](docs/gpu-integrated-qualification.md).
 | 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Merged via PR #50; CI 46090963388 and performance 46090963422 passed |
 | 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | PR #51 and correction #52 merged; CI 46095107530 and performance 46095107531 passed; TITAN physical PASS (all four backends, 3.95s) |
 | 3B.1c | Composite still/stream preview and preview/export timing parity | Merged via PR #53; CI 46098445924 and performance 46098445883 passed; physical preview acceptance pending |
-| 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Native controls implemented; CI and physical UI acceptance pending |
+| 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Merged via PR #54; CI 46099251467 and performance 46099251455 passed; physical UI acceptance pending |
 
 See [video transitions](docs/transitions.md). Export, composite preview and GUI controls support bounded cross-dissolves; physical preview/UI acceptance remains open. The outstanding GPU resource and public-path acceptance gates remain open.
 
 ## 3A.7 mixed-media follow-up
 
-After 3B.1d and before 3B.2: generalized import/color classification (H.264/HEVC SDR, HLG, eventually PQ), mixed-media preview, explicit color conversion for mixed HDR export, then native BT.709 SDR export. Do not relax color validation before conversion support is ready. Untagged SDR requires a documented explicit inference/override policy. No import expansion in this PR.
+After 3B.1d and before 3B.2: generalized import/color classification (H.264/HEVC SDR, HLG, eventually PQ), mixed-media preview, explicit color conversion for mixed HDR export, then native BT.709 SDR export. Do not relax color validation before conversion support is ready. Untagged SDR requires a documented explicit inference/override policy. 
+
+| Slice | Scope | Status |
+| --- | --- | --- |
+| 3A.7a | Versioned color classification, safe media-bin import and inference provenance | Implemented; CI pending |
+| 3A.7b | SDR/HLG mixed timeline preview and thumbnail color conversion | Pending |
+| 3A.7c | Mixed SDR/HLG export with explicit scene-linear conversion policy | Pending |
+| 3A.7d | Native BT.709 SDR export | Pending |
+
+See [mixed-media contract](docs/mixed-media.md). PQ is classified but remains bin-only pending its own render qualification.
