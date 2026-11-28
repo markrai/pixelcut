@@ -537,6 +537,9 @@ func (e *editor) startPreview(paused bool) error {
 		return project.ErrInvalidClip
 	}
 	policy := e.model.Project().TrackPolicies()[e.trackID()]
+	if a.Classified() && policy.Video {
+		return fmt.Errorf("SDR video uses Composite preview; native source audition and visual crop/transform are not available yet")
+	}
 	audible := policy.Audio && a.HasAudio && !c.AudioDetached && c.EffectiveGainPercent() > 0
 	if !policy.Video && !audible {
 		e.stopPreview()
