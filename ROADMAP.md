@@ -65,7 +65,7 @@ from a build alone.
 | 2D | Whole-project export and explicit output color contracts | 2D.1–2D.6 merged; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45843280827); physical acceptance pending |
 | 2E | Audio envelopes, fades, levels and mixing | 2E.1–2E.6 merged and CI passed; physical acceptance pending |
 | 3A | GPU acceleration | In progress; 3A.1 merged and CI passed; 3A.2 decode-check merged; 240/240 physical frame parity on user 1080p source; experimental renderer integration merged; CI passed; physical acceptance pending |
-| 3B | Transitions, keyframes, speed effects, titles and subtitles | 3B.1a transition model implemented; rendering and UI pending |
+| 3B | Transitions, keyframes, speed effects, titles and subtitles | 3B.1a merged; 3B.1b bounded HDR export implemented; preview and UI pending |
 | 4A | Packaging and distribution | Pending |
 
 ## 2C.6 staged delivery
@@ -176,8 +176,8 @@ See [integrated GPU qualification](docs/gpu-integrated-qualification.md).
 
 | Slice | Scope | Status |
 | --- | --- | --- |
-| 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Implemented; CI pending |
-| 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | Pending |
+| 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Merged via PR #50; CI 46090963388 and performance 46090963422 passed |
+| 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | Implemented for opaque full-canvas pairs; CI and physical GPU evidence pending |
 | 3B.1c | Composite still/stream preview and preview/export timing parity | Pending |
 | 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Pending |
 

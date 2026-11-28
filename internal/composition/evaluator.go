@@ -59,16 +59,38 @@ type Evaluator struct {
 	tracks          []track
 	boundaries      []int64
 	videoBoundaries []int64
+	transitions     *TransitionEvaluator
 }
 
 func Compile(p project.Project) (*Evaluator, error) {
+	return compile(p, false)
+}
+
+func CompileForExport(p project.Project) (*Evaluator, error) {
+	return compile(p, true)
+}
+
+func compile(p project.Project, allowTransitions bool) (*Evaluator, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	if p.HasVideoTransitions() {
-		return nil, ErrTransitionRenderingUnavailable
-	}
 	e := &Evaluator{duration: p.EndTime(), canvas: p.CompositionCanvas(), boundaries: []int64{0}}
+	if p.HasVideoTransitions() {
+		if !allowTransitions {
+			return nil, ErrTransitionRenderingUnavailable
+		}
+		var err error
+		e.transitions, err = CompileTransitions(p)
+		if err != nil {
+			return nil, err
+		}
+		for _, windows := range e.transitions.tracks {
+			for _, w := range windows {
+				e.boundaries = append(e.boundaries, w.Timeline.End)
+				e.videoBoundaries = append(e.videoBoundaries, w.Timeline.End)
+			}
+		}
+	}
 	assets := make(map[string]project.Asset, len(p.Assets))
 	for _, a := range p.Assets {
 		assets[a.ID] = a

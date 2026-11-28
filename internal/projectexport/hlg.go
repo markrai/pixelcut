@@ -6,6 +6,7 @@ import (
 	"errors"
 	"math"
 
+	"github.com/markrai/pixelcut/internal/composition"
 	"github.com/markrai/pixelcut/internal/media"
 )
 
@@ -83,10 +84,25 @@ func writePixel(p []byte, planeBytes, offset int, v ycbcr10) {
 }
 
 func compositeHLG(ctx context.Context, dst []byte, canvas media.CanvasSize, layers []layerFrame) error {
+	return compositeHLGDissolve(ctx, dst, canvas, layers, nil)
+}
+
+type dissolveFrame struct {
+	index  int
+	from   []byte
+	weight int64
+}
+
+func compositeHLGDissolve(ctx context.Context, dst []byte, canvas media.CanvasSize, layers []layerFrame, dissolve *dissolveFrame) error {
 	if canvas.Validate() != nil || len(dst) != canvas.Width*canvas.Height*6 || len(layers) > MaxVideoLayers {
 		return errors.New("invalid HDR composition buffer")
 	}
-	translucent := false
+	translucent := dissolve != nil
+	if dissolve != nil {
+		if len(layers) >= MaxVideoLayers || dissolve.index < 0 || dissolve.index >= len(layers) || dissolve.weight < 0 || dissolve.weight > composition.TransitionWeightScale || len(dissolve.from) != len(dst) || !fullCanvasOpaque(canvas, layers[dissolve.index].Bounds, layers[dissolve.index].Opacity) {
+			return errors.New("invalid HDR dissolve frame")
+		}
+	}
 	for _, layer := range layers {
 		b := layer.Bounds
 		if layer.Opacity < 0 || layer.Opacity > 100 || b.Width <= 0 || b.Height <= 0 || b.DestX < 0 || b.DestY < 0 || b.Width > canvas.Width-b.DestX || b.Height > canvas.Height-b.DestY || len(layer.Pixels) != b.Width*b.Height*6 {
@@ -125,6 +141,20 @@ func compositeHLG(ctx context.Context, dst []byte, canvas media.CanvasSize, laye
 				}
 				srcOffset := ((y-b.DestY)*b.Width + x - b.DestX) * 2
 				p := readPixel(layer.Pixels, b.Width*b.Height*2, srcOffset)
+				if dissolve != nil && dissolve.index == i {
+					if dissolve.weight == 0 {
+						p = readPixel(dissolve.from, planeBytes, offset)
+					} else if dissolve.weight < composition.TransitionWeightScale {
+						from := decodeHLG(readPixel(dissolve.from, planeBytes, offset))
+						to := decodeHLG(p)
+						w := float64(dissolve.weight) / float64(composition.TransitionWeightScale)
+						sum.R += remaining * ((1-w)*from.R + w*to.R)
+						sum.G += remaining * ((1-w)*from.G + w*to.G)
+						sum.B += remaining * ((1-w)*from.B + w*to.B)
+						mixed = true
+						break
+					}
+				}
 				if !mixed && layer.Opacity == 100 {
 					writePixel(dst, planeBytes, offset, p)
 					break

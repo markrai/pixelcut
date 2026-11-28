@@ -25,6 +25,9 @@ func StillSize(canvas media.CanvasSize, limit int) (int, int, error) {
 }
 
 func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limit int) (media.StillFrame, error) {
+	if len(plan.Transitions) != 0 {
+		return media.StillFrame{}, ErrTransitionRenderingUnavailable
+	}
 	w, h, err := StillSize(plan.Canvas, limit)
 	if err != nil {
 		return media.StillFrame{}, err
