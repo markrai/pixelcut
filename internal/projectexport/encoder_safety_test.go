@@ -3,6 +3,7 @@ package projectexport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -124,7 +125,7 @@ func TestProjectEncoderRuntimeSafety(t *testing.T) {
 							stop()
 						}
 					})
-					if err == nil || !reached || done || ctx.Err() != nil {
+					if !errors.Is(err, context.Canceled) || !reached || done || ctx.Err() != nil {
 						t.Fatalf("cancellation stage=%s reached=%t done=%t err=%v outer=%v", stage, reached, done, err, ctx.Err())
 					}
 					requireEncoderMissing(t, out)
