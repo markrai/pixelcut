@@ -20,6 +20,20 @@ go build -o pixelcut.exe ./cmd/pixelcut
 
 On Linux or macOS, use `-o pixelcut` instead.
 
+### Run local CI on Windows
+
+From Command Prompt in the repository:
+
+```cmd
+ci.bat
+```
+
+The default runs the native Windows equivalent of the main GitHub CI checks: non-mutating Go formatting (including new untracked Go files), uncached full-suite tests with coverage, Lua 5.4 crop tests, vet, internal race tests, all four benchmark groups, and CGO-disabled CLI and GUI builds. Requires Git, Go/gofmt (CI uses Go 1.23.x), FFmpeg/FFprobe, Lua 5.4 and a compatible C compiler for Go's Windows race detector (MinGW-w64, available on PATH as configured by Go's CC). Missing prerequisites fail explicitly. Reports and builds go into a new ignored `ci-reports/local-*` directory. Failures stop the run and return a nonzero exit code; no source formatting, dependency installation, push, or app launch is performed.
+
+For a fast formatting check before committing, use `ci.bat -FormatOnly`. To also mirror the separate paired benchmark workflow, run `ci.bat -Paired` on a clean committed checkout with Python 3 and the pinned baseline commit available locally. It alternates five baseline/candidate pairs in a disposable Git worktree and writes the comparison report. It does not change the checked-out branch or provide a performance threshold.
+
+Local CI tests Windows rather than Ubuntu, so Linux-only tests, tool versions and runner performance can differ. Physical GPU and native display qualification remain separate; inherited PIXELCUT_QUALIFY_* opt-ins are cleared for the local run.
+
 ### Inspect an original recording
 
 ```powershell
