@@ -317,4 +317,3 @@ func TestMatrixResourceOutputLimit(t *testing.T) {
 		t.Fatal("unbounded query output")
 	}
 }
-

@@ -1,6 +1,7 @@
 package projectexport
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -122,6 +123,9 @@ func TestWindowsMatrixChildHelper(t *testing.T) {
 	if os.Getenv("PIXELCUT_MATRIX_RESOURCE_CHILD") != "1" {
 		t.Skip("process snapshot helper")
 	}
+	if _, err := os.Stdout.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
 		t.Fatal(err)
 	}
@@ -132,20 +136,35 @@ func TestWindowsMatrixDescendantSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(exe, "-test.run=^TestWindowsMatrixChildHelper$")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestWindowsMatrixChildHelper$")
+	cmd.WaitDelay = time.Second
 	cmd.Env = append(os.Environ(), "PIXELCUT_MATRIX_RESOURCE_CHILD=1")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stdin.Close()
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout.Close()
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	waited := false
 	defer func() {
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
+		if !waited {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
 	}()
+	var ready [1]byte
+	if _, err := io.ReadFull(stdout, ready[:]); err != nil || ready[0] != 1 {
+		t.Fatalf("child did not signal readiness: %v", err)
+	}
 	s, err := windowsMatrixHostSnapshot()
 	if err != nil {
 		t.Fatal(err)
@@ -154,6 +173,14 @@ func TestWindowsMatrixDescendantSnapshot(t *testing.T) {
 		if key.pid == uint32(cmd.Process.Pid) {
 			if key.created < s.root.created || sample.working == 0 || sample.private == 0 {
 				t.Fatalf("invalid descendant sample: %+v %+v", key, sample)
+			}
+			if err := stdin.Close(); err != nil {
+				t.Fatal(err)
+			}
+			err := cmd.Wait()
+			waited = true
+			if err != nil {
+				t.Fatal(err)
 			}
 			return
 		}
