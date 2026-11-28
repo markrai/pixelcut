@@ -252,6 +252,11 @@ func (e *editor) paintTimeline(dc uintptr, r rect) {
 			if right-left > 20 {
 				textAt(dc, rect{left + 8, laneTop, right - 7, laneTop + 19}, fmt.Sprintf("%s  %.2fs%s", filepath.Base(a.Path), project.Seconds(c.Out-c.In), audioClipLabel(c)+layerClipLabel(c)), palette.text, 4)
 			}
+			if !audioTrack && c.TransitionIn != nil {
+				if span, ok := transitionMarker(view, c); ok {
+					paintTransitionMarker(dc, span, c.TransitionIn.Duration, valid && policy.Video && !offline)
+				}
+			}
 			if audioTrack && a.HasAudio {
 				e.paintVolumeEnvelope(dc, view, l.TrackID, c, geometry.Span, laneTop+18, laneBottom)
 			}

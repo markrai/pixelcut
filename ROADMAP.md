@@ -65,7 +65,7 @@ from a build alone.
 | 2D | Whole-project export and explicit output color contracts | 2D.1–2D.6 merged; [CI passed](https://github.com/markrai/pixelcut/actions/runs/45843280827); physical acceptance pending |
 | 2E | Audio envelopes, fades, levels and mixing | 2E.1–2E.6 merged and CI passed; physical acceptance pending |
 | 3A | GPU acceleration | In progress; 3A.1 merged and CI passed; 3A.2 decode-check merged; 240/240 physical frame parity on user 1080p source; experimental renderer integration merged; CI passed; physical acceptance pending |
-| 3B | Transitions, keyframes, speed effects, titles and subtitles | 3B.1a merged; 3B.1b physical PASS; 3B.1c preview implemented; transition UI pending |
+| 3B | Transitions, keyframes, speed effects, titles and subtitles | 3B.1a merged; 3B.1b physical PASS; 3B.1c merged; 3B.1d controls implemented; physical preview/UI acceptance pending |
 | 4A | Packaging and distribution | Pending |
 
 ## 2C.6 staged delivery
@@ -178,10 +178,10 @@ See [integrated GPU qualification](docs/gpu-integrated-qualification.md).
 | --- | --- | --- |
 | 3B.1a | Versioned cross-dissolve model, immutable transition windows, edit integrity and fail-closed rendering | Merged via PR #50; CI 46090963388 and performance 46090963422 passed |
 | 3B.1b | Shared transition weights and track-local scene-linear HDR mixing, export span/decoder integration | PR #51 and correction #52 merged; CI 46095107530 and performance 46095107531 passed; TITAN physical PASS (all four backends, 3.95s) |
-| 3B.1c | Composite still/stream preview and preview/export timing parity | Implemented; CI and physical preview acceptance pending |
-| 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Pending |
+| 3B.1c | Composite still/stream preview and preview/export timing parity | Merged via PR #53; CI 46098445924 and performance 46098445883 passed; physical preview acceptance pending |
+| 3B.1d | Timeline transition marker, controls, undo/redo, physical acceptance | Native controls implemented; CI and physical UI acceptance pending |
 
-See [video transitions](docs/transitions.md). Export and composite preview support bounded cross-dissolves; GUI creation remains 3B.1d. The outstanding GPU resource and public-path acceptance gates remain open.
+See [video transitions](docs/transitions.md). Export, composite preview and GUI controls support bounded cross-dissolves; physical preview/UI acceptance remains open. The outstanding GPU resource and public-path acceptance gates remain open.
 
 ## 3A.7 mixed-media follow-up
 

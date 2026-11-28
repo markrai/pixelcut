@@ -57,3 +57,18 @@ set PIXELCUT_QUALIFY_TRANSITION_PREVIEW_GPU=
 ```
 
 Next 3B.1d: native controls and physical UI acceptance. Mixed-media 3A.7 follows before keyframes; no SDR import change here.
+
+## 3B.1d native transition controls
+
+PR #53 merged at 0a97bba741ebdfb7c7111a856928e404e57d8ccf; CI 46098445924 and performance 46098445883 passed. Physical preview report has not been supplied.
+
+Right-click one incoming video clip on an unlocked enabled track. Add cross-dissolve opens a native duration menu with presets 0.1, 0.25, 0.5, 1, 2, 3, 5, 10 seconds filtered by available source tail and incoming duration; include the exact maximum and existing duration when valid. A clip with an existing transition offers duration change and removal. Removal remains available when its media is offline or the track is hidden, subject to track locking. Creation requires both sources available, exact adjacency and a supported composition plan (Build at 30 CFR; not a physical source probe). No automatic shortening, extension, source substitution or audio edits. Geometry/opacity and concurrent transition limits are checked before committing a new duration. Subsequent edits can still invalidate rendering coverage; preview/export fail closed until corrected. Each change uses the normal project transaction, persistence and undo/redo. An unchanged duration is a no-op. Marker is drawn within the incoming clip using the existing clipped timeline span; no extra drag handle or separate selection model. Jump to dissolve midpoint and show composite still after adding/resizing; removal shows cut. Regular Play defaults to composite when a transition project has no existing preview session. Explicit source preview remains available from timeline context menu; it does not render dissolves. No other preview transport semantics changed.
+
+### Physical UI acceptance
+
+1. After merge, run git pull and run.bat. Import two supported HLG sources (or place one source twice). Trim the first clip's source Out to leave at least 0.5s unused footage; place the second adjacent with no gap. Keep both opaque and filling the canvas.
+2. Right-click the incoming clip, choose Add cross-dissolve then 0.5 s. Confirm violet band spans the first 0.5s of incoming clip, preview shows midpoint, project duration and audio unchanged. Press Space to play composite; scrub across both boundaries. On a freshly reopened project, Play should start composite playback. Explicit source preview remains an audition.
+3. Change duration via context menu; verify marker width, midpoint preview and undo/redo. Remove transition and undo. Save/reopen and verify persistence. Test locked track, gap, no source tail, incompatible opacity/geometry and offline removal.
+4. Export whole project in CPU mode, then NVENC if available. Confirm correct transition and audio cut; run the opt-in preview qualification command from 3B.1c separately. Record physical evidence rather than declaring it passed from CI.
+
+Initial scope still one active fully opaque full-canvas pair, maximum four total decoders, SDR composite preview at 10 FPS. No audio crossfade, centered dissolve, drag-to-resize or SDR import support yet. Next 3A.7a mixed-media source classification and import contract before keyframes.
