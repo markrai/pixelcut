@@ -39,7 +39,7 @@ func trackCommandAllowed(id int, a editorstate.Availability) error {
 			return project.ErrTrackLocked
 		}
 	}
-	if a.VideoSuppressed && (id == idCropVisual || id == idTransform) {
+	if a.VideoSuppressed && (id == idCropVisual || id == idTransform || id == menuTransitionDuration) {
 		return fmt.Errorf("enable the active track's video preview before visual editing")
 	}
 	return nil

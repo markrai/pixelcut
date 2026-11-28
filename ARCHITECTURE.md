@@ -547,3 +547,7 @@ Export opts into the transition-aware evaluator; preview remains gated. A span c
 ## 3B.1c transition preview
 
 The same evaluator and LayerPlan.ActiveTransition validation now serve HDR export and SDR composite preview. DecodeLayers includes the outgoing handle for identity checks and retention; the ordinary layer list still expresses stack position. RenderStill blends the two tone-mapped BGRA frames at that position with fixed-point BT.709 linear-light approximation; HDR export instead blends before tone mapping, so color output is not asserted identical. Both share source mapping, transition weights and supported coverage. Existing audio timeline, clock, worker ownership and decoder limits remain authoritative. GUI creation follows in 3B.1d.
+
+## 3B.1d transition controls
+
+Native context commands select duration using real source-handle bounds and validate a candidate project through the shared export planner before committing. Marker uses timeline span geometry; no persistent GUI transition state. Existing editor transactions own save/undo/redo; preview switches to composite at midpoint after successful changes. Explicit source audition remains separate. Subsequent incompatible edits fail closed at render validation. See [transition contract](docs/transitions.md).

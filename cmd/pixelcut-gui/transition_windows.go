@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/markrai/pixelcut/internal/project"
 	"github.com/markrai/pixelcut/internal/projectexport"
@@ -67,7 +68,7 @@ func transitionChoices(limit, current int64) []int64 {
 func transitionDurationItems(choices []int64, current int64) []menuItem {
 	items := make([]menuItem, 0, len(choices))
 	for i, d := range choices {
-		label := fmt.Sprintf("%g s", project.Seconds(d))
+		label := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.6f", project.Seconds(d)), "0"), ".") + " s"
 		items = append(items, menuItem{id: transitionDurationBase + i, label: label, enabled: true, checked: d == current})
 	}
 	return items
@@ -76,6 +77,9 @@ func transitionDurationItems(choices []int64, current int64) []menuItem {
 func applyTransitionDuration(p project.Project, ref project.ClipRef, duration int64) (project.Project, error) {
 	if duration == 0 {
 		return p.SetVideoTransition(ref, nil)
+	}
+	if !p.TrackPolicies()[ref.TrackID].Video {
+		return p, errors.New("enable the video track before adding or changing a transition")
 	}
 	_, limit, err := transitionHandle(p, ref)
 	if err != nil {
@@ -155,7 +159,7 @@ func (e *editor) transitionAction(id int, screen point) error {
 	}
 	e.playhead = c.Start + duration/2
 	if err := e.showCompositeStill(); err != nil {
-		e.tell("Transition edit saved; preview unavailable: " + err.Error())
+		e.tell("Transition edit applied; preview unavailable: " + err.Error())
 		return nil
 	}
 	if duration == 0 {
