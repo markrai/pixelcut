@@ -93,6 +93,9 @@ jobs:
       - name: Smoke test local CI launcher
         shell: cmd
         run: ci.bat -FormatOnly
+      - name: Verify local CI formatting diagnostics
+        shell: powershell
+        run: ./scripts/test-ci-format.ps1
       - name: Project model and desktop input tests with coverage
         shell: pwsh
         run: |
