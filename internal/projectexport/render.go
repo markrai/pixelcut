@@ -131,13 +131,17 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 	if span.FirstFrame == span.EndFrame {
 		return nil
 	}
+	if err := validateTransitionSpan(span, plan.Contract.Canvas); err != nil {
+		return err
+	}
 	var decoders []*layerDecoder
+	transitionIndex := -1
 	defer func() {
 		for _, decoder := range decoders {
 			decoder.process.close()
 		}
 	}()
-	for _, layer := range span.Layers {
+	for _, layer := range spanDecodeLayers(span) {
 		if layer.Geometry.Bounds.Width == 0 || layer.Geometry.Bounds.Height == 0 {
 			continue
 		}
@@ -153,7 +157,13 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		if err != nil {
 			return fmt.Errorf("clip %s (%s decode): %w", layer.Layer.Ref.ClipID, engine.DecodeBackendName(), err)
 		}
+		if span.Transition != nil && layer.Layer.Ref == span.Transition.Window.To {
+			transitionIndex = len(decoders)
+		}
 		decoders = append(decoders, decoder)
+	}
+	if span.Transition != nil && (transitionIndex < 0 || transitionIndex >= len(decoders)-1) {
+		return errors.New("missing transition decoder pair")
 	}
 	var layers [MaxVideoLayers]layerFrame
 	for n := span.FirstFrame; n < span.EndFrame; n++ {
@@ -172,8 +182,20 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 			layers[i] = layerFrame{Pixels: pixels, Bounds: d.layer.Geometry.Bounds, Opacity: d.layer.Layer.Opacity}
 		}
 		copy(frame, black)
-		if err := compositeHLG(ctx, frame, plan.Contract.Canvas, layers[:len(decoders)]); err != nil {
-			return err
+		active := layers[:len(decoders)]
+		if span.Transition == nil {
+			if err := compositeHLG(ctx, frame, plan.Contract.Canvas, active); err != nil {
+				return err
+			}
+		} else {
+			sample, ok := span.Transition.Window.At(tick)
+			if !ok {
+				return errors.New("output frame outside transition window")
+			}
+			outgoing := active[len(active)-1]
+			if err := compositeHLGDissolve(ctx, frame, plan.Contract.Canvas, active[:len(active)-1], &dissolveFrame{index: transitionIndex, from: outgoing.Pixels, weight: sample.IncomingWeight}); err != nil {
+				return err
+			}
 		}
 		if written, err := dst.Write(frame); err != nil {
 			return err

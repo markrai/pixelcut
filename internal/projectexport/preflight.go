@@ -46,6 +46,10 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 			id := layer.Layer.Asset.ID
 			used[id], visible[id] = true, true
 		}
+		if span.Transition != nil {
+			id := span.Transition.From.Layer.Asset.ID
+			used[id], visible[id] = true, true
+		}
 		for _, audio := range span.Audio {
 			used[audio.Asset.ID] = true
 		}

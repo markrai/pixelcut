@@ -112,10 +112,13 @@ func validateVideo(plan Plan, discardAudio bool) error {
 		if s.FirstFrame == s.EndFrame {
 			continue
 		}
+		if err := validateTransitionSpan(s, c); err != nil {
+			return err
+		}
 		if len(s.Layers) > MaxVideoLayers {
 			return errors.New("video export supports at most four simultaneous video layers")
 		}
-		for _, layer := range s.Layers {
+		for _, layer := range spanDecodeLayers(s) {
 			if layer.Layer.Opacity < 0 || layer.Layer.Opacity > 100 {
 				return errors.New("invalid layer opacity")
 			}

@@ -19,6 +19,7 @@ type Span struct {
 	FirstSample, EndSample int64
 	Layers                 []composition.PlannedLayer
 	Audio                  []composition.AudioContribution
+	Transition             *composition.PlannedTransition `json:",omitempty"`
 }
 
 type Plan struct {
@@ -37,7 +38,7 @@ func frameCeiling(at int64, fps int) int64 {
 }
 
 func Build(p project.Project, color string, fps int) (Plan, error) {
-	e, err := composition.Compile(p)
+	e, err := composition.CompileForExport(p)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -68,11 +69,20 @@ func Build(p project.Project, color string, fps int) (Plan, error) {
 		if f.NextBoundary <= at || f.NextBoundary > duration {
 			return Plan{}, errors.New("invalid export boundary")
 		}
-		contributions += len(layers.Layers) + len(f.Audio)
+		contributions += len(layers.Layers) + len(f.Audio) + len(layers.Transitions)
 		if contributions > MaxContributions {
 			return Plan{}, errors.New("project export contribution budget exceeded")
 		}
 		s := Span{Start: at, End: f.NextBoundary, FirstFrame: frameCeiling(at, fps), EndFrame: frameCeiling(f.NextBoundary, fps), FirstSample: media.PCMFramesForTicks(at), EndSample: media.PCMFramesForTicks(f.NextBoundary), Layers: layers.Layers, Audio: f.Audio}
+		if len(layers.Transitions) > 1 {
+			return Plan{}, errors.New("export supports at most one active video transition at a time")
+		}
+		if len(layers.Transitions) == 1 {
+			s.Transition = &layers.Transitions[0]
+			if err := validateTransitionSpan(s, contract.Canvas); err != nil {
+				return Plan{}, err
+			}
+		}
 		if len(s.Layers) > 0 {
 			visible = true
 			if s.FirstFrame == s.EndFrame {
