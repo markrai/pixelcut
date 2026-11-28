@@ -2,7 +2,7 @@ package composition
 
 import (
 	"context"
-	"errors"
+	"strings"
 	"testing"
 
 	"github.com/markrai/pixelcut/internal/project"
@@ -41,8 +41,13 @@ func TestTransitionEvaluatorExactWindow(t *testing.T) {
 	if err != nil || len(hidden.At(30)) != 0 {
 		t.Fatalf("hidden video transition evaluated: %v", err)
 	}
-	if _, err := Compile(q); !errors.Is(err, ErrTransitionRenderingUnavailable) {
-		t.Fatalf("existing renderer silently ignored transition: %v", err)
+	compiled, err := Compile(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := compiled.PlanLayers(30)
+	if err != nil || len(plan.Transitions) != 0 {
+		t.Fatalf("hidden transition should not contribute: %v", err)
 	}
 	if _, err := Compile(p); err != nil {
 		t.Fatalf("ordinary project no longer compiles: %v", err)
@@ -77,8 +82,8 @@ func TestTransitionExportEvaluatorBoundaries(t *testing.T) {
 			if tr.From.Layer.SourceTime != 120+tc.at-30 || tr.From.Layer.SourceInterval != (project.Interval{Start: 120, End: 128}) {
 				t.Fatal("outgoing handle mapping incorrect")
 			}
-			if _, err := RenderStill(context.Background(), nil, plan, 640); !errors.Is(err, ErrTransitionRenderingUnavailable) {
-				t.Fatalf("still renderer ignored transition: %v", err)
+			if _, err := RenderStill(context.Background(), nil, plan, 640); err == nil || !strings.Contains(err.Error(), "decoder unavailable") {
+				t.Fatalf("still renderer did not accept transition plan: %v", err)
 			}
 		}
 	}

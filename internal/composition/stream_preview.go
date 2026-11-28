@@ -35,6 +35,7 @@ func RenderSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder
 		return errors.New("continuous preview requires a position before timeline end")
 	}
 	identities := make(map[string]mediacache.Source)
+	start := at
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -60,7 +61,11 @@ func RenderSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder
 			case <-timer.C:
 			}
 		}
-		at = NextCompositeTick(at, e.Duration())
+		if e.transitions != nil {
+			at = e.NextVideoSample(start, at)
+		} else {
+			at = NextCompositeTick(at, e.Duration())
+		}
 	}
 }
 
@@ -69,9 +74,10 @@ func renderCompositeFrame(ctx context.Context, e *Evaluator, decoder SequentialD
 	if err != nil {
 		return CompositeFrame{}, err
 	}
-	ids := make([]string, 0, len(plan.Layers))
+	layers := plan.DecodeLayers()
+	ids := make([]string, 0, len(layers))
 	sources := make(map[string]mediacache.Source)
-	for _, layer := range plan.Layers {
+	for _, layer := range layers {
 		ids = append(ids, layer.Layer.Ref.ClipID)
 		path := layer.Layer.Asset.Path
 		if _, ok := sources[path]; ok {

@@ -543,3 +543,7 @@ Schema 10 adds an optional incoming cross-dissolve referencing the adjacent prec
 ## 3B.1b HDR transition export
 
 Export opts into the transition-aware evaluator; preview remains gated. A span carries the outgoing handle and immutable window in addition to its ordinary layer plan. The existing renderer consumes two decoder slots for one opaque full-canvas dissolve; one active dissolve, four total decoders, no extra full-frame buffer. Both source frames are mixed as one track-local opaque contribution in the shared scene-linear HLG accumulation, preserving stacking and a single final quantization. Existing audio intervals, source checks, encoder selection, verification and publication remain authoritative. Unsupported coverage fails preflight. See [transition contract](docs/transitions.md).
+
+## 3B.1c transition preview
+
+The same evaluator and LayerPlan.ActiveTransition validation now serve HDR export and SDR composite preview. DecodeLayers includes the outgoing handle for identity checks and retention; the ordinary layer list still expresses stack position. RenderStill blends the two tone-mapped BGRA frames at that position with fixed-point BT.709 linear-light approximation; HDR export instead blends before tone mapping, so color output is not asserted identical. Both share source mapping, transition weights and supported coverage. Existing audio timeline, clock, worker ownership and decoder limits remain authoritative. GUI creation follows in 3B.1d.

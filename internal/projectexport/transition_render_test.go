@@ -179,8 +179,17 @@ func TestRenderHLGTransition(t *testing.T) {
 	if err != nil || !bytes.Equal(original, after) || q.Fingerprint() != fingerprint {
 		t.Fatal("transition export changed source or project")
 	}
-	if _, err := composition.Compile(q); !errors.Is(err, composition.ErrTransitionRenderingUnavailable) {
-		t.Fatalf("preview gate opened prematurely: %v", err)
+	compiled, err := composition.Compile(q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previewPlan, err := compiled.PlanLayers(300000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sample, err := previewPlan.ActiveTransition()
+	if err != nil || sample.IncomingWeight != 500000 || sample.FromTime != 300000 || sample.ToTime != 700000 {
+		t.Fatalf("preview/export transition timing differs: %+v %v", sample, err)
 	}
 	requireEncoderNoStages(t, dir)
 }

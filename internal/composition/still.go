@@ -25,8 +25,9 @@ func StillSize(canvas media.CanvasSize, limit int) (int, int, error) {
 }
 
 func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limit int) (media.StillFrame, error) {
-	if len(plan.Transitions) != 0 {
-		return media.StillFrame{}, ErrTransitionRenderingUnavailable
+	transitionIndex, sample, err := plan.ActiveTransition()
+	if err != nil {
+		return media.StillFrame{}, err
 	}
 	w, h, err := StillSize(plan.Canvas, limit)
 	if err != nil {
@@ -41,7 +42,7 @@ func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limi
 	}
 	x := func(v int) int { return int(math.Round(float64(v) * float64(w) / float64(plan.Canvas.Width))) }
 	y := func(v int) int { return int(math.Round(float64(v) * float64(h) / float64(plan.Canvas.Height))) }
-	for _, item := range plan.Layers {
+	for i, item := range plan.Layers {
 		if err = ctx.Err(); err != nil {
 			return media.StillFrame{}, err
 		}
@@ -60,16 +61,19 @@ func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limi
 		if right <= left || bottom <= top {
 			continue
 		}
-		var crop *media.Crop
-		if c := layer.Crop; c != nil {
-			crop = &media.Crop{X: c.X, Y: c.Y, Width: c.Width, Height: c.Height}
-		}
-		frame, err := decoder.Decode(ctx, media.StillRequest{Path: layer.Asset.Path, ClipID: layer.Ref.ClipID, Tick: layer.SourceTime, SourceEnd: layer.Asset.Duration, Width: layer.Asset.Width, Height: layer.Asset.Height, Range: layer.Asset.Range, Canvas: plan.Canvas, Crop: crop, Transform: layer.Transform, OutputWidth: right - left, OutputHeight: bottom - top})
+		frame, err := decodePreviewLayer(ctx, decoder, plan.Canvas, item, right-left, bottom-top)
 		if err != nil {
-			return media.StillFrame{}, fmt.Errorf("layer %s/%s: %w", layer.Ref.TrackID, layer.Ref.ClipID, err)
+			return media.StillFrame{}, err
 		}
-		if !frame.Valid() || frame.Width != right-left || frame.Height != bottom-top {
-			return media.StillFrame{}, errors.New("decoder returned invalid layer dimensions")
+		if i == transitionIndex {
+			from, err := decodePreviewLayer(ctx, decoder, plan.Canvas, plan.Transitions[0].From, w, h)
+			if err != nil {
+				return media.StillFrame{}, err
+			}
+			if err := blendSDRTransition(ctx, out.Pixels, from.Pixels, frame.Pixels, w, h, sample.IncomingWeight); err != nil {
+				return media.StillFrame{}, err
+			}
+			continue
 		}
 		alpha := layer.Opacity
 		for row := 0; row < frame.Height; row++ {
@@ -89,4 +93,20 @@ func RenderStill(ctx context.Context, decoder StillDecoder, plan LayerPlan, limi
 		return media.StillFrame{}, err
 	}
 	return out, nil
+}
+
+func decodePreviewLayer(ctx context.Context, decoder StillDecoder, canvas media.CanvasSize, item PlannedLayer, width, height int) (media.StillFrame, error) {
+	layer := item.Layer
+	var crop *media.Crop
+	if c := layer.Crop; c != nil {
+		crop = &media.Crop{X: c.X, Y: c.Y, Width: c.Width, Height: c.Height}
+	}
+	frame, err := decoder.Decode(ctx, media.StillRequest{Path: layer.Asset.Path, ClipID: layer.Ref.ClipID, Tick: layer.SourceTime, SourceEnd: layer.Asset.Duration, Width: layer.Asset.Width, Height: layer.Asset.Height, Range: layer.Asset.Range, Canvas: canvas, Crop: crop, Transform: layer.Transform, OutputWidth: width, OutputHeight: height})
+	if err != nil {
+		return media.StillFrame{}, fmt.Errorf("layer %s/%s: %w", layer.Ref.TrackID, layer.Ref.ClipID, err)
+	}
+	if !frame.Valid() || frame.Width != width || frame.Height != height {
+		return media.StillFrame{}, errors.New("decoder returned invalid layer dimensions")
+	}
+	return frame, nil
 }
