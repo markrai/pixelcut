@@ -166,7 +166,7 @@ func (e *editor) importAt(paths []string, placement *placementRequest) error {
 			if err != nil {
 				return project.Asset{}, err
 			}
-			return project.FromReport(nextID("asset"), path, report)
+			return project.FromImportReport(nextID("asset"), path, report)
 		})
 		if err != nil {
 			return result{err: err}
@@ -194,7 +194,7 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 			placed = len(ids)
 			user.NewProc("SetFocus").Call(e.timeline)
 		} else {
-			placementError = " Placement rejected; imported assets remain in media bin."
+			placementError = " Placement rejected; imported assets remain in media bin: " + err.Error()
 		}
 	}
 	if placed == 0 {
@@ -214,8 +214,17 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 		}
 	}
 	summary := fmt.Sprintf("Imported %d; already in media bin %d; failed %d; placed %d.", b.Added, b.Duplicates, len(b.Failures), placed) + placementError
+	waiting := 0
+	for _, id := range b.AssetIDs {
+		if a, ok := b.Project.Asset(id); ok && a.ImportOnly() {
+			waiting++
+		}
+	}
+	if waiting > 0 {
+		summary += fmt.Sprintf(" %d SDR/PQ source(s) imported to media bin only; timeline rendering pending.", waiting)
+	}
 	e.tell(summary)
-	if len(b.Failures) > 0 {
+	if len(b.Failures) > 0 || waiting > 0 || placementError != "" {
 		var details strings.Builder
 		details.WriteString(summary)
 		for i, f := range b.Failures {

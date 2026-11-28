@@ -16,16 +16,22 @@ const GainVersion = 6
 const MuteVersion = 7
 const FadeVersion = 8
 const EnvelopeVersion = 9
-const Version = 10
+const TransitionVersion = 10
+const Version = 11
 
 type Asset struct {
-	ID       string `json:"id"`
-	Path     string `json:"path"`
-	Duration int64  `json:"duration_us"`
-	Width    int    `json:"width"`
-	Height   int    `json:"height"`
-	HasAudio bool   `json:"has_audio"`
-	Range    string `json:"range,omitempty"`
+	ID            string              `json:"id"`
+	Path          string              `json:"path"`
+	Duration      int64               `json:"duration_us"`
+	Width         int                 `json:"width"`
+	Height        int                 `json:"height"`
+	HasAudio      bool                `json:"has_audio"`
+	Range         string              `json:"range,omitempty"`
+	ColorFamily   media.ColorFamily   `json:"color_family,omitempty"`
+	ColorDefaults media.ColorDefaults `json:"color_defaults,omitempty"`
+	Codec         string              `json:"codec,omitempty"`
+	PixelFormat   string              `json:"pixel_format,omitempty"`
+	Chroma        string              `json:"chroma,omitempty"`
 }
 
 type Crop struct {
@@ -79,11 +85,25 @@ func New() Project {
 }
 
 func FromReport(id, path string, r media.Report) (Asset, error) {
+	return assetFromReport(id, path, r, false)
+}
+
+func FromImportReport(id, path string, r media.Report) (Asset, error) {
+	return assetFromReport(id, path, r, true)
+}
+
+func assetFromReport(id, path string, r media.Report, classify bool) (Asset, error) {
 	v, err := r.Video()
 	if err != nil {
 		return Asset{}, err
 	}
-	if err = v.ValidateHLG(); err != nil {
+	var color media.SourceColor
+	if classify {
+		color, err = v.ClassifySourceColor()
+	} else {
+		err = v.ValidateHLG()
+	}
+	if err != nil {
 		return Asset{}, err
 	}
 	v, err = v.DisplayGeometry()
@@ -99,6 +119,13 @@ func FromReport(id, path string, r media.Report) (Asset, error) {
 		return Asset{}, err
 	}
 	a := Asset{ID: id, Path: path, Duration: d, Width: v.Width, Height: v.Height, Range: v.Range}
+	if classify && color.Family != media.ColorHLG {
+		a.ColorFamily, a.ColorDefaults = color.Family, color.Defaults
+		a.Codec, a.PixelFormat, a.Range, a.Chroma = color.Codec, color.PixelFormat, color.Range, color.Chroma
+		if err := r.ValidateClassifiedImportStreams(); err != nil {
+			return Asset{}, err
+		}
+	}
 	for _, s := range r.Streams {
 		if s.CodecType == "audio" {
 			a.HasAudio = true

@@ -61,7 +61,10 @@ func (p Project) RelinkAsset(id string, candidate Asset, replace bool) (Project,
 		return p, errors.New("display dimensions or orientation do not match")
 	}
 	if candidate.Range != "tv" && candidate.Range != "pc" {
-		return p, errors.New("candidate requires validated HLG color range")
+		return p, errors.New("candidate requires validated source color range")
+	}
+	if old.ColorFamily != candidate.ColorFamily || (old.ImportOnly() && old.SourceColor() != candidate.SourceColor()) {
+		return p, errors.New("source color classification does not match")
 	}
 	if old.Range != "" && candidate.Range != old.Range {
 		return p, errors.New("source color range does not match")
