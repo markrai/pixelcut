@@ -10,6 +10,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $script:stage = 'Initialization'
 $script:results = [ordered]@{}
 $script:details = [ordered]@{}
+$script:failureExcerpt = @()
 $script:stageStarted = $false
 
 function Require-Tool {
@@ -52,12 +53,7 @@ function Invoke-Logged {
         $code = $LASTEXITCODE
         if ($code -ne 0) {
             if (-not $ReportOnly -and -not $VerboseOutput) {
-                Write-Host "Failure excerpt:"
-                if ($errors.Count -gt 0) {
-                    $errors | ForEach-Object { Write-Host $_ }
-                } else {
-                    $tail | ForEach-Object { Write-Host $_ }
-                }
+                $script:failureExcerpt = if ($errors.Count -gt 0) { @($errors.ToArray()) } else { @($tail.ToArray()) }
             }
             throw "$Tool exited with code $code. See $Log"
         }
@@ -115,7 +111,7 @@ function Scan-FormatChunk {
         foreach ($line in $lines) {
             Write-FormatLine $Log ($line.ToString()) -ReportOnly
         }
-        $lines | Select-Object -First 12 | ForEach-Object { Write-Host $_.ToString() }
+        $script:failureExcerpt = @($lines | Select-Object -First 12 | ForEach-Object { $_.ToString() })
         throw "gofmt scan failed (exit $code). See $Log"
     }
     foreach ($line in $lines) {
@@ -183,7 +179,7 @@ function Check-Formatting {
     $script:details[$script:stage] = $detail
     $script:formatFailures = @($realBad | Select-Object -First 10)
     $script:formatFailureCount = $realBad.Count
-    Write-FormatLine $log $detail
+    Write-FormatLine $log $detail -ReportOnly
     if ($realBad.Count -gt 0) {
         Write-FormatLine $log 'Files requiring formatting:' -ReportOnly
         foreach ($file in $realBad) {
@@ -192,7 +188,6 @@ function Check-Formatting {
         throw "Go formatting check failed: $($realBad.Count) file(s). No files were modified."
     }
     Write-FormatLine $log 'Go formatting passed.' -ReportOnly
-
 }
 
 function Run-Benchmark {
@@ -348,21 +343,51 @@ try {
     $script:details[$script:stage] = if ($script:details.Contains($script:stage)) { $script:details[$script:stage] + ' ' + $_.Exception.Message } else { $_.Exception.Message }
 } finally {
     Write-Host ""
+    $summary = [System.Collections.Generic.List[string]]::new()
+    $summary.Add('=== LOCAL CI SUMMARY ===')
     Write-Host '=== LOCAL CI SUMMARY ==='
     if ($script:results.Contains('Initialization')) { $planned = @('Initialization') + $planned }
     foreach ($name in $planned) {
         $status = if ($script:results.Contains($name)) { $script:results[$name] } else { 'NOT RUN' }
         $color = if ($status -eq 'PASS') { 'Green' } elseif ($status -eq 'FAIL') { 'Red' } else { 'DarkGray' }
-        Write-Host ('{0,-8} {1}' -f $status, $name) -ForegroundColor $color
-        if ($script:details.Contains($name)) { Write-Host ('         ' + $script:details[$name]) }
+        $line = '{0,-8} {1}' -f $status, $name
+        $summary.Add($line)
+        Write-Host $line -ForegroundColor $color
+        if ($script:details.Contains($name)) {
+            $line = '         ' + $script:details[$name]
+            $summary.Add($line)
+            Write-Host $line
+        }
+    }
+    if ($script:failureExcerpt.Count -gt 0) {
+        $summary.Add('Failure excerpt:')
+        Write-Host 'Failure excerpt:'
+        foreach ($line in $script:failureExcerpt) {
+            $summary.Add([string]$line)
+            Write-Host $line
+        }
     }
     if ($script:formatFailureCount -gt 0) {
+        $summary.Add('Formatting fixes (first 10):')
         Write-Host 'Formatting fixes (first 10):'
-        foreach ($file in $script:formatFailures) { Write-Host ('  gofmt -w "{0}"' -f $file) }
-        if ($script:formatFailureCount -gt 10) { Write-Host "  $($script:formatFailureCount - 10) more; see formatting.txt." }
+        foreach ($file in $script:formatFailures) {
+            $line = '  gofmt -w "{0}"' -f $file
+            $summary.Add($line)
+            Write-Host $line
+        }
+        if ($script:formatFailureCount -gt 10) {
+            $line = "  $($script:formatFailureCount - 10) more; see formatting.txt."
+            $summary.Add($line)
+            Write-Host $line
+        }
     }
-    if ($exitCode -eq 0) { Write-Host 'LOCAL CI PASSED' -ForegroundColor Green } else { Write-Host "LOCAL CI FAILED: $script:stage" -ForegroundColor Red }
+    $verdict = if ($exitCode -eq 0) { 'LOCAL CI PASSED' } else { "LOCAL CI FAILED: $script:stage" }
+    $summary.Add($verdict)
+    Write-Host $verdict -ForegroundColor $(if ($exitCode -eq 0) { 'Green' } else { 'Red' })
     if ($null -ne $reports) {
+        $summaryPath = Join-Path $reports 'summary.txt'
+        [System.IO.File]::WriteAllLines($summaryPath, $summary.ToArray(), [System.Text.UTF8Encoding]::new($false))
+        Write-Host "Summary: $summaryPath"
         Write-Host "Reports: $reports"
     }
     Pop-Location

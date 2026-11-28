@@ -5,11 +5,12 @@ New-Item -ItemType Directory -Path (Join-Path $work 'scripts') -Force | Out-Null
 $utf8 = [System.Text.UTF8Encoding]::new($false)
 
 function Run-FormatCheck {
-    param([int]$Expected)
+    param([int]$Expected, [switch]$Full)
     $previous = $ErrorActionPreference
     try {
         $ErrorActionPreference = 'Continue'
-        $lines = @(& cmd.exe /d /c 'ci.bat -FormatOnly' 2>&1)
+        $command = if ($Full) { 'ci.bat' } else { 'ci.bat -FormatOnly' }
+        $lines = @(& cmd.exe /d /c $command 2>&1)
         $code = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $previous
@@ -52,7 +53,7 @@ try {
     & git add -- tracked.go
     if ($LASTEXITCODE -ne 0) { throw 'git add failed' }
 
-    $output = Run-FormatCheck 1
+    $output = Run-FormatCheck 1 -Full
     $report = Latest-FormatReport
     foreach ($value in @('Checked 2 Go files; 2 require formatting;', 'gofmt -w "tracked.go"', 'gofmt -w "untracked space.go"')) {
         Assert-Contains $output $value
@@ -60,6 +61,11 @@ try {
     }
     Assert-Contains $output 'LOCAL CI FAILED: Check Go formatting'
     Assert-Contains $output 'LOCAL CI SUMMARY'
+    Assert-Contains $output 'NOT RUN  Go vet'
+    $directory = Get-ChildItem -LiteralPath 'ci-reports' -Directory | Select-Object -First 1
+    $summary = Get-Content -LiteralPath (Join-Path $directory.FullName 'summary.txt') -Raw
+    Assert-Contains $summary 'FAIL     Check Go formatting'
+    Assert-Contains $summary 'NOT RUN  Go vet'
     Assert-Contains $report 'func bad() { println(1) }'
     if ($output.Contains('func bad() { println(1) }') -or $output.Contains('diff ')) { throw 'Formatting diff leaked to console' }
     if ([System.IO.File]::ReadAllText($tracked) -ne $source -or [System.IO.File]::ReadAllText($untracked) -ne $source) {
