@@ -94,6 +94,10 @@ type dissolveFrame struct {
 }
 
 func compositeHLGDissolve(ctx context.Context, dst []byte, canvas media.CanvasSize, layers []layerFrame, dissolve *dissolveFrame) error {
+	return compositeColor(ctx, dst, canvas, layers, dissolve, decodeHLG, encodeHLG)
+}
+
+func compositeColor(ctx context.Context, dst []byte, canvas media.CanvasSize, layers []layerFrame, dissolve *dissolveFrame, decode func(ycbcr10) linearRGB, encode func(linearRGB) ycbcr10) error {
 	if canvas.Validate() != nil || len(dst) != canvas.Width*canvas.Height*6 || len(layers) > MaxVideoLayers {
 		return errors.New("invalid HDR composition buffer")
 	}
@@ -145,8 +149,8 @@ func compositeHLGDissolve(ctx context.Context, dst []byte, canvas media.CanvasSi
 					if dissolve.weight == 0 {
 						p = readPixel(dissolve.from, planeBytes, offset)
 					} else if dissolve.weight < composition.TransitionWeightScale {
-						from := decodeHLG(readPixel(dissolve.from, planeBytes, offset))
-						to := decodeHLG(p)
+						from := decode(readPixel(dissolve.from, planeBytes, offset))
+						to := decode(p)
 						w := float64(dissolve.weight) / float64(composition.TransitionWeightScale)
 						sum.R += remaining * ((1-w)*from.R + w*to.R)
 						sum.G += remaining * ((1-w)*from.G + w*to.G)
@@ -162,7 +166,7 @@ func compositeHLGDissolve(ctx context.Context, dst []byte, canvas media.CanvasSi
 				mixed = true
 				alpha := float64(layer.Opacity) / 100
 				weight := remaining * alpha
-				v := decodeHLG(p)
+				v := decode(p)
 				sum.R += weight * v.R
 				sum.G += weight * v.G
 				sum.B += weight * v.B
@@ -172,7 +176,7 @@ func compositeHLGDissolve(ctx context.Context, dst []byte, canvas media.CanvasSi
 				}
 			}
 			if mixed {
-				writePixel(dst, planeBytes, offset, encodeHLG(sum))
+				writePixel(dst, planeBytes, offset, encode(sum))
 			}
 		}
 	}

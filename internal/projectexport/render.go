@@ -46,6 +46,7 @@ func (r *renderIndexes) get(ctx context.Context, engine media.Engine, source Sou
 
 type layerDecoder struct {
 	ctx     context.Context
+	color   string
 	engine  media.Engine
 	process *exportProcess
 	reader  io.ReadCloser
@@ -102,7 +103,7 @@ func openLayer(ctx context.Context, engine media.Engine, indexes *renderIndexes,
 		return nil, err
 	}
 	b := layer.Geometry.Bounds
-	return &layerDecoder{ctx: ctx, engine: engine, process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
+	return &layerDecoder{ctx: ctx, color: plan.Contract.Color, engine: engine, process: process, reader: reader, index: index, layer: layer, current: first - 1, last: last, pixels: make([]byte, b.Width*b.Height*6)}, nil
 }
 
 func (d *layerDecoder) frame(tick int64) ([]byte, error) {
@@ -117,9 +118,18 @@ func (d *layerDecoder) frame(tick int64) ([]byte, error) {
 		}
 		d.current++
 	}
-	if changed && d.layer.Layer.Asset.ColorFamily == media.ColorSDR709 {
-		if err := convertSDRFrame(d.ctx, d.pixels, d.layer.Geometry.Bounds.Width, d.layer.Geometry.Bounds.Height); err != nil {
-			return nil, err
+	if changed {
+		b := d.layer.Geometry.Bounds
+		sdr := d.layer.Layer.Asset.ColorFamily == media.ColorSDR709
+		switch {
+		case d.color == media.ExportColorSDR && !sdr:
+			if err := convertColorFrame(d.ctx, d.pixels, b.Width, b.Height, mapHLGToSDR); err != nil {
+				return nil, err
+			}
+		case d.color != media.ExportColorSDR && sdr:
+			if err := convertSDRFrame(d.ctx, d.pixels, b.Width, b.Height); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return d.pixels, nil
@@ -174,6 +184,10 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 	if span.Transition != nil && (transitionIndex < 0 || transitionIndex >= len(decoders)-1) {
 		return errors.New("missing transition decoder pair")
 	}
+	decode, encode := decodeHLG, encodeHLG
+	if plan.Contract.Color == media.ExportColorSDR {
+		decode, encode = decodeSDR709, encodeSDR709
+	}
 	var layers [MaxVideoLayers]layerFrame
 	for n := span.FirstFrame; n < span.EndFrame; n++ {
 		if err := ctx.Err(); err != nil {
@@ -193,7 +207,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 		copy(frame, black)
 		active := layers[:len(decoders)]
 		if span.Transition == nil {
-			if err := compositeHLG(ctx, frame, plan.Contract.Canvas, active); err != nil {
+			if err := compositeColor(ctx, frame, plan.Contract.Canvas, active, nil, decode, encode); err != nil {
 				return err
 			}
 		} else {
@@ -202,7 +216,7 @@ func renderSpan(ctx context.Context, engine media.Engine, indexes *renderIndexes
 				return errors.New("output frame outside transition window")
 			}
 			outgoing := active[len(active)-1]
-			if err := compositeHLGDissolve(ctx, frame, plan.Contract.Canvas, active[:len(active)-1], &dissolveFrame{index: transitionIndex, from: outgoing.Pixels, weight: sample.IncomingWeight}); err != nil {
+			if err := compositeColor(ctx, frame, plan.Contract.Canvas, active[:len(active)-1], &dissolveFrame{index: transitionIndex, from: outgoing.Pixels, weight: sample.IncomingWeight}, decode, encode); err != nil {
 				return err
 			}
 		}
@@ -240,8 +254,12 @@ func verifyProjectOutput(plan Plan, report media.Report) error {
 		return err
 	}
 	count, err := strconv.ParseInt(v.FrameCount, 10, 64)
-	if err != nil || count != plan.VideoFrames || v.Profile != "Main 10" {
-		return errors.New("output frame count or HEVC profile does not match contract")
+	profile := "Main 10"
+	if contract.Color == media.ExportColorSDR {
+		profile = "High"
+	}
+	if err != nil || count != plan.VideoFrames || v.Profile != profile {
+		return errors.New("output frame count or video profile does not match contract")
 	}
 	duration, err := project.ParseSeconds(v.Duration)
 	want := (count*project.TicksPerSecond + int64(contract.FPS)/2) / int64(contract.FPS)
@@ -322,7 +340,7 @@ func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p projec
 			return err
 		}
 	}
-	if _, err := spec.args(plan.Contract.Canvas, fps, ""); err != nil {
+	if _, err := spec.contractArgs(plan.Contract, ""); err != nil {
 		return err
 	}
 	sources := make(map[string]Source, len(prepared.Sources))
@@ -339,7 +357,7 @@ func renderProjectWithEncoder(ctx context.Context, engine media.Engine, p projec
 		return err
 	}
 	c := plan.Contract.Canvas
-	args, err := spec.args(c, fps, name)
+	args, err := spec.contractArgs(plan.Contract, name)
 	if err != nil {
 		return err
 	}

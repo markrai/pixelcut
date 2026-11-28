@@ -69,3 +69,26 @@ func (s videoEncoderSpec) name() string {
 	}
 	return "CPU"
 }
+
+func (s videoEncoderSpec) contractArgs(contract media.ExportContract, name string) ([]string, error) {
+	if contract.Validate() != nil {
+		return nil, errors.New("invalid output color contract")
+	}
+	if contract.Color == media.ExportColorHLG {
+		return s.args(contract.Canvas, contract.FPS, name)
+	}
+	c := contract.Canvas
+	if c.Width > 4096 || c.Height > 4096 || c.Width%2 != 0 || c.Height%2 != 0 || int64(c.Width)*int64(c.Height) > MaxExportPixels || s.device < 0 || s.device > 31 || s.qp < 0 || s.qp > 51 {
+		return nil, errors.New("invalid SDR encoder geometry, device or QP")
+	}
+	args := []string{"-v", "error", "-xerror", "-nostdin", "-filter_threads", "1", "-f", "rawvideo", "-pixel_format", "yuv444p10le", "-video_size", fmt.Sprintf("%dx%d", c.Width, c.Height), "-framerate", strconv.Itoa(contract.FPS), "-i", "pipe:0", "-map", "0:v:0", "-vf", "zscale=rangein=limited:range=limited:matrixin=709:matrix=709:primariesin=709:primaries=709:transferin=709:transfer=709:chromal=left:filter=lanczos,format=yuv420p,setsar=1"}
+	if s.nvenc {
+		args = append(args, "-c:v", "h264_nvenc", "-gpu", strconv.Itoa(s.device), "-profile:v", "high", "-preset", "p6", "-tune", "hq", "-rc", "constqp", "-qp", strconv.Itoa(s.qp), "-pix_fmt", "yuv420p")
+	} else {
+		if s.experimental || s.device != 0 || s.qp != 0 {
+			return nil, errors.New("CPU encoder does not accept NVENC options")
+		}
+		args = append(args, "-c:v", "libx264", "-threads", "4", "-profile:v", "high", "-preset", "medium", "-crf", "16", "-x264-params", "colorprim=bt709:transfer=bt709:colormatrix=bt709:range=tv:chromaloc=0", "-pix_fmt", "yuv420p")
+	}
+	return append(args, "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv", "-chroma_sample_location", "left", "-tag:v", "avc1", "-an", "-fps_mode", "passthrough", "-map_metadata", "-1", "-map_metadata:s", "-1", "-map_chapters", "-1", "-video_track_timescale", "240000", "-movie_timescale", "240000", "-movflags", "+faststart+write_colr", "-y", name), nil
+}

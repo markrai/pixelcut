@@ -191,7 +191,7 @@ After 3B.1d and before 3B.2: generalized import/color classification (H.264/HEVC
 | --- | --- | --- |
 | 3A.7a | Versioned color classification, safe media-bin import and inference provenance | Merged via PR #55; CI 46100320175 and performance 46100320154 passed |
 | 3A.7b | SDR/HLG mixed timeline preview and thumbnail color conversion | Implemented; CI and physical acceptance pending |
-| 3A.7c | Mixed SDR/HLG export with explicit scene-linear conversion policy | Pending |
-| 3A.7d | Native BT.709 SDR export | Pending |
+| 3A.7c | Mixed SDR/HLG export with explicit scene-linear conversion policy | PR #63 merged; CI 46107721129 and performance 46107721157 passed; TITAN local CI and four-backend mixed export PASS (4.48s); display acceptance pending |
+| 3A.7d | Native BT.709 SDR export | Implemented; CI and physical acceptance pending |
 
 See [mixed-media contract](docs/mixed-media.md). PQ is classified but remains bin-only pending its own render qualification.

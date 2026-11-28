@@ -29,12 +29,12 @@ Usage:
   pixelcut trim -start SECONDS -duration SECONDS INPUT OUTPUT.mp4
   pixelcut crop [-start SECONDS -duration SECONDS] -x X -y Y -width W -height H INPUT OUTPUT.mp4
   pixelcut preview [-hdr] INPUT
-  pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json
-  pixelcut export-project -color hlg -fps FPS [-progress] [-decode cpu|auto|cuda] [-encode cpu|nvenc] PROJECT.pixelcut.json OUTPUT.mp4
-  pixelcut export-video -color hlg -fps FPS [-discard-audio] [-decode cpu|auto|cuda] [-encode cpu|nvenc] PROJECT.pixelcut.json OUTPUT.mp4
+  pixelcut plan-export -color hlg|sdr -fps FPS PROJECT.pixelcut.json
+  pixelcut export-project -color hlg|sdr -fps FPS [-progress] [-decode cpu|auto|cuda] [-encode cpu|nvenc] PROJECT.pixelcut.json OUTPUT.mp4
+  pixelcut export-video -color hlg|sdr -fps FPS [-discard-audio] [-decode cpu|auto|cuda] [-encode cpu|nvenc] PROJECT.pixelcut.json OUTPUT.mp4
 
 Trim and crop currently support only explicitly tagged 10-bit HLG footage.
-Preview requires mpv. Default export requires FFmpeg with libx265; experimental NVENC requires hevc_nvenc and compatible NVIDIA drivers.`
+Preview requires mpv. Whole-project export requires libx265 (HLG) or libx264 (SDR); experimental NVENC requires hevc_nvenc or h264_nvenc and compatible NVIDIA drivers.`
 
 func run(ctx context.Context, args []string, stdout io.Writer) error {
 	e := media.Default()
@@ -163,7 +163,7 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 	case "plan-export", "export-video", "export-project":
 		fs := flag.NewFlagSet(args[0], flag.ContinueOnError)
 		fs.SetOutput(stdout)
-		color := fs.String("color", "", "required output color contract: hlg")
+		color := fs.String("color", "", "required output color contract: hlg or sdr")
 		fps := fs.Int("fps", 0, "required CFR: 24, 25, 30, 50 or 60")
 		var progress, discardAudio bool
 		var decode, encode string
@@ -185,14 +185,14 @@ func run(ctx context.Context, args []string, stdout io.Writer) error {
 		}
 		if args[0] == "export-video" {
 			if fs.NArg() != 2 {
-				return errors.New("usage: pixelcut export-video -color hlg -fps FPS [-discard-audio] PROJECT.pixelcut.json OUTPUT.mp4")
+				return errors.New("usage: pixelcut export-video -color hlg|sdr -fps FPS [-discard-audio] PROJECT.pixelcut.json OUTPUT.mp4")
 			}
 		} else if args[0] == "export-project" {
 			if fs.NArg() != 2 {
-				return errors.New("usage: pixelcut export-project -color hlg -fps FPS [-progress] PROJECT.pixelcut.json OUTPUT.mp4")
+				return errors.New("usage: pixelcut export-project -color hlg|sdr -fps FPS [-progress] PROJECT.pixelcut.json OUTPUT.mp4")
 			}
 		} else if fs.NArg() != 1 {
-			return errors.New("usage: pixelcut plan-export -color hlg -fps FPS PROJECT.pixelcut.json")
+			return errors.New("usage: pixelcut plan-export -color hlg|sdr -fps FPS PROJECT.pixelcut.json")
 		}
 		if args[0] != "plan-export" {
 			backend, err := media.ParseDecodeBackend(decode)
