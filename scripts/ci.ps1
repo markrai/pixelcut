@@ -12,6 +12,7 @@ $script:results = [ordered]@{}
 $script:details = [ordered]@{}
 $script:failureExcerpt = @()
 $script:stageStarted = $false
+. (Join-Path $PSScriptRoot 'ci-diagnostics.ps1')
 
 function Require-Tool {
     param([string]$Name)
@@ -33,8 +34,6 @@ function Invoke-Logged {
     $exe = Require-Tool $Tool
     $writer = [System.IO.StreamWriter]::new($Log, [bool]$Append, [System.Text.UTF8Encoding]::new($false))
     $previous = $ErrorActionPreference
-    $tail = [System.Collections.Generic.Queue[string]]::new()
-    $errors = [System.Collections.Generic.List[string]]::new()
     try {
         $ErrorActionPreference = 'Continue'
         & $exe @Arguments 2>&1 | ForEach-Object {
@@ -43,17 +42,13 @@ function Invoke-Logged {
             if ($VerboseOutput -and -not $ReportOnly) {
                 Write-Host $line
             }
-            if ($tail.Count -ge 8) { $null = $tail.Dequeue() }
-            $short = if ($line.Length -gt 400) { $line.Substring(0, 400) + ' ...' } else { $line }
-            $tail.Enqueue($short)
-            if ($errors.Count -lt 12 -and $line -match '(^\s*--- FAIL:|^FAIL\b|^#\s|\.go:\d+:|\b(error|fatal|panic):|WARNING: DATA RACE)') {
-                $errors.Add($short)
-            }
+
         }
         $code = $LASTEXITCODE
+        $writer.Flush()
         if ($code -ne 0) {
             if (-not $ReportOnly -and -not $VerboseOutput) {
-                $script:failureExcerpt = if ($errors.Count -gt 0) { @($errors.ToArray()) } else { @($tail.ToArray()) }
+                $script:failureExcerpt = @(Get-CIFailureExcerpt -Log $Log)
             }
             throw "$Tool exited with code $code. See $Log"
         }
