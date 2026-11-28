@@ -48,3 +48,36 @@ set PIXELCUT_GPU_MATRIX_SOURCE=
 ```
 
 Redirected output will not appear live; omit redirection for live progress. Send the full report. Windows CI tests native root and live child snapshots without a GPU; portable tests exercise parsing, aggregation and output cap. Actual NVIDIA physical resource qualification remains pending. If nvidia-smi is not on PATH or a utilization field is unsupported, report the failure rather than bypassing evidence.
+
+## 3A.6c: compatibility and architecture closeout
+
+PR #48 merged at 1f20353d639729ca37e666d9b15573f058db63a4; CI 46087443630 and performance 46087443669 passed. Physical resource summary has not been supplied. Do not mark 3A.6b physical PASS.
+
+Review decisions:
+- Retain stage-specific backend policy. CPU decode and x265 remain default; auto decode resolves to CPU. Experimental CUDA and NVENC are explicit, independent app/CLI selections; no implicit fallback or change to project schema. NVENC device 0 and QP16 remain fixed.
+- Keep normalized HLG CPU-visible frame boundary, CPU geometry/composition and shared audio/timing/publication path. No duplicate GPU-specific renderer, GPU graph, or speculative activation of deferred geometry/composition. The matrix did not demonstrate a useful additional speedup from CUDA decode on the tested export.
+- Error paths preserve context cancellation classification, including during mux finalization and verification; retain underlying diagnostics. No successful published export is retroactively treated as canceled. Existing destination and source verification remain unchanged.
+- Export confirmation identifies both chosen backends and experimental warnings. Preview engine and selected-clip export remain independent of encoder preferences. Completion warning count no longer directs users to plan-export for runtime backend warnings, which that command does not report.
+- Linux CI simulates unavailable CUDA/NVENC at the actual CLI FFmpeg process boundary with an argument-recording shim around real software FFmpeg. Require hardware request failure without publication, staging leaks or software fallback of the requested stage; successful omitted/default, explicit CPU and auto-decode exports after hardware failures. Video-only export requires explicit audio discard. Source and project bytes unchanged. This is deterministic compatibility coverage, not a substitute for physical testing without NVIDIA. Windows tests cover confirmation text for both selectors and persisted preference behavior.
+
+### Physical public-path acceptance checklist
+
+Rebuild the executables after pulling: run.bat builds both CLI and GUI. Verify the executable using .\pixelcut.exe export-project -h; use the explicit local binary rather than a stale PATH executable.
+
+1. In GUI Settings select CPU decode and Software (x265). Import supported HLG media, save a project and export the whole project at 30 fps to a new name. Confirm normal playback/preview returns after export.
+2. Select NVIDIA NVENC (experimental), keeping CPU decode. Confirm both backend names and warning in the export confirmation. Export to a new name. Inspect output signaling and play exported HLG with appropriate display/player. Restart application, confirm encoder selection persists and Reset restores CPU defaults without changing project.
+3. Repeat with CUDA decode plus NVENC if supported. Cancel during a longer export; verify no destination or staged files, then retry to a new filename. Verify selecting an existing output cannot overwrite it.
+4. CLI: use the actual saved project and new filenames. Run software, NVENC and combined commands below; use -progress to show selection warnings. Inspect each completed output. On a machine without usable NVIDIA, explicitly selected hardware must fail, then CPU retry must succeed. Do not manufacture a hardware availability PASS from Linux shim tests.
+5. Collect the 3A.6b resource report separately. Record tool/driver identity, peak sampled tree working/private commit and device-wide GPU metrics. Review resource overhead rather than guessing a pass budget.
+
+```cmd
+.\pixelcut.exe export-project -color hlg -fps 30 -progress -decode cpu -encode cpu "saved.pixelcut.json" "cpu.mp4"
+.\pixelcut.exe export-project -color hlg -fps 30 -progress -decode cpu -encode nvenc "saved.pixelcut.json" "nvenc.mp4"
+.\pixelcut.exe export-project -color hlg -fps 30 -progress -decode cuda -encode nvenc "saved.pixelcut.json" "combined.mp4"
+```
+
+The saved project and outputs above are example names, replace them with real paths. No requirement to rerun the uninstrumented matrix merely to repeat existing performance evidence.
+
+### Exit disposition
+
+3A implementation closeout may proceed with explicit experimental backends and CPU default, but do not assert complete physical GPU acceptance until 3A.6b resource review and public GUI/CLI acceptance are recorded. CPU-only hardware acceptance, HDR display, audio device and deferred GPU geometry/composition gates remain separate. These open gates do not require introducing more rendering architecture before 3B; future creative editing must preserve CPU oracle, explicit stage policy and qualification contracts. No automatic GPU default or broad hardware support claim.

@@ -64,7 +64,7 @@ func TestExportCLIWithoutNVIDIA(t *testing.T) {
 		t.Fatal(err)
 	}
 	trace := filepath.Join(dir, "trace.txt")
-	shim := "#!/bin/sh\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    hevc_nvenc) printf 'nvenc\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\"; printf 'simulated NVENC unavailable\\n' >&2; exit 1;;\n    cuda) printf 'cuda\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\"; printf 'simulated CUDA unavailable\\n' >&2; exit 1;;\n    libx265) printf 'x265\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\";;\n    none) printf 'software-decode\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\";;\n  esac\ndone\nexec \"$PIXELCUT_TEST_REAL_FFMPEG\" \"$@\"\n"
+	shim := "#!/bin/sh\ndecode=no\nfor arg in \"$@\"; do\n  case \"$arg\" in\n    hevc_nvenc) printf 'nvenc\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\"; printf 'simulated NVENC unavailable\\n' >&2; exit 1;;\n    cuda) printf 'cuda\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\"; printf 'simulated CUDA unavailable\\n' >&2; exit 1;;\n    libx265) printf 'x265\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\";;\n    -noautorotate) decode=yes;;\n  esac\ndone\nif [ \"$decode\" = yes ]; then\n  printf 'software-decode\\n' >> \"$PIXELCUT_TEST_FFMPEG_TRACE\"\nfi\nexec \"$PIXELCUT_TEST_REAL_FFMPEG\" \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "ffmpeg"), []byte(shim), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestExportCLIWithoutNVIDIA(t *testing.T) {
 				return false
 			}
 			if tc.fail {
-				if err == nil || ctx.Err() != nil || strings.Contains(log.String(), "done") {
+				if err == nil || ctx.Err() != nil || strings.Contains(log.String(), "\ndone:") {
 					t.Fatalf("hardware request did not fail closed: %v %s", err, log.String())
 				}
 				if tc.reject != "" && !contains(tc.reject) || tc.reject == "" && !contains("cuda") && !contains("nvenc") || contains(tc.forbidden) || tc.name == "combined" && contains("software-decode") {
@@ -118,7 +118,7 @@ func TestExportCLIWithoutNVIDIA(t *testing.T) {
 					t.Fatal("failed hardware export published output")
 				}
 			} else {
-				if err != nil || !contains("x265") || contains("cuda") || contains("nvenc") {
+				if err != nil || !contains("x265") || !contains("software-decode") || contains("cuda") || contains("nvenc") {
 					t.Fatalf("CPU export: %v calls=%v %s", err, calls, log.String())
 				}
 				r, err := engine.Inspect(ctx, out)
@@ -135,6 +135,28 @@ func TestExportCLIWithoutNVIDIA(t *testing.T) {
 				t.Fatalf("staged outputs leaked: %v %v", files, err)
 			}
 		})
+	}
+	out := filepath.Join(dir, "video-only.mp4")
+	var log bytes.Buffer
+	args := []string{"export-video", "-color", "hlg", "-fps", "30", projectPath, out}
+	if err := run(ctx, args, &log); err == nil {
+		t.Fatal("video-only export silently discarded enabled audio")
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Fatal("video-only rejection published output")
+	}
+	args = append([]string{"export-video", "-discard-audio"}, args[1:]...)
+	if err := run(ctx, args, &log); err != nil {
+		t.Fatalf("explicit audio discard: %v", err)
+	}
+	videoOnly, err := engine.Inspect(ctx, out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, stream := range videoOnly.Streams {
+		if stream.CodecType == "audio" {
+			t.Fatal("video-only export contains audio")
+		}
 	}
 	for path, want := range map[string][]byte{src: originalSource, projectPath: originalProject} {
 		got, err := os.ReadFile(path)
