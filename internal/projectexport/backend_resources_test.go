@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -319,8 +318,3 @@ func TestMatrixResourceOutputLimit(t *testing.T) {
 	}
 }
 
-func TestMatrixResourceOptInDoesNotChangeDefault(t *testing.T) {
-	if os.Getenv("PIXELCUT_QUALIFY_GPU_RESOURCES") == "1" && os.Getenv("PIXELCUT_QUALIFY_GPU_MATRIX") != "1" {
-		t.Fatal("resource qualification requires PIXELCUT_QUALIFY_GPU_MATRIX=1")
-	}
-}

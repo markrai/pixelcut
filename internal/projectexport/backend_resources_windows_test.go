@@ -3,7 +3,9 @@ package projectexport
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"syscall"
 	"testing"
 	"time"
@@ -114,4 +116,47 @@ func TestWindowsMatrixHostSnapshot(t *testing.T) {
 	if !ok || s.root.pid != uint32(os.Getpid()) || s.root.created <= 0 || root.working == 0 || root.private == 0 {
 		t.Fatalf("invalid root sample: %+v %+v", s, root)
 	}
+}
+
+func TestWindowsMatrixChildHelper(t *testing.T) {
+	if os.Getenv("PIXELCUT_MATRIX_RESOURCE_CHILD") != "1" {
+		t.Skip("process snapshot helper")
+	}
+	if _, err := io.Copy(io.Discard, os.Stdin); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWindowsMatrixDescendantSnapshot(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, "-test.run=^TestWindowsMatrixChildHelper$")
+	cmd.Env = append(os.Environ(), "PIXELCUT_MATRIX_RESOURCE_CHILD=1")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdin.Close()
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}()
+	s, err := windowsMatrixHostSnapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, sample := range s.procs {
+		if key.pid == uint32(cmd.Process.Pid) {
+			if key.created < s.root.created || sample.working == 0 || sample.private == 0 {
+				t.Fatalf("invalid descendant sample: %+v %+v", key, sample)
+			}
+			return
+		}
+	}
+	t.Fatalf("live child %d not present in process snapshot", cmd.Process.Pid)
 }
