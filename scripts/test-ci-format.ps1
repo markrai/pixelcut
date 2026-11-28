@@ -106,3 +106,4 @@ try {
     Pop-Location
     Remove-Item -LiteralPath $work -Recurse -Force
 }
+exit 0
