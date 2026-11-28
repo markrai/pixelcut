@@ -31,7 +31,7 @@ func unchanged(path string, s mediacache.Source) bool {
 }
 
 func (e Engine) CachedThumbnail(ctx context.Context, c *mediacache.Cache, path string, tick int64, w, h int) ([]byte, error) {
-	s, key, ok := cacheRequest(c, path, "thumbnail", e.FFmpeg, fmt.Sprintf("%d:%d:%d", tick, w, h))
+	s, key, ok := cacheRequest(c, path, "thumbnail", e.FFmpeg, fmt.Sprintf("source-color-v2:%d:%d:%d", tick, w, h))
 	if ok && tick >= 0 && w >= 2 && h >= 2 && w <= 256 && h <= 256 && w%2 == 0 && h%2 == 0 {
 		if b, hit := c.Get(key); hit && len(b) == w*h*4 && unchanged(path, s) {
 			return b, nil

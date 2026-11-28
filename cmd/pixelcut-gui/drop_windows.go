@@ -221,7 +221,7 @@ func (e *editor) finishImport(b *project.ImportBatch, req *placementRequest) {
 		}
 	}
 	if waiting > 0 {
-		summary += fmt.Sprintf(" %d SDR/PQ source(s) imported to media bin only; timeline rendering pending.", waiting)
+		summary += fmt.Sprintf(" %d source(s) remain media-bin only. Right-click inferred SDR to confirm color tags; PQ rendering is pending.", waiting)
 	}
 	e.tell(summary)
 	if len(b.Failures) > 0 || waiting > 0 || placementError != "" {

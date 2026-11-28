@@ -197,7 +197,7 @@ func (e *editor) previewActive() bool {
 }
 
 func (e *editor) togglePreview() error {
-	if !e.playing() && !e.stillActive && e.clock == nil && e.model.Project().HasVideoTransitions() {
+	if !e.playing() && !e.stillActive && e.clock == nil && (e.model.Project().HasVideoTransitions() || e.model.Project().HasClassifiedClips()) {
 		return e.startCompositePlayback()
 	}
 	return e.toggleSourceOrCompositePreview()

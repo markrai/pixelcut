@@ -26,7 +26,7 @@ var (
 )
 
 func SupportedVersion(version int) bool {
-	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == FadeVersion || version == EnvelopeVersion || version == TransitionVersion || version == Version
+	return version == LegacyVersion || version == TrackVersion || version == AudioVersion || version == ControlsVersion || version == LayerVersion || version == GainVersion || version == MuteVersion || version == FadeVersion || version == EnvelopeVersion || version == TransitionVersion || version == ClassifiedVersion || version == Version
 }
 
 func validTrackKind(kind string) bool {
@@ -62,11 +62,14 @@ func validateAsset(a Asset) error {
 		return fmt.Errorf("%w %q: unsupported color range", ErrInvalidAsset, a.ID)
 	}
 	if a.ColorFamily == "" {
-		if a.ColorDefaults != 0 || a.Codec != "" || a.PixelFormat != "" || a.Chroma != "" {
+		if a.ColorDefaults != 0 || a.Codec != "" || a.PixelFormat != "" || a.Chroma != "" || a.ColorConfirmed {
 			return fmt.Errorf("%w %q: incomplete source color descriptor", ErrInvalidAsset, a.ID)
 		}
 	} else if a.ColorFamily == media.ColorHLG || a.SourceColor().Validate() != nil || (a.ColorDefaults != 0 && (max(a.Width, a.Height) < 1280 || min(a.Width, a.Height) < 720)) {
 		return fmt.Errorf("%w %q: invalid classified color descriptor", ErrInvalidAsset, a.ID)
+	}
+	if a.ColorConfirmed && (a.ColorFamily != media.ColorSDR709 || a.ColorDefaults == 0) {
+		return fmt.Errorf("%w %q: confirmation requires inferred SDR tags", ErrInvalidAsset, a.ID)
 	}
 	return nil
 }
@@ -129,8 +132,11 @@ func (p Project) Validate() error {
 		if err := validateAsset(a); err != nil {
 			return err
 		}
-		if a.ImportOnly() && p.Version < Version {
-			return fmt.Errorf("%w: classified media requires version %d", ErrUnsupportedVersion, Version)
+		if a.Classified() && p.Version < ClassifiedVersion {
+			return fmt.Errorf("%w: classified media requires version %d", ErrUnsupportedVersion, ClassifiedVersion)
+		}
+		if a.ColorConfirmed && p.Version < Version {
+			return fmt.Errorf("%w: confirmed SDR requires version %d", ErrUnsupportedVersion, Version)
 		}
 		if _, ok := assets[a.ID]; ok {
 			return fmt.Errorf("%w %q: duplicate identity", ErrInvalidAsset, a.ID)
@@ -174,6 +180,9 @@ func (p Project) Validate() error {
 			}
 			if c.Envelope != nil && p.Version < EnvelopeVersion {
 				return fmt.Errorf("%w: audio envelopes require version %d", ErrUnsupportedVersion, EnvelopeVersion)
+			}
+			if a.Classified() && p.Version < Version {
+				return fmt.Errorf("%w: mixed-media timeline requires version %d", ErrUnsupportedVersion, Version)
 			}
 			if err := validateClip(c, a, t.Kind); err != nil {
 				return err

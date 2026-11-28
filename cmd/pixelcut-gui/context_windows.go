@@ -356,12 +356,28 @@ func (e *editor) mediaContext(hwnd, lp uintptr) {
 		e.checkpoint()
 	}
 	offline := index >= 0 && e.offline(e.model.Project().Assets[index].Path)
-	id := e.popup(eligibleItems(assetMenuItems(index >= 0, offline, e.missingCount() > 0), e.availability()), screen)
+	items := assetMenuItems(index >= 0, offline, e.missingCount() > 0)
+	if index >= 0 {
+		a := e.model.Project().Assets[index]
+		if a.ImportOnly() {
+			for i := range items {
+				if items[i].id == idAdd {
+					items[i].enabled = false
+				}
+			}
+		}
+		if needsSDRConfirmation(a) {
+			items = append(items, separator(), item(menuConfirmSDR, "Confirm assumed SDR color tags...", !offline))
+		}
+	}
+	id := e.popup(eligibleItems(items, e.availability()), screen)
 	if id == 0 {
 		return
 	}
 	var err error
-	if id == menuRevealAsset {
+	if id == menuConfirmSDR {
+		err = e.confirmSDRAsset()
+	} else if id == menuRevealAsset {
 		err = revealSource(e.model.Project().Assets[index].Path)
 	} else {
 		err = e.command(id, 0)

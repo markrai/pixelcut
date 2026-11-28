@@ -90,7 +90,7 @@ func (p Project) AddAsset(a Asset) (Project, int, bool, error) {
 	}
 	q := p.Clone()
 	q.Assets = append(q.Assets, a)
-	if a.ImportOnly() {
+	if a.Classified() {
 		q.Version = Version
 	}
 	if err := q.Validate(); err != nil {
@@ -100,7 +100,7 @@ func (p Project) AddAsset(a Asset) (Project, int, bool, error) {
 }
 
 func compatibleAssetMetadata(a, b Asset) bool {
-	return a.Duration == b.Duration && a.Width == b.Width && a.Height == b.Height && a.HasAudio == b.HasAudio && a.Range == b.Range && a.SourceColor() == b.SourceColor()
+	return a.Duration == b.Duration && a.Width == b.Width && a.Height == b.Height && a.HasAudio == b.HasAudio && a.Range == b.Range && a.SourceColor() == b.SourceColor() && a.ColorConfirmed == b.ColorConfirmed
 }
 
 func (p Project) MergeDuplicateAssets() (Project, map[string]string, error) {
