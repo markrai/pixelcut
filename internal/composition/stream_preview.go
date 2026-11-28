@@ -61,7 +61,11 @@ func RenderSequence(ctx context.Context, e *Evaluator, decoder SequentialDecoder
 			case <-timer.C:
 			}
 		}
-		at = e.NextVideoSample(start, at)
+		if e.transitions != nil {
+			at = e.NextVideoSample(start, at)
+		} else {
+			at = NextCompositeTick(at, e.Duration())
+		}
 	}
 }
 

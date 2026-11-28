@@ -578,7 +578,10 @@ func (e *editor) startPreview(paused bool) error {
 	e.updatePlayButton(paused)
 	user.NewProc("SetFocus").Call(e.timeline)
 	e.refreshPlaybackMarker()
-	if paused {
+	transition := e.model.Project().ClipHasTransition(project.ClipRef{TrackID: e.trackID(), ClipID: c.ID})
+	if transition && policy.Video {
+		e.tell("Source audition excludes video transitions; use Composite preview to view the dissolve.")
+	} else if paused {
 		e.tell("Preview paused.")
 	} else {
 		e.tell("Playing source interval. Space or Esc pauses.")
