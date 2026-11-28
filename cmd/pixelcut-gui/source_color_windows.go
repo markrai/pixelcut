@@ -67,7 +67,7 @@ func (e *editor) confirmSDRAsset() error {
 			tags = append(tags, tag.name)
 		}
 	}
-	message := fmt.Sprintf("%s\n\nMissing source color tags were interpreted as: %s.\n\nConfirm only if this is ordinary SDR footage. This does not change the source file. Whole-project HLG export maps SDR reference white to 75% HLG signal. Native SDR and selected SDR clip export are not yet supported.", filepath.Base(a.Path), strings.Join(tags, ", "))
+	message := fmt.Sprintf("%s\n\nMissing source color tags were interpreted as: %s.\n\nConfirm only if this is ordinary SDR footage. This does not change the source file. Whole-project HLG export maps SDR reference white to 75%% HLG signal. Native SDR and selected SDR clip export are not yet supported.", filepath.Base(a.Path), strings.Join(tags, ", "))
 	answer, _, _ := user.NewProc("MessageBoxW").Call(mainWindow, uintptr(unsafe.Pointer(u(message))), uintptr(unsafe.Pointer(u("Confirm SDR interpretation"))), 0x34|0x100)
 	if answer != 6 {
 		return nil
