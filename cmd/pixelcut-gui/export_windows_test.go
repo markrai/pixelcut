@@ -101,3 +101,26 @@ func TestProjectExportConfirmationBackendSelection(t *testing.T) {
 		}
 	}
 }
+
+func TestSDRExportMenuAndConfirmation(t *testing.T) {
+	p := project.New()
+	p.Tracks[0].Clips = []project.Clip{{ID: "clip", Start: 0, Out: 1000000}}
+	count := 0
+	for _, v := range exportMenuItems(p, false) {
+		color, fps, ok := exportSelection(v.id)
+		if ok && color == media.ExportColorSDR && v.enabled {
+			if count >= len(exportRates) || fps != exportRates[count] {
+				t.Fatal("wrong SDR export FPS")
+			}
+			count++
+		}
+	}
+	if count != len(exportRates) {
+		t.Fatal("missing SDR export rates")
+	}
+	plan := projectexport.Plan{Contract: media.ExportContract{Color: media.ExportColorSDR, FPS: 30, Canvas: media.CanvasSize{Width: 1920, Height: 1080}}, VideoFrames: 30}
+	msg := projectExportConfirmation(plan, media.Default(), "new.mp4")
+	if !strings.Contains(msg, "H.264 High / BT.709 SDR") || strings.Contains(msg, "HEVC Main 10") {
+		t.Fatalf("incorrect SDR confirmation: %s", msg)
+	}
+}

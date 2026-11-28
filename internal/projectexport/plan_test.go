@@ -86,7 +86,7 @@ func TestExportPlanPolicyAndUnsupportedContracts(t *testing.T) {
 	for _, tc := range []struct {
 		color string
 		fps   int
-	}{{"", 30}, {"sdr", 30}, {"hlg", 0}, {"hlg", 29}} {
+	}{{"", 30}, {"pq", 30}, {"hlg", 0}, {"hlg", 29}} {
 		if _, err := Build(p, tc.color, tc.fps); err == nil {
 			t.Fatal("unsupported output contract accepted")
 		}

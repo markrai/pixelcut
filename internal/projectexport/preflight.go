@@ -119,7 +119,11 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, actual.Range, chroma))
 		}
 		if visible[asset.ID] && actual.ColorFamily == media.ColorSDR709 {
-			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: SDR uses CPU decoding and the explicit SDR-to-HLG mapping", asset.ID))
+			warning := "SDR uses CPU decoding and native BT.709 processing"
+			if color == media.ExportColorHLG {
+				warning = "SDR uses CPU decoding and the explicit SDR-to-HLG mapping"
+			}
+			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: %s", asset.ID, warning))
 		}
 		if visible[asset.ID] {
 			if engine, ok := inspector.(media.Engine); ok {

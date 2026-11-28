@@ -40,3 +40,27 @@ func TestProjectExportContractRejectsMislabeledOrIncorrectOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSDRExportContract(t *testing.T) {
+	c := ExportContract{Color: ExportColorSDR, Canvas: CanvasSize{Width: 1920, Height: 1080}, FPS: 30}
+	v := c.ExpectedVideo()
+	v.AvgFrameRate = "30/1"
+	if err := c.VerifyOutput(Report{Streams: []Stream{v}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, mutate := range []func(*Stream){
+		func(s *Stream) { s.PixelFormat = "yuv420p10le" },
+		func(s *Stream) { s.Transfer = "arib-std-b67" },
+		func(s *Stream) { s.Primaries = "bt2020" },
+		func(s *Stream) { s.Matrix = "bt2020nc" },
+		func(s *Stream) { s.CodecTag = "hvc1" },
+		func(s *Stream) { s.Range = "pc" },
+		func(s *Stream) { s.ChromaLocation = "center" },
+	} {
+		bad := v
+		mutate(&bad)
+		if c.VerifyOutput(Report{Streams: []Stream{bad}}) == nil {
+			t.Fatal("invalid SDR contract accepted")
+		}
+	}
+}

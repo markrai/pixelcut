@@ -9,7 +9,7 @@ import (
 
 func TestPlanExportCommandRequiresProjectAndExplicitContract(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"help"}, &out); err != nil || !strings.Contains(out.String(), "plan-export -color hlg -fps FPS") {
+	if err := run(context.Background(), []string{"help"}, &out); err != nil || !strings.Contains(out.String(), "plan-export -color hlg|sdr -fps FPS") {
 		t.Fatalf("export planning missing from help: %v", err)
 	}
 	out.Reset()

@@ -30,7 +30,7 @@ func TestMixedTimelineEnablesHLGExport(t *testing.T) {
 	if err != nil || len(plan.Warnings) == 0 {
 		t.Fatalf("mixed export planning: %v", err)
 	}
-	if _, err := Build(q, "sdr", 30); err == nil {
-		t.Fatal("native SDR export unexpectedly enabled")
+	if sdr, err := Build(q, "sdr", 30); err != nil || len(sdr.Warnings) == 0 || sdr.Warnings[0] != SDRToneMappingDescription {
+		t.Fatalf("native SDR export plan: %v", err)
 	}
 }

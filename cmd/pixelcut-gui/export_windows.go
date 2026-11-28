@@ -15,6 +15,7 @@ import (
 )
 
 const exportFPSBase = 9100
+const exportSDRFPSBase = 9110
 
 var exportRates = [...]int{24, 25, 30, 50, 60}
 
@@ -56,7 +57,7 @@ func exportStatus(p projectexport.Progress, warnings int) string {
 	var status string
 	switch p.Stage {
 	case projectexport.StageVideo, projectexport.StageAudio:
-		kind, unit := "Rendering HDR video", "frames"
+		kind, unit := "Rendering video", "frames"
 		if p.Stage == projectexport.StageAudio {
 			kind, unit = "Mixing and muxing audio", "samples"
 		}
@@ -66,7 +67,7 @@ func exportStatus(p projectexport.Progress, warnings int) string {
 			status = kind + "..."
 		}
 	case projectexport.StageVideoWait:
-		status = "Finalizing HEVC video..."
+		status = "Finalizing video..."
 	case projectexport.StageAudioWait:
 		status = "Finalizing AAC and MP4..."
 	case projectexport.StageVerify:
@@ -96,6 +97,10 @@ func exportMenuItems(p project.Project, clipAllowed bool) []menuItem {
 		}
 		items = append(items, item(exportFPSBase+1+i, label, p.EndTime() > 0))
 	}
+	items = append(items, separator(), item(exportSDRFPSBase, "Whole project / BT.709 SDR / MP4", false))
+	for i, fps := range exportRates {
+		items = append(items, item(exportSDRFPSBase+1+i, fmt.Sprintf("Export SDR project at %d fps...", fps), p.EndTime() > 0))
+	}
 	return items
 }
 
@@ -105,6 +110,16 @@ func exportRate(id int) (int, bool) {
 		return 0, false
 	}
 	return exportRates[i], true
+}
+
+func exportSelection(id int) (string, int, bool) {
+	if fps, ok := exportRate(id); ok {
+		return media.ExportColorHLG, fps, true
+	}
+	if i := id - exportSDRFPSBase - 1; i >= 0 && i < len(exportRates) {
+		return media.ExportColorSDR, exportRates[i], true
+	}
+	return "", 0, false
 }
 
 func (e *editor) showExportMenu() error {
@@ -122,11 +137,11 @@ func (e *editor) showExportMenu() error {
 	if id == idExport {
 		return e.command(idExport, 0)
 	}
-	fps, ok := exportRate(id)
+	color, fps, ok := exportSelection(id)
 	if !ok {
 		return nil
 	}
-	return e.exportProject(p, fps)
+	return e.exportProject(p, color, fps)
 }
 
 func projectExportConfirmation(plan projectexport.Plan, engine media.Engine, path string) string {
@@ -134,7 +149,11 @@ func projectExportConfirmation(plan projectexport.Plan, engine media.Engine, pat
 	if plan.Contract.Audio {
 		audio = "AAC stereo, 48 kHz, 192 kbps (all enabled audio)"
 	}
-	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\nHEVC Main 10 / BT.2020 HLG / limited range\nDecoder: %s\nEncoder: %s\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, plan.Contract.FPS, float64(plan.VideoFrames)/float64(plan.Contract.FPS), engine.DecodeBackendName(), engine.EncodeBackendName(), audio, path)
+	format := "HEVC Main 10 / BT.2020 HLG / limited range"
+	if plan.Contract.Color == media.ExportColorSDR {
+		format = "H.264 High / BT.709 SDR / limited range"
+	}
+	msg := fmt.Sprintf("Export the entire current project, including unsaved edits?\n\n%d x %d | %d fps | %.3f seconds (CFR)\n%s\nDecoder: %s\nEncoder: %s\n%s\n\nDestination: %s\nExisting files will not be overwritten.", plan.Contract.Canvas.Width, plan.Contract.Canvas.Height, plan.Contract.FPS, float64(plan.VideoFrames)/float64(plan.Contract.FPS), format, engine.DecodeBackendName(), engine.EncodeBackendName(), audio, path)
 	if engine.EncodeBackend == media.BackendNVENC {
 		msg += "\n\nExperimental hardware encoding may increase file size. No automatic CPU fallback."
 	}
@@ -147,15 +166,15 @@ func projectExportConfirmation(plan projectexport.Plan, engine media.Engine, pat
 	return msg
 }
 
-func (e *editor) exportProject(p project.Project, fps int) error {
+func (e *editor) exportProject(p project.Project, color string, fps int) error {
 	if e.busy || e.model.Project().Fingerprint() != p.Fingerprint() {
 		return fmt.Errorf("project changed; reopen the export menu")
 	}
-	plan, err := projectexport.Build(p, media.ExportColorHLG, fps)
+	plan, err := projectexport.Build(p, color, fps)
 	if err != nil {
 		return err
 	}
-	path, err := pick(true, "MP4 video (*.mp4)\x00*.mp4\x00", "mp4", "Export whole project (new HDR MP4)")
+	path, err := pick(true, "MP4 video (*.mp4)\x00*.mp4\x00", "mp4", "Export whole project (new MP4)")
 	if err != nil || path == "" {
 		return err
 	}
@@ -196,7 +215,7 @@ func (e *editor) exportProject(p project.Project, fps int) error {
 		err := service.WaitAll(wait, retired)
 		stopWait()
 		if err == nil {
-			err = projectexport.RenderProjectObserved(ctx, engine, p, media.ExportColorHLG, fps, path, job.observe)
+			err = projectexport.RenderProjectObserved(ctx, engine, p, color, fps, path, job.observe)
 		}
 		if err != nil && ctx.Err() != nil {
 			return result{message: "Project export canceled. No output published."}

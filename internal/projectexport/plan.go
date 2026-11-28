@@ -63,6 +63,7 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 	contributions := 0
 	visible := false
 	mixed := false
+	hlg := false
 	zeroFrameSpans := 0
 	for at := int64(0); at < duration; {
 		if len(plan.Spans) >= MaxSpans {
@@ -95,6 +96,7 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 		}
 		for _, layer := range spanDecodeLayers(s) {
 			mixed = mixed || layer.Layer.Asset.ColorFamily == media.ColorSDR709
+			hlg = hlg || layer.Layer.Asset.ColorFamily != media.ColorSDR709
 		}
 		if len(s.Layers) > 0 {
 			visible = true
@@ -107,14 +109,17 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 		at = s.End
 	}
 	if !visible {
-		return Plan{}, errors.New("HLG project export requires at least one enabled nonzero-opacity video layer")
+		return Plan{}, errors.New("project export requires at least one enabled nonzero-opacity video layer")
 	}
 	if plan.Contract.Audio {
 		plan.ContentAudioFrames = media.PCMFramesForTicks(duration)
 		plan.OutputAudioFrames = plan.VideoFrames * int64(media.PCMRate/fps)
 	}
-	if mixed {
+	if mixed && color == media.ExportColorHLG {
 		plan.Warnings = append(plan.Warnings, SDRMappingDescription)
+	}
+	if hlg && color == media.ExportColorSDR {
+		plan.Warnings = append(plan.Warnings, SDRToneMappingDescription)
 	}
 	if zeroFrameSpans != 0 {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%d visible edit spans contain no sample on the selected CFR grid", zeroFrameSpans))

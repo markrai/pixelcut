@@ -8,6 +8,7 @@ import (
 )
 
 const ExportColorHLG = "hlg"
+const ExportColorSDR = "sdr"
 
 type ExportContract struct {
 	Color  string     `json:"color"`
@@ -17,8 +18,8 @@ type ExportContract struct {
 }
 
 func (c ExportContract) Validate() error {
-	if c.Color != ExportColorHLG {
-		return errors.New("explicit HLG export color contract required")
+	if c.Color != ExportColorHLG && c.Color != ExportColorSDR {
+		return errors.New("explicit HLG or SDR export color contract required")
 	}
 	if err := c.Canvas.Validate(); err != nil {
 		return err
@@ -32,6 +33,9 @@ func (c ExportContract) Validate() error {
 }
 
 func (c ExportContract) ExpectedVideo() Stream {
+	if c.Color == ExportColorSDR {
+		return Stream{CodecType: "video", CodecName: "h264", CodecTag: "avc1", PixelFormat: "yuv420p", Width: c.Canvas.Width, Height: c.Canvas.Height, Primaries: "bt709", Transfer: "bt709", Matrix: "bt709", Range: "tv", ChromaLocation: "left", SampleAspectRatio: "1:1"}
+	}
 	return Stream{CodecType: "video", CodecName: "hevc", CodecTag: "hvc1", PixelFormat: "yuv420p10le", Width: c.Canvas.Width, Height: c.Canvas.Height, Primaries: "bt2020", Transfer: "arib-std-b67", Matrix: "bt2020nc", Range: "tv", ChromaLocation: "left", SampleAspectRatio: "1:1"}
 }
 
@@ -43,12 +47,16 @@ func (c ExportContract) VerifyOutput(r Report) error {
 	if err != nil {
 		return err
 	}
-	if err = v.ValidateHLG(); err != nil {
-		return err
+	if c.Color == ExportColorHLG {
+		if err = v.ValidateHLG(); err != nil {
+			return err
+		}
+	} else if v.HasStaticHDRMetadata() {
+		return errors.New("SDR output must not contain static HDR metadata")
 	}
 	want := c.ExpectedVideo()
 	if v.CodecName != want.CodecName || v.CodecTag != want.CodecTag {
-		return errors.New("expected HEVC hvc1 output")
+		return fmt.Errorf("expected %s %s output", want.CodecName, want.CodecTag)
 	}
 	if err = verifyColor(want, v, c.Canvas.Width, c.Canvas.Height); err != nil {
 		return err
