@@ -118,6 +118,9 @@ func (e *editor) seekTimeline(t int64, playing bool) {
 		t = end
 	}
 	if e.stillActive || e.model.Project().HasClassifiedClips() {
+		if !e.stillActive {
+			e.stopPreview()
+		}
 		if err := e.seekComposite(t, playing && !e.scrubbing); err != nil {
 			e.tell(err.Error())
 		}

@@ -148,3 +148,60 @@ func TestClassifiedImportRealSDR(t *testing.T) {
 	}
 	t.Logf("real H264 SDR source: %+v", a.SourceColor())
 }
+
+func TestConfirmedSDRPlacementAndVersionGate(t *testing.T) {
+	p := New()
+	a, err := FromImportReport("sdr", filepath.Join(t.TempDir(), "screen.mp4"), importSDRReport())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, _, _, err = p.AddAsset(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Version = ClassifiedVersion
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	q, err := p.ConfirmSDRColor(a.ID)
+	if err != nil || q.Version != Version || q.Assets[0].ImportOnly() || !q.Assets[0].ColorConfirmed || p.Assets[0].ColorConfirmed {
+		t.Fatalf("confirmation: %v", err)
+	}
+	for _, track := range []string{"V1", "A1"} {
+		r, err := q.PlaceAssets(track, []string{a.ID}, []string{"clip"}, 0, -1, 0)
+		if err != nil || !r.Project.HasClassifiedClips() {
+			t.Fatalf("SDR placement on %s: %v", track, err)
+		}
+		old := r.Project.Clone()
+		old.Version = ClassifiedVersion
+		if !errors.Is(old.Validate(), ErrUnsupportedVersion) {
+			t.Fatal("old schema accepted mixed timeline")
+		}
+		if track == "V1" {
+			if _, _, err := r.Project.MediaEdit(r.Project.Tracks[0].Clips[0]); !errors.Is(err, ErrMixedExportUnavailable) {
+				t.Fatalf("selected clip export gate: %v", err)
+			}
+		}
+	}
+	path := filepath.Join(t.TempDir(), "confirmed.pixelcut.json")
+	if err := q.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil || got.Fingerprint() != q.Fingerprint() || !got.Assets[0].ColorConfirmed {
+		t.Fatalf("confirmation persistence: %v", err)
+	}
+	tagged := a
+	tagged.ColorDefaults = 0
+	tagged.Path = filepath.Join(t.TempDir(), "tagged.mp4")
+	tagged.ID = "tagged"
+	taggedProject, _, _, err := New().AddAsset(tagged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	taggedProject.Version = ClassifiedVersion
+	r, err := taggedProject.PlaceAssets("V1", []string{tagged.ID}, []string{"tagged-clip"}, 0, -1, 0)
+	if err != nil || r.Project.Version != Version {
+		t.Fatalf("tagged SDR should place without confirmation: %v", err)
+	}
+}

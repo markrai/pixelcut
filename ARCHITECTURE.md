@@ -555,3 +555,7 @@ Native context commands select duration using real source-handle bounds and vali
 ## 3A.7a mixed-media classification
 
 A separate import constructor classifies SDR/PQ into a comparable persisted descriptor; missing HD 8-bit SDR tags are explicitly tracked, never substituted into source files. Strict HLG report/render contracts are unchanged. Project validation is the authoritative bin-only gate for classified sources until their preview and export consumers are ready. Schema 11 preserves v10 transition interpretation and earlier schemas. See [mixed-media contract](docs/mixed-media.md).
+
+## 3A.7b SDR timeline preview
+
+Schema 12 permits confirmed or explicitly tagged SDR timeline assets. Confirmation is an ordinary project edit; the persisted descriptor is checked against probed source metadata. SDR takes explicit BT.709 CPU conversion to BGRA, HLG retains its existing backend and tone map. The shared composition evaluator, decoder ownership and SDR preview compositor are unchanged. Mixed export is gated independently from transition layout checks; PQ remains bin-only. See [mixed-media contract](docs/mixed-media.md).

@@ -66,7 +66,7 @@ Re-encoded output uses HEVC Main 10 through libx265 and CRF 16. It is not mathem
 
 ## Windows desktop prototype
 
-Media-bin import also recognizes bounded H.264/HEVC SDR BT.709 and explicitly tagged HEVC PQ sources (schema 11). HD 8-bit sources with missing color tags are labeled with recorded assumptions. SDR/PQ are **bin-only** until mixed-media rendering is implemented; existing HLG editing/export remains unchanged. See [mixed-media contract](docs/mixed-media.md).
+Media-bin import recognizes bounded H.264/HEVC SDR BT.709 and explicitly tagged HEVC PQ sources. Schema 12 enables SDR timeline placement and composite preview. Right-click inferred SDR in the media bin and choose **Confirm assumed SDR color tags** before placement. PQ remains bin-only. SDR timeline export is gated pending color conversion; HLG-only export remains unchanged. See [mixed-media contract](docs/mixed-media.md).
 
 Double-click `run.bat` in the repository root, or execute it from Command Prompt. It builds the current desktop executable and launches it only after a successful build. Go must be on PATH; FFmpeg, FFprobe and mpv are required for media operations. The launcher does not download dependencies or pull repository changes.
 

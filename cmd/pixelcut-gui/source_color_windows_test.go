@@ -19,6 +19,11 @@ func TestAssetColorLabel(t *testing.T) {
 			t.Fatalf("missing label %q: %s", want, label)
 		}
 	}
+	a.ColorConfirmed = true
+	if label = assetColorLabel(a); !strings.Contains(label, "preview only") || needsSDRConfirmation(a) {
+		t.Fatalf("confirmed SDR label: %s", label)
+	}
+	a.ColorConfirmed = false
 	a.ColorFamily, a.ColorDefaults = media.ColorPQ, 0
 	if label = assetColorLabel(a); !strings.Contains(label, "HDR PQ") || strings.Contains(label, "assumed") {
 		t.Fatalf("PQ label: %s", label)
