@@ -79,22 +79,31 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 			if err != nil {
 				return Prepared{}, fmt.Errorf("inspect asset %s: %w", asset.ID, err)
 			}
-			if err = report.ValidateProjectExportSource(); err != nil {
-				return Prepared{}, fmt.Errorf("asset %s: %w", asset.ID, err)
-			}
 			entry = inspected{identity: identity, report: report}
 			reports[identity.Path] = entry
 			if n := report.ExcludedProjectMetadata(); n > 0 {
 				prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: %d recognized Pixel timed metadata stream(s) will be excluded; source unchanged", asset.ID, n))
 			}
 		}
-		actual, err := project.FromReport(asset.ID, identity.Path, entry.report)
+		var actual project.Asset
+		if asset.Classified() {
+			actual, err = project.FromImportReport(asset.ID, identity.Path, entry.report)
+		} else {
+			if err = entry.report.ValidateProjectExportSource(); err != nil {
+				return Prepared{}, fmt.Errorf("asset %s: %w", asset.ID, err)
+			}
+			actual, err = project.FromReport(asset.ID, identity.Path, entry.report)
+		}
 		if err != nil {
 			return Prepared{}, fmt.Errorf("asset %s: %w", asset.ID, err)
 		}
 		if actual.Duration != asset.Duration || actual.Width != asset.Width || actual.Height != asset.Height || actual.HasAudio != asset.HasAudio || (asset.Range != "" && asset.Range != actual.Range) {
 			return Prepared{}, fmt.Errorf("asset %s metadata changed; relink before export", asset.ID)
 		}
+		if asset.Classified() && (asset.SourceColor() != actual.SourceColor() || asset.ImportOnly()) {
+			return Prepared{}, fmt.Errorf("asset %s color interpretation changed or is not confirmed; relink before export", asset.ID)
+		}
+		actual.ColorConfirmed = asset.ColorConfirmed
 		v, err := entry.report.Video()
 		if err != nil {
 			return Prepared{}, err
@@ -102,11 +111,19 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 		if visible[asset.ID] && v.HasStaticHDRMetadata() {
 			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: rendered output does not guarantee preservation or recomputation of source static HDR mastering/light-level metadata; source unchanged", asset.ID))
 		}
-		if visible[asset.ID] && (v.Range != "tv" || v.ChromaLocation != "left") {
-			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, v.Range, v.ChromaLocation))
+		chroma := v.ChromaLocation
+		if actual.Classified() {
+			chroma = actual.Chroma
+		}
+		if visible[asset.ID] && (actual.Range != "tv" || chroma != "left") {
+			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: project video export normalizes %s range / %s chroma to limited range / left chroma", asset.ID, actual.Range, chroma))
+		}
+		if visible[asset.ID] && actual.ColorFamily == media.ColorSDR709 {
+			prepared.Plan.Warnings = append(prepared.Plan.Warnings, fmt.Sprintf("asset %s: SDR uses CPU decoding and the explicit SDR-to-HLG mapping", asset.ID))
 		}
 		if visible[asset.ID] {
 			if engine, ok := inspector.(media.Engine); ok {
+				engine = exportDecodeEngine(engine, actual)
 				if _, _, err := engine.VideoDecodePipeline(v, "", false); err != nil {
 					return Prepared{}, fmt.Errorf("asset %s: %w", asset.ID, err)
 				}
@@ -116,7 +133,7 @@ func Prepare(ctx context.Context, inspector Inspector, p project.Project, color 
 		if err != nil {
 			return Prepared{}, err
 		}
-		prepared.Sources = append(prepared.Sources, Source{Asset: actual, Identity: identity, Rotation: rotation, Chroma: v.ChromaLocation, video: v})
+		prepared.Sources = append(prepared.Sources, Source{Asset: actual, Identity: identity, Rotation: rotation, Chroma: chroma, video: v})
 	}
 	if err := prepared.VerifySources(ctx); err != nil {
 		return Prepared{}, err

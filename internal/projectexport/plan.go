@@ -38,9 +38,6 @@ func frameCeiling(at int64, fps int) int64 {
 }
 
 func Build(p project.Project, color string, fps int) (Plan, error) {
-	if p.HasClassifiedClips() {
-		return Plan{}, project.ErrMixedExportUnavailable
-	}
 	return buildTimelinePlan(p, color, fps)
 }
 
@@ -65,6 +62,7 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 	plan := Plan{Contract: contract, ProjectFingerprint: p.Fingerprint(), Duration: duration, VideoFrames: frameCeiling(duration, fps)}
 	contributions := 0
 	visible := false
+	mixed := false
 	zeroFrameSpans := 0
 	for at := int64(0); at < duration; {
 		if len(plan.Spans) >= MaxSpans {
@@ -95,6 +93,9 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 				return Plan{}, err
 			}
 		}
+		for _, layer := range spanDecodeLayers(s) {
+			mixed = mixed || layer.Layer.Asset.ColorFamily == media.ColorSDR709
+		}
 		if len(s.Layers) > 0 {
 			visible = true
 			if s.FirstFrame == s.EndFrame {
@@ -111,6 +112,9 @@ func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 	if plan.Contract.Audio {
 		plan.ContentAudioFrames = media.PCMFramesForTicks(duration)
 		plan.OutputAudioFrames = plan.VideoFrames * int64(media.PCMRate/fps)
+	}
+	if mixed {
+		plan.Warnings = append(plan.Warnings, SDRMappingDescription)
 	}
 	if zeroFrameSpans != 0 {
 		plan.Warnings = append(plan.Warnings, fmt.Sprintf("%d visible edit spans contain no sample on the selected CFR grid", zeroFrameSpans))

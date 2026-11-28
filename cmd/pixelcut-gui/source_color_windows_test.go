@@ -20,7 +20,7 @@ func TestAssetColorLabel(t *testing.T) {
 		}
 	}
 	a.ColorConfirmed = true
-	if label = assetColorLabel(a); !strings.Contains(label, "preview only") || needsSDRConfirmation(a) {
+	if label = assetColorLabel(a); !strings.Contains(label, "HLG export") || needsSDRConfirmation(a) {
 		t.Fatalf("confirmed SDR label: %s", label)
 	}
 	a.ColorConfirmed = false
