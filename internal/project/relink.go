@@ -63,7 +63,7 @@ func (p Project) RelinkAsset(id string, candidate Asset, replace bool) (Project,
 	if candidate.Range != "tv" && candidate.Range != "pc" {
 		return p, errors.New("candidate requires validated source color range")
 	}
-	if old.ColorFamily != candidate.ColorFamily || (old.ImportOnly() && old.SourceColor() != candidate.SourceColor()) {
+	if old.ColorFamily != candidate.ColorFamily || (old.Classified() && old.SourceColor() != candidate.SourceColor()) {
 		return p, errors.New("source color classification does not match")
 	}
 	if old.Range != "" && candidate.Range != old.Range {
@@ -77,6 +77,7 @@ func (p Project) RelinkAsset(id string, candidate Asset, replace bool) (Project,
 	}
 	candidate.ID = id
 	candidate.Path = path
+	candidate.ColorConfirmed = old.ColorConfirmed
 	q := p.Clone()
 	for i, a := range q.Assets {
 		if a.ID == id {

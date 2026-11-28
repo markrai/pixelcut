@@ -87,7 +87,7 @@ func (p Project) PlaceAssets(trackID string, assetIDs, clipIDs []string, start, 
 	}
 	try := func(at int64) (Project, error) {
 		q := p.Clone()
-		if q.Tracks[ti].Kind == "audio" {
+		if q.Tracks[ti].Kind == "audio" || p.Version == ClassifiedVersion {
 			q.Version = Version
 		}
 		for _, c := range clips {

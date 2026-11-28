@@ -38,6 +38,18 @@ func frameCeiling(at int64, fps int) int64 {
 }
 
 func Build(p project.Project, color string, fps int) (Plan, error) {
+	if p.HasClassifiedClips() {
+		return Plan{}, project.ErrMixedExportUnavailable
+	}
+	return buildTimelinePlan(p, color, fps)
+}
+
+func ValidateTransitionLayout(p project.Project) error {
+	_, err := buildTimelinePlan(p, media.ExportColorHLG, 30)
+	return err
+}
+
+func buildTimelinePlan(p project.Project, color string, fps int) (Plan, error) {
 	e, err := composition.Compile(p)
 	if err != nil {
 		return Plan{}, err

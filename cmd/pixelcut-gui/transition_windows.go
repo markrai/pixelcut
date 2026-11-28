@@ -98,7 +98,7 @@ func applyTransitionDuration(p project.Project, ref project.ClipRef, duration in
 		if err != nil {
 			return p, err
 		}
-		if _, err := projectexport.Build(q, "hlg", 30); err != nil {
+		if err := projectexport.ValidateTransitionLayout(q); err != nil {
 			return p, fmt.Errorf("cross-dissolve cannot be rendered: %w", err)
 		}
 		return q, nil

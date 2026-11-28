@@ -17,21 +17,23 @@ const MuteVersion = 7
 const FadeVersion = 8
 const EnvelopeVersion = 9
 const TransitionVersion = 10
-const Version = 11
+const ClassifiedVersion = 11
+const Version = 12
 
 type Asset struct {
-	ID            string              `json:"id"`
-	Path          string              `json:"path"`
-	Duration      int64               `json:"duration_us"`
-	Width         int                 `json:"width"`
-	Height        int                 `json:"height"`
-	HasAudio      bool                `json:"has_audio"`
-	Range         string              `json:"range,omitempty"`
-	ColorFamily   media.ColorFamily   `json:"color_family,omitempty"`
-	ColorDefaults media.ColorDefaults `json:"color_defaults,omitempty"`
-	Codec         string              `json:"codec,omitempty"`
-	PixelFormat   string              `json:"pixel_format,omitempty"`
-	Chroma        string              `json:"chroma,omitempty"`
+	ID             string              `json:"id"`
+	Path           string              `json:"path"`
+	Duration       int64               `json:"duration_us"`
+	Width          int                 `json:"width"`
+	Height         int                 `json:"height"`
+	HasAudio       bool                `json:"has_audio"`
+	Range          string              `json:"range,omitempty"`
+	ColorFamily    media.ColorFamily   `json:"color_family,omitempty"`
+	ColorDefaults  media.ColorDefaults `json:"color_defaults,omitempty"`
+	Codec          string              `json:"codec,omitempty"`
+	PixelFormat    string              `json:"pixel_format,omitempty"`
+	Chroma         string              `json:"chroma,omitempty"`
+	ColorConfirmed bool                `json:"color_confirmed,omitempty"`
 }
 
 type Crop struct {
@@ -193,6 +195,9 @@ func (p Project) MediaEditWithMute(c Clip, muted bool) (Asset, media.Edit, error
 	a, ok := p.Asset(c.AssetID)
 	if !ok {
 		return a, media.Edit{}, ErrAssetNotFound
+	}
+	if a.Classified() {
+		return a, media.Edit{}, ErrMixedExportUnavailable
 	}
 	if err := validateClip(c, a, VideoTrack); err != nil {
 		return a, media.Edit{}, err
