@@ -15,7 +15,9 @@ func TestClassifySourceColor(t *testing.T) {
 	}{
 		{"tagged H264", func(v *Stream) {}, ColorSDR709, 0},
 		{"tagged HEVC 10 bit", func(v *Stream) { v.CodecName, v.PixelFormat = "hevc", "yuv420p10le" }, ColorSDR709, 0},
-		{"untagged HD screen capture", func(v *Stream) { v.Primaries, v.Transfer, v.Matrix, v.Range, v.ChromaLocation, v.SampleAspectRatio = "", "unknown", "unspecified", "", "", "0:1" }, ColorSDR709, allColorDefaults},
+		{"untagged HD screen capture", func(v *Stream) {
+			v.Primaries, v.Transfer, v.Matrix, v.Range, v.ChromaLocation, v.SampleAspectRatio = "", "unknown", "unspecified", "", "", "0:1"
+		}, ColorSDR709, allColorDefaults},
 		{"partly tagged full range", func(v *Stream) { v.Transfer, v.Range = "", "pc" }, ColorSDR709, DefaultTransfer},
 		{"tagged small SDR", func(v *Stream) { v.Width, v.Height = 640, 480 }, ColorSDR709, 0},
 		{"missing SD tags", func(v *Stream) { v.Width, v.Height, v.Matrix = 640, 480, "" }, "", 0},
@@ -28,9 +30,15 @@ func TestClassifySourceColor(t *testing.T) {
 		{"unknown side data", func(v *Stream) { v.SideData = []map[string]any{{"side_data_type": "unknown"}} }, "", 0},
 		{"legacy rotation", func(v *Stream) { v.Tags = map[string]string{"rotate": "90"} }, "", 0},
 		{"HDR metadata on SDR", func(v *Stream) { v.SideData = []map[string]any{{"side_data_type": "Mastering display metadata"}} }, "", 0},
-		{"HLG", func(v *Stream) { v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix = "hevc", "yuv420p10le", "bt2020", "arib-std-b67", "bt2020nc" }, ColorHLG, 0},
-		{"PQ", func(v *Stream) { v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix = "hevc", "yuv420p10le", "bt2020", "smpte2084", "bt2020nc" }, ColorPQ, 0},
-		{"incomplete PQ", func(v *Stream) { v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix, v.Range = "hevc", "yuv420p10le", "bt2020", "smpte2084", "bt2020nc", "" }, "", 0},
+		{"HLG", func(v *Stream) {
+			v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix = "hevc", "yuv420p10le", "bt2020", "arib-std-b67", "bt2020nc"
+		}, ColorHLG, 0},
+		{"PQ", func(v *Stream) {
+			v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix = "hevc", "yuv420p10le", "bt2020", "smpte2084", "bt2020nc"
+		}, ColorPQ, 0},
+		{"incomplete PQ", func(v *Stream) {
+			v.CodecName, v.PixelFormat, v.Primaries, v.Transfer, v.Matrix, v.Range = "hevc", "yuv420p10le", "bt2020", "smpte2084", "bt2020nc", ""
+		}, "", 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			v := taggedSDR()
