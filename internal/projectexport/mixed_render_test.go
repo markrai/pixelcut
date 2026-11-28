@@ -113,6 +113,35 @@ func TestRenderMixedHLG(t *testing.T) {
 		t.Logf("%s: mixed HLG transition, reference white, timing and audio passed", mode.name)
 		requireEncoderNoStages(t, dir)
 	}
+	overlay := p.Clone()
+	overlay.Tracks[0].Clips = overlay.Tracks[0].Clips[:1]
+	overlay, _, err = overlay.AddTrack(project.VideoTrack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlay.Tracks[2].Clips = []project.Clip{{ID: "overlay", AssetID: p.Assets[1].ID, Out: 200000, AudioMuted: true, Crop: &media.Crop{X: 8, Y: 8, Width: 176, Height: 128}, Transform: &media.Transform{CanvasWidth: 192, CanvasHeight: 144, Scale: 50}}}
+	overlay, err = overlay.SetClipOpacity(project.ClipRef{TrackID: "V2", ClipID: "overlay"}, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	overlayOut := filepath.Join(dir, "overlay.mp4")
+	if err := RenderProject(ctx, engine, overlay, "hlg", 30, overlayOut); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := exec.CommandContext(ctx, engine.FFmpeg, "-v", "error", "-i", overlayOut, "-map", "0:v:0", "-frames:v", "1", "-c:v", "rawvideo", "-threads", "1", "-pix_fmt", "yuv420p10le", "-f", "rawvideo", "-").Output()
+	if err != nil || len(raw) != 192*144*3 {
+		t.Fatalf("overlay frame: %d bytes %v", len(raw), err)
+	}
+	for _, tc := range []struct {
+		x, y int
+		want uint16
+	}{{8, 8, 64}, {96, 72, 596}} {
+		got := binary.LittleEndian.Uint16(raw[2*(tc.y*192+tc.x):])
+		if absCode(got, tc.want) > 12 {
+			t.Fatalf("mixed overlay at %d,%d: %d want %d", tc.x, tc.y, got, tc.want)
+		}
+	}
+	requireEncoderNoStages(t, dir)
 	for path, before := range original {
 		after, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(before, after) {

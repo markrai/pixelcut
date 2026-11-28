@@ -3,11 +3,14 @@ package projectexport
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/markrai/pixelcut/internal/media"
 	"github.com/markrai/pixelcut/internal/project"
@@ -98,5 +101,56 @@ func TestMixedExportPreflightDescriptor(t *testing.T) {
 	i.report.Streams[0].Primaries = "bt2020"
 	if _, err := Prepare(ctx, i, p, "hlg", 30); err == nil {
 		t.Fatal("contradictory color tags accepted")
+	}
+}
+
+func TestSDRFullRangeCenterNormalization(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	const w, h = 8, 4
+	const n = w * h
+	input := make([]byte, n*3)
+	for i := 0; i < n; i++ {
+		binary.LittleEndian.PutUint16(input[2*i:], []uint16{0, 256, 512, 1023}[i%4])
+	}
+	for i := n * 2; i < len(input); i += 2 {
+		binary.LittleEndian.PutUint16(input[i:], 512)
+	}
+	p := project.New()
+	p.CanvasWidth, p.CanvasHeight = w, h
+	a := project.Asset{ID: "sdr", Path: filepath.Join(t.TempDir(), "source.mp4"), Duration: 1000000, Width: w, Height: h, Range: "pc", ColorFamily: media.ColorSDR709, Codec: "hevc", PixelFormat: "yuv420p10le", Chroma: "center"}
+	p.Assets = []project.Asset{a}
+	p.Tracks[0].Clips = []project.Clip{{ID: "clip", AssetID: a.ID, Out: a.Duration}}
+	plan, err := Build(p, "hlg", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, err := layerFilter(plan.Spans[0].Layers[0], Source{Asset: a, Chroma: a.Chroma}, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-f", "rawvideo", "-pixel_format", "yuv420p10le", "-video_size", "8x4", "-i", "pipe:0", "-vf", graph, "-frames:v", "1", "-c:v", "rawvideo", "-pix_fmt", "yuv444p10le", "-threads", "1", "-f", "rawvideo", "-")
+	cmd.Stdin = bytes.NewReader(input)
+	raw, err := cmd.Output()
+	if err != nil || len(raw) != n*6 {
+		t.Fatalf("SDR normalization: %d bytes %v", len(raw), err)
+	}
+	for i, want := range []uint16{64, 283, 502, 940} {
+		got := readPixel(raw, n*2, 2*i)
+		if absCode(got.Y, want) > 1 || got.Cb != 512 || got.Cr != 512 {
+			t.Fatalf("SDR normalization at %d: %+v want Y=%d", i, got, want)
+		}
+	}
+	if err := convertSDRFrame(ctx, raw, w, h); err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []uint16{64, 462, 721} {
+		offset := []int{0, 4, 6}[i]
+		if got := readPixel(raw, n*2, offset); absCode(got.Y, want) > 2 {
+			t.Fatalf("normalized SDR mapping: %+v want Y=%d", got, want)
+		}
 	}
 }
