@@ -28,6 +28,11 @@ func (p Project) CopyClips(trackID string, ids []string) (ClipClipboard, error) 
 	if err != nil {
 		return b, err
 	}
+	for _, c := range p.Tracks[i].Clips {
+		if c.TransitionIn != nil && selected[c.ID] != selected[c.TransitionIn.FromClipID] {
+			return b, errors.New("copy both clips of a transition or remove the transition first")
+		}
+	}
 	b.kind = p.Tracks[i].Kind
 	b.assets = map[string]Asset{}
 	for _, c := range p.Tracks[i].Clips {
@@ -87,9 +92,21 @@ func (p Project) PasteClips(trackID string, b ClipClipboard, at int64, ids []str
 		q.Version = Version
 	}
 	first := len(q.Tracks[ti].Clips)
+	remap := make(map[string]string, len(ids))
+	for i, c := range b.clips {
+		remap[c.ID] = ids[i]
+	}
 	for i, c := range b.clips {
 		c = c.Clone()
 		c.ID = ids[i]
+		if c.TransitionIn != nil {
+			from, ok := remap[c.TransitionIn.FromClipID]
+			if !ok {
+				return result, ErrInvalidTransition
+			}
+			c.TransitionIn.FromClipID = from
+			q.Version = Version
+		}
 		if c.AudioDetached || c.Opacity != nil || c.Gain != nil || c.AudioMuted || c.HasFades() || c.HasEnvelope() {
 			q.Version = Version
 		}

@@ -15,7 +15,8 @@ const LayerVersion = 5
 const GainVersion = 6
 const MuteVersion = 7
 const FadeVersion = 8
-const Version = 9
+const EnvelopeVersion = 9
+const Version = 10
 
 type Asset struct {
 	ID       string `json:"id"`
@@ -49,6 +50,7 @@ type Clip struct {
 	FadeIn        int64            `json:"audio_fade_in_us,omitempty"`
 	FadeOut       int64            `json:"audio_fade_out_us,omitempty"`
 	Envelope      *VolumeEnvelope  `json:"audio_envelope,omitempty"`
+	TransitionIn  *VideoTransition `json:"transition_in,omitempty"`
 }
 
 type Track struct {
@@ -133,6 +135,9 @@ func (p Project) Split(track, clip, rightID string, at int64) (Project, error) {
 		return p, err
 	}
 	c := p.Tracks[i].Clips[j]
+	if p.ClipHasTransition(ClipRef{TrackID: track, ClipID: clip}) {
+		return p, errors.New("remove the transition before splitting a participating clip")
+	}
 	if at <= c.Start || !c.Contains(at) {
 		return p, errors.New("split must be strictly inside clip")
 	}
@@ -164,6 +169,9 @@ func (p Project) MediaEditWithMute(c Clip, muted bool) (Asset, media.Edit, error
 	}
 	if err := validateClip(c, a, VideoTrack); err != nil {
 		return a, media.Edit{}, err
+	}
+	if ref, ok := p.LocateClip(c.ID); ok && p.ClipHasTransition(ref) {
+		return a, media.Edit{}, errors.New("video transitions require whole-project rendering")
 	}
 	if c.OpacityPercent() != 100 {
 		return a, media.Edit{}, errors.New("layer opacity requires project composition; selected-clip export cannot apply it")

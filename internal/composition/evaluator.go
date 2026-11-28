@@ -65,6 +65,9 @@ func Compile(p project.Project) (*Evaluator, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
+	if p.HasVideoTransitions() {
+		return nil, ErrTransitionRenderingUnavailable
+	}
 	e := &Evaluator{duration: p.EndTime(), canvas: p.CompositionCanvas(), boundaries: []int64{0}}
 	assets := make(map[string]project.Asset, len(p.Assets))
 	for _, a := range p.Assets {

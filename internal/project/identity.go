@@ -80,5 +80,9 @@ func (c Clip) Clone() Clip {
 		c.Gain = &v
 	}
 	c.Envelope = c.Envelope.Clone()
+	if c.TransitionIn != nil {
+		v := *c.TransitionIn
+		c.TransitionIn = &v
+	}
 	return c
 }
