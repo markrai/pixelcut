@@ -60,11 +60,46 @@ function Begin-Stage {
     Write-Host "=== $Name ==="
 }
 
+function Write-FormatLine {
+    param([string]$Log, [string]$Message)
+    [System.IO.File]::AppendAllText($Log, $Message + [Environment]::NewLine, [System.Text.UTF8Encoding]::new($false))
+    Write-Host $Message
+}
+
+function Scan-FormatChunk {
+    param([string[]]$Files, [string]$Log)
+    $exe = Require-Tool gofmt
+    $previous = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $lines = @(& $exe -l @Files 2>&1)
+        $code = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) {
+        Write-FormatLine $Log "gofmt could not parse or read source files (exit $code):"
+        foreach ($line in $lines) {
+            Write-FormatLine $Log ($line.ToString())
+        }
+        $detail = ($lines | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine
+        throw "gofmt scan failed (exit $code):$([Environment]::NewLine)$detail"
+    }
+    foreach ($line in $lines) {
+        if (-not [string]::IsNullOrWhiteSpace($line.ToString())) {
+            $line.ToString()
+        }
+    }
+}
+
 function Check-Formatting {
+    param([string]$Reports)
     Begin-Stage 'Check Go formatting'
+    $log = Join-Path $Reports 'formatting.txt'
     $files = @(Invoke-Checked git @('-c', 'core.quotepath=false', 'ls-files', '--cached', '--others', '--exclude-standard', '--', '*.go') | Sort-Object -Unique)
     $bad = @()
     $chunk = @()
+    $checked = 0
     foreach ($file in $files) {
         if ($file.StartsWith('"')) {
             throw "Unsupported quoted Git path: $file"
@@ -72,20 +107,37 @@ function Check-Formatting {
         if (-not (Test-Path -LiteralPath $file -PathType Leaf)) {
             continue
         }
+        $checked++
         $chunk += $file
         if ($chunk.Count -ge 32) {
-            $bad += @(Invoke-Checked gofmt (@('-l') + $chunk))
+            $bad += @(Scan-FormatChunk $chunk $log)
             $chunk = @()
         }
     }
     if ($chunk.Count -gt 0) {
-        $bad += @(Invoke-Checked gofmt (@('-l') + $chunk))
+        $bad += @(Scan-FormatChunk $chunk $log)
     }
+    Write-FormatLine $log "Checked $checked Go files; $($bad.Count) require formatting."
     if ($bad.Count -gt 0) {
-        Write-Host 'Run gofmt on:'
-        $bad | ForEach-Object { Write-Host $_ }
-        throw 'Go formatting check failed. No files were modified.'
+        Write-FormatLine $log 'Files requiring formatting:'
+        foreach ($file in $bad) {
+            Write-FormatLine $log "  $file"
+        }
+        Write-FormatLine $log ''
+        Write-FormatLine $log 'Run these commands from the repository root to fix:'
+        foreach ($file in $bad) {
+            Write-FormatLine $log ('  gofmt -w "{0}"' -f $file)
+        }
+        Write-FormatLine $log ''
+        Write-FormatLine $log 'Formatting differences (read-only):'
+        foreach ($file in $bad) {
+            Write-FormatLine $log "=== $file ==="
+            Invoke-Logged gofmt @('-d', $file) $log -Append
+        }
+        $paths = $bad -join [Environment]::NewLine
+        throw "Go formatting check failed: $($bad.Count) file(s). No files were modified.$([Environment]::NewLine)$paths$([Environment]::NewLine)See $log"
     }
+    Write-FormatLine $log 'Go formatting passed.'
 }
 
 function Run-Benchmark {
@@ -151,7 +203,11 @@ try {
     $null = Require-Tool git
     $null = Require-Tool go
     $null = Require-Tool gofmt
-    Check-Formatting
+    $id = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
+    $reports = Join-Path $root "ci-reports\local-$id"
+    New-Item -ItemType Directory -Path $reports -Force | Out-Null
+    Write-Host "Reports: $reports"
+    Check-Formatting $reports
     if (-not $FormatOnly) {
         Begin-Stage 'Check prerequisites'
         $null = Require-Tool ffmpeg
@@ -190,10 +246,6 @@ try {
         Get-ChildItem Env:PIXELCUT_QUALIFY_* | ForEach-Object {
             Remove-Item -LiteralPath ("Env:" + $_.Name)
         }
-        $id = (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [guid]::NewGuid().ToString('N').Substring(0, 8)
-        $reports = Join-Path $root "ci-reports\local-$id"
-        New-Item -ItemType Directory -Path $reports -Force | Out-Null
-        Write-Host "Reports: $reports"
         Begin-Stage 'Environment'
         $environment = Join-Path $reports 'environment.txt'
         Invoke-Logged go @('version') $environment
