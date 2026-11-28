@@ -119,7 +119,7 @@ func TestRenderMixedHLG(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	overlay.Tracks[2].Clips = []project.Clip{{ID: "overlay", AssetID: p.Assets[1].ID, Out: 200000, AudioMuted: true, Crop: &media.Crop{X: 8, Y: 8, Width: 176, Height: 128}, Transform: &media.Transform{CanvasWidth: 192, CanvasHeight: 144, Scale: 50}}}
+	overlay.Tracks[2].Clips = []project.Clip{{ID: "overlay", AssetID: p.Assets[1].ID, Out: 200000, AudioMuted: true, Crop: &project.Crop{X: 8, Y: 8, Width: 176, Height: 128}, Transform: &media.Transform{CanvasWidth: 192, CanvasHeight: 144, Scale: 50}}}
 	overlay, err = overlay.SetClipOpacity(project.ClipRef{TrackID: "V2", ClipID: "overlay"}, 50)
 	if err != nil {
 		t.Fatal(err)
